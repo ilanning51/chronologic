@@ -408,7 +408,7 @@ git commit -m "feat: world reducer with the slide to the front"
   export function useWorld(store: Store): World;                             // useSyncExternalStore
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('load returns EMPTY for missing, corrupt and wrongly shaped data', () => {
@@ -420,12 +420,12 @@ test('save then load round-trips a world', () => { /* use a Map-backed fake stor
 test('the store reduces and notifies, and persist writes every change', () => { /* subscribe, dispatch add, expect state and one setItem call */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
 Run: `npx vitest run src/store`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/store
