@@ -623,21 +623,22 @@ git commit -m "feat: plane, camera and HUD"
   ```
   `CaptureField({ onAdd, lineColor })`: the add button (56, ink, paper plus). Tapping it opens the pill in place: ink background, a text input with paper text at 17 px and `aria-label="Station title"`, then three shape buttons in paper named "Add as a small station", "Add as a medium station", "Add as a large station". A shape button calls `onAdd(title, shape)` with a non-empty trimmed title and closes; an empty title does nothing. Return adds a circle, Escape closes. The input is focused when the pill opens. `App` places the station at `placeClear(screenToWorld(camera, viewport center), stations)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('placeClear nudges right until clear', () => {
   expect(placeClear({ x: 0, y: 0 }, [])).toEqual({ x: 0, y: 0 });
-  expect(placeClear({ x: 0, y: 0 }, [{ x: 10, y: 10 }])).toEqual({ x: 48, y: 0 });
-  expect(placeClear({ x: 0, y: 0 }, [{ x: 10, y: 10 }, { x: 50, y: 0 }])).toEqual({ x: 96, y: 0 });
+  expect(placeClear({ x: 0, y: 0 }, [{ x: 0, y: 0 }])).toEqual({ x: 48, y: 0 });
+  expect(placeClear({ x: 0, y: 0 }, [{ x: 0, y: 0 }, { x: 48, y: 0 }])).toEqual({ x: 96, y: 0 });
+  expect(placeClear({ x: 0, y: 0 }, [{ x: 10, y: 10 }])).toEqual({ x: 96, y: 0 }); // (48, 0) is still within a radius of (10, 10)
 });
 test('capture adds a station from a title and a shape', async () => { /* click Add a station, type 'Fix the printer', click medium → onAdd('Fix the printer', 'triangle'); pill closed */ });
 test('an empty title adds nothing and Return adds a circle', async () => { /* click medium with empty → onAdd not called; type 'x', press Enter → onAdd('x', 'circle') */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
