@@ -694,7 +694,7 @@ git commit -m "feat: move and edit stations"
   export function trainOn(route: Route, nextIndex: number): { at: Point; angle: number };   // midpoint of the route between station nextIndex-1 and nextIndex; for 0, the midpoint of the lead
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('routes with a diagonal first then a straight run', () => {
@@ -713,9 +713,9 @@ test('the train waits on the lead before the first station', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/plane/routing.ts src/plane/routing.test.ts
