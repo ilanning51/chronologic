@@ -319,7 +319,7 @@ git commit -m "feat: stretch name and remaining time"
   export function reduce(world: World, action: Action): World;   // pure; unknown ids are ignored; the line is deduplicated keeping first occurrence and dropping ids that are not stations
   ```
 
-- [ ] **Step 1: Write the failing slide test**
+- [x] **Step 1: Write the failing slide test**
 
 ```ts
 const at = (id: string, x: number): Station => ({ id, title: id, shape: 'circle', x, y: 10, z: 0, done: false });
@@ -334,11 +334,11 @@ test('with nothing else on the plane the front is left of zero', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails, implement `slide.ts`, run to verify it passes**
+- [x] **Step 2: Run to verify it fails, implement `slide.ts`, run to verify it passes**
 
 Run: `npx vitest run src/model/slide.test.ts`
 
-- [ ] **Step 3: Write the failing reducer tests**
+- [x] **Step 3: Write the failing reducer tests**
 
 ```ts
 test('add, move, edit, delete', () => { /* add a circle at (10,20) → stations has it with z 0 and done false; move → x,y change; edit shape → changes; delete → gone */ });
@@ -368,19 +368,19 @@ test('redraw keeps the start time and replaces the line and kind', () => { /* st
 
 Write each as a real test with exact ids and coordinates.
 
-- [ ] **Step 4: Run to verify they fail**
+- [x] **Step 4: Run to verify they fail**
 
 Run: `npx vitest run src/model/reducer.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 5: Implement `src/model/reducer.ts`**
+- [x] **Step 5: Implement `src/model/reducer.ts`**
 
-- [ ] **Step 6: Run to verify all tests pass**
+- [x] **Step 6: Run to verify all tests pass**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/model
