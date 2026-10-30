@@ -533,7 +533,7 @@ git commit -m "feat: camera math and label rule"
   ```
   Rules: one pointer on paper pans once it moves past TAP_SLOP, otherwise it is a tap on up. One pointer on a station or bullet becomes a drag past TAP_SLOP, a tap on a quick up, and a longPress (station only) once LONG_PRESS_MS pass within the slop, after which up emits nothing. On the clock, down emits holdStart at once, up before HOLD_MS emits tap then holdEnd completed false, and tick past HOLD_MS emits holdEnd completed true. Two pointers emit pinch with factor = current distance over previous distance and the movement of the midpoint as dx, dy, and no pan. A third pointer is ignored. When one of two pointers lifts, the one left pans from its current position with no jump. `cancel` drops a pointer and emits a dragEnd at its last position if it was dragging.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('a short press on paper is a tap, a longer move is a pan', () => { /* down (0,0) t0; up (3,3) t100 → one tap on paper; down, move (20,0) → pan dx 20; further move → more pan; no tap on up */ });
@@ -547,12 +547,12 @@ test('a third pointer is ignored', () => { /* with a and b down, down c and move
 
 Write each as a real test with an `emit` spy and exact samples.
 
-- [ ] **Step 2: Run to verify they fail, implement `Recognizer`, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement `Recognizer`, run to verify they pass**
 
 Run: `npx vitest run src/plane/gestures.test.ts`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/plane/gestures.ts src/plane/gestures.test.ts
