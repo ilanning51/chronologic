@@ -102,7 +102,7 @@ Tests sit beside their module as `*.test.ts` or `*.test.tsx`.
   export const KIND_ORDER: Kind[];                        // deep, shallow, body, out
   ```
 
-- [ ] **Step 1: Root commit of the docs on main, then the build branch**
+- [x] **Step 1: Root commit of the docs on main, then the build branch**
 
 ```bash
 git add design docs
@@ -110,18 +110,18 @@ git commit -m "docs: Chronologic design and v1 plan"
 git checkout -b build/v1
 ```
 
-- [ ] **Step 2: Write the scaffold by hand**
+- [x] **Step 2: Write the scaffold by hand**
 
 `package.json` scripts: `dev` (vite), `build` (tsc -b && vite build), `preview`, `test` (vitest run), `test:watch` (vitest). Dependencies: react, react-dom. Dev: typescript, vite, @vitejs/plugin-react, vitest, jsdom, @testing-library/react, @testing-library/jest-dom, @testing-library/user-event, @types/react, @types/react-dom. `vite.config.ts` sets `test: { environment: 'jsdom', setupFiles: ['src/test-setup.ts'] }` and the setup file imports `@testing-library/jest-dom/vitest`. `tsconfig.json`: strict, `jsx: react-jsx`, `moduleResolution: bundler`, `types: ["vitest/globals"]` is not used, tests import from vitest. `index.html` sets `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`, links `tokens.css` through `main.tsx`, and has `<div id="root">`.
 
 `tokens.css` defines on `:root` the seven color tokens, the size tokens from Global Constraints (world sizes in px, HUD sizes in rem), the font stack, `background: var(--paper)` on `body`, `margin: 0`, `overflow: hidden`, `user-select: none`, and `@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important } }`.
 
-- [ ] **Step 3: Install and check the empty app builds**
+- [x] **Step 3: Install and check the empty app builds**
 
 Run: `npm install` then `npm run build`
 Expected: a `dist/` folder and no TypeScript errors.
 
-- [ ] **Step 4: Write the failing tests**
+- [x] **Step 4: Write the failing tests**
 
 ```ts
 // src/model/sizes.test.ts
@@ -149,19 +149,19 @@ test('every kind carries its initial, color and word', () => {
 });
 ```
 
-- [ ] **Step 5: Run the tests to verify they fail**
+- [x] **Step 5: Run the tests to verify they fail**
 
 Run: `npm test`
 Expected: FAIL, modules not found.
 
-- [ ] **Step 6: Implement `types.ts`, `sizes.ts`, `kinds.ts`**
+- [x] **Step 6: Implement `types.ts`, `sizes.ts`, `kinds.ts`**
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS, 3 tests.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A
