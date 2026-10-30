@@ -208,3 +208,39 @@ test('a tapped bullet shows the chips, and the chosen length is the one the draw
   // 192 minutes of capacity: the circle and the square both fit now.
   expect(document.querySelector('polyline')!.getAttribute('points')).toBe('60,100 100,100 300,100 332,100');
 });
+
+test('opening on a running stretch centers the train at the stretch zoom', () => {
+  const store = createStore(running(['a', 'b']));
+  render(<App store={store} now={() => 60_000} />);
+  expect(screen.getByTestId('world').style.transform).toMatch(/scale\(1.6\)$/);
+});
+
+test('opening with no stretch leaves the camera at home', () => {
+  const store = createStore({ ...EMPTY, stations: [dentist] });
+  render(<App store={store} />);
+  expect(screen.getByTestId('world').style.transform).toBe('translate(0px, 0px) scale(1)');
+});
+
+test('completing a station plays the stretch kind tone', () => {
+  const started = vi.fn();
+  class FakeAudioContext {
+    currentTime = 0;
+    destination = {};
+    createOscillator() {
+      return { type: 'sine', frequency: { value: 0 }, connect: vi.fn(), start: started, stop: vi.fn() };
+    }
+    createGain() {
+      return { gain: { value: 0, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() }, connect: vi.fn() };
+    }
+  }
+  vi.stubGlobal('AudioContext', FakeAudioContext);
+  try {
+    const store = createStore(running(['a', 'b']));
+    render(<App store={store} now={() => 60_000} />);
+    press(screen.getByRole('button', { name: 'Dentist, small, next' }), 100, 100);
+    expect(store.getState().stations[0].done).toBe(true);
+    expect(started).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

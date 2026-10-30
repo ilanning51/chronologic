@@ -814,7 +814,7 @@ git commit -m "feat: length chips, default name and renaming"
 ### Task 15: Sound, motion, the opening fly-to and install
 
 **Files:**
-- Create: `src/feedback/sound.ts`, `src/feedback/haptics.ts`, `src/feedback/motion.ts`, `public/manifest.webmanifest`, `public/icon.svg`, `scripts/icon.mjs`
+- Create: `src/feedback/sound.ts`, `src/feedback/haptics.ts`, `public/manifest.webmanifest`, `public/icon.svg`, `scripts/icon.mjs`
 - Modify: `src/ui/App.tsx`, `index.html`, `package.json` (script `icon`)
 - Test: `src/feedback/sound.test.ts`, `src/ui/App.test.tsx`
 
@@ -825,24 +825,24 @@ git commit -m "feat: length chips, default name and renaming"
   export function playTone(ctx: AudioContext, hz: number): void;       // sine, 120 ms, gain 0.2 with a 20 ms ramp out
   export function playChord(ctx: AudioContext): void;                  // three sines at 262, 330, 392 Hz, 600 ms, gain 0.15
   export function buzz(): void;                                        // navigator.vibrate?.(30)
-  export function prefersReducedMotion(): boolean;
   ```
+  Note from the build: no `motion.ts` was written, as the `prefers-reduced-motion` rule in `tokens.css` already removes every transition and animation, and nothing in the app needs to ask in code.
   `App` creates the `AudioContext` lazily on the first gesture, plays `pitchFor(stretch.kind)` on `complete`, and `playChord` plus `buzz` when `isOver` ends the stretch. On mount, if a stretch is running, the camera is set to `centerOn(HOME, trainOn(route, firstPending).at, viewport, STRETCH_ZOOM)`; the world layer's transform has a 400 ms transition that the reduced motion rule removes. The manifest has `name: "Chronologic"`, `display: "standalone"`, `orientation: "landscape"`, `background_color` and `theme_color` `#EEEBE5`, and icons `icon.svg` (any size) and `apple-touch-icon.png` (180). `index.html` links the manifest, sets `theme-color`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style` `default` and the apple touch icon. `scripts/icon.mjs` writes a 180 by 180 PNG of an ink disc on paper using only `zlib` (deflate, CRC32 written by hand).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('each kind has its own pitch', () => { expect(new Set(KIND_ORDER.map(pitchFor)).size).toBe(4); });
 test('opening on a running stretch centers the train at the stretch zoom', () => { /* App with a running stretch; world layer transform ends in 'scale(1.6)' */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run `node scripts/icon.mjs`, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run `node scripts/icon.mjs`, run to verify they pass**
 
-- [ ] **Step 3: Check the build and the install metadata**
+- [x] **Step 3: Check the build and the install metadata**
 
 Run: `npm run build` then `npm run preview`, open it in the built-in browser. Expected: no console errors, the manifest loads, the plane opens on the train when a stretch is running.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A

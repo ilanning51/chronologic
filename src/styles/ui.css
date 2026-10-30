@@ -6,6 +6,11 @@
   transform-origin: 0 0;
 }
 
+/* Only a flight eases; a pan or a pinch follows the finger with no lag. */
+.world.flying {
+  transition: transform 400ms ease-out;
+}
+
 /* The line lives in the world layer under the stations and draws outside its own box. */
 .line {
   position: absolute;

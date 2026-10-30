@@ -8,6 +8,8 @@ interface PlaneProps {
   camera: Camera;
   /** The running line's color as the theme writes it; press and focus fill with it. */
   lineColor: string;
+  /** Whether the camera is flying somewhere, which eases the transform instead of snapping. */
+  flying: boolean;
   onGesture: (gesture: Gesture) => void;
   onZoom: (at: Point, factor: number) => void;
   hud: ReactNode;
@@ -39,7 +41,7 @@ const sample = (e: ReactPointerEvent): Sample => ({ id: e.pointerId, x: e.client
  * The full-screen paper. It turns pointer events into samples for the recognizer and
  * draws the world layer under the camera transform, with the HUD on top in screen space.
  */
-export function Plane({ camera, lineColor, onGesture, onZoom, hud, children }: PlaneProps) {
+export function Plane({ camera, lineColor, flying, onGesture, onZoom, hud, children }: PlaneProps) {
   const latest = useRef(onGesture);
   latest.current = onGesture;
   const recognizer = useMemo(() => new Recognizer((g) => latest.current(g)), []);
@@ -100,7 +102,7 @@ export function Plane({ camera, lineColor, onGesture, onZoom, hud, children }: P
         stopTickingWhenIdle();
       }}
     >
-      <div className="world" data-testid="world" style={{ transform: cssTransform(camera) }}>
+      <div className={flying ? 'world flying' : 'world'} data-testid="world" style={{ transform: cssTransform(camera) }}>
         {children}
       </div>
       {hud}

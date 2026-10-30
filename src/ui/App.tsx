@@ -1,5 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
+import { buzz } from '../feedback/haptics';
+import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { newId } from '../model/ids';
 import { kindVar } from '../model/kinds';
 import { fit, reachedStations } from '../model/line';
@@ -39,6 +41,9 @@ const viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
 /** How often the pie is redrawn while a stretch runs. */
 const CLOCK_TICK_MS = 1000;
 
+/** How long the camera takes to fly to the train. */
+const FLY_MS = 400;
+
 export function App({ store, now = Date.now }: AppProps) {
   const world = useWorld(store);
   const [camera, setCamera] = useState<Camera>(HOME);
@@ -52,6 +57,9 @@ export function App({ store, now = Date.now }: AppProps) {
   const [pendingLength, setPendingLength] = useState<Length | null>(null);
   const pendingLengthRef = useRef<Length | null>(null);
   const [, setTick] = useState(0);
+  const [flying, setFlying] = useState(false);
+  const flyTimer = useRef<number | null>(null);
+  const audio = useRef<AudioContext | null>(null);
   /** Where the finger took hold of a station, so a move never jumps to the finger. */
   const grip = useRef<Point>({ x: 0, y: 0 });
 
@@ -65,10 +73,29 @@ export function App({ store, now = Date.now }: AppProps) {
     return () => window.clearInterval(id);
   }, [stretch]);
 
-  // The stretch ends by itself when the pie empties, even after a sleep.
+  // The stretch ends by itself when the pie empties, even after a sleep: one quiet chord, one haptic.
   useEffect(() => {
-    if (stretch && isOver(stretch, nowMs)) store.dispatch({ type: 'end' });
+    if (stretch && isOver(stretch, nowMs)) {
+      store.dispatch({ type: 'end' });
+      if (audio.current) playChord(audio.current);
+      buzz();
+    }
   });
+
+  useEffect(
+    () => () => {
+      if (flyTimer.current !== null) window.clearTimeout(flyTimer.current);
+    },
+    [],
+  );
+
+  /** The audio context is made on the first gesture that needs it, as browsers require. */
+  const sound = (): AudioContext | null => {
+    if (!audio.current && typeof AudioContext !== 'undefined') audio.current = new AudioContext();
+    const ctx = audio.current;
+    if (ctx && typeof ctx.resume === 'function' && ctx.state === 'suspended') void ctx.resume();
+    return ctx;
+  };
 
   const updateDraft = (next: Draft | null) => {
     draftRef.current = next;
@@ -80,8 +107,13 @@ export function App({ store, now = Date.now }: AppProps) {
     const state = store.getState();
     const station = state.stations.find((s) => s.id === id);
     if (!station) return;
-    if (station.done) store.dispatch({ type: 'restore', id });
-    else if (state.stretch?.line.includes(id)) store.dispatch({ type: 'complete', id });
+    if (station.done) {
+      store.dispatch({ type: 'restore', id });
+    } else if (state.stretch?.line.includes(id)) {
+      store.dispatch({ type: 'complete', id });
+      const ctx = sound();
+      if (ctx) playTone(ctx, pitchFor(state.stretch.kind));
+    }
   };
 
   /** The camera flies to the train at the stretch zoom, so the next station is on screen. */
@@ -89,8 +121,17 @@ export function App({ store, now = Date.now }: AppProps) {
     const { stations, next } = reachedStations(store.getState());
     if (stations.length === 0) return;
     const train = trainOn(routeThrough(stations.map(at)), Math.max(0, next));
+    setFlying(true);
+    if (flyTimer.current !== null) window.clearTimeout(flyTimer.current);
+    flyTimer.current = window.setTimeout(() => setFlying(false), FLY_MS);
     setCamera((c) => centerOn(c, train.at, viewport(), STRETCH_ZOOM));
   };
+
+  // On opening with a stretch running, the first thing on screen is the train and the next station.
+  useEffect(() => {
+    flyToTrain();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onGesture = (g: Gesture) => {
     const cam = cameraRef.current;
@@ -222,6 +263,7 @@ export function App({ store, now = Date.now }: AppProps) {
     <Plane
       camera={camera}
       lineColor={lineColor}
+      flying={flying}
       onGesture={onGesture}
       onZoom={onZoom}
       hud={
