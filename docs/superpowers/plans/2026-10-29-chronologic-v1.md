@@ -185,7 +185,7 @@ git commit -m "feat: scaffold, tokens, shapes, kinds and capacity"
   ```
   A station fits when the running total of sizes up to and including it is at most `cap`. The first that does not fit and everything after it is beyond. Done stations cost their size like any other.
 
-- [ ] **Step 1: Write the failing test with the spec's worked example**
+- [x] **Step 1: Write the failing test with the spec's worked example**
 
 ```ts
 const s = (id: string, shape: Shape, done = false): Station => ({ id, title: id, shape, x: 0, y: 0, z: 0, done });
@@ -209,19 +209,19 @@ test('an empty order fits nothing and spends nothing', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/model/line.test.ts`
 Expected: FAIL, `fit` not found.
 
-- [ ] **Step 3: Implement `fit` in `src/model/line.ts`**
+- [x] **Step 3: Implement `fit` in `src/model/line.ts`**
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/model/line.test.ts`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/model/line.ts src/model/line.test.ts
