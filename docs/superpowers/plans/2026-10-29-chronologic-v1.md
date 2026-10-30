@@ -245,7 +245,7 @@ git commit -m "feat: line fit rule"
   export function isOver(stretch: Stretch, now: number): boolean;     // remaining is 0
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('the name follows the hour', () => {
@@ -266,19 +266,19 @@ test('remaining is read from the clock, not counted', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/model/stretch.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `src/model/stretch.ts`**
+- [x] **Step 3: Implement `src/model/stretch.ts`**
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/model/stretch.test.ts`
 Expected: PASS, 2 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/model/stretch.ts src/model/stretch.test.ts
