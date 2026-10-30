@@ -734,14 +734,14 @@ git commit -m "feat: line routing, terminus and train geometry"
 **Interfaces:**
 - `Line({ route, color, reachedCount, nextIndex, width })` renders one SVG `polyline` with `stroke-width` 10 world units, round caps and joins, through the route up to the last reached station plus the terminus overrun, the terminus bar (10 by 26, rotated to the segment angle, centered at `terminusOf`) and the train (30 by 20 pill at `trainOn`, rotated to its angle). While drawing, `App` keeps `draft: { kind, ids: string[] }` in state: on `dragStart` from a bullet it starts a draft, on each `dragMove` it appends any pending station within `HIT_RADIUS = 22` world units of the pointer that is not yet in the draft, and the route is drawn through the draft plus the pointer. On `dragEnd` with a non-empty draft it dispatches `start` (no stretch running, with `pendingLength ?? lastLength`, `now: Date.now()`, `hour: new Date().getHours()`) or `redraw` (stretch running). The line's stations are `fit(lineStations, capacity(length))`; beyond stations are drawn like any pending station and the line does not reach them.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```tsx
 test('the line is drawn in the kind color and ends in a terminus', () => { /* render Line; polyline stroke equals '#2440A4'; a terminus bar element exists with data-terminus */ });
 test('a drag from a bullet through two stations starts a stretch', () => { /* App with two stations; pointerdown on the Deep bullet, pointermove over each station's screen position, pointerup → store.getState().stretch.line equals both ids and kind 'deep' */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
 - [ ] **Step 3: Look at it**
 

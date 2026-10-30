@@ -5,6 +5,7 @@ import { createStore } from '../store/store';
 import { App } from './App';
 
 const dentist = { id: 'a', title: 'Dentist', shape: 'circle' as const, x: 100, y: 100, z: 0 as const, done: false };
+const taxes = { id: 'b', title: 'Taxes', shape: 'square' as const, x: 300, y: 100, z: 0 as const, done: false };
 
 test('the plane shows stations as shapes with labels and four HUD corners', () => {
   const store = createStore({ ...EMPTY, stations: [dentist] });
@@ -67,4 +68,36 @@ test('a long press on a station opens the editor and a tap on paper closes it', 
   } finally {
     vi.useRealTimers();
   }
+});
+
+test('a drag from a bullet through two stations starts a stretch, and the color runs out', () => {
+  const store = createStore({ ...EMPTY, stations: [dentist, taxes] });
+  render(<App store={store} now={() => new Date(2026, 9, 29, 15, 0).getTime()} />);
+  const bullet = screen.getByRole('button', { name: 'Deep line. Starts a new stretch.' });
+  const paper = screen.getByRole('main', { name: 'The plane' });
+
+  fireEvent.pointerDown(bullet, { pointerId: 1, clientX: 40, clientY: 700 });
+  fireEvent.pointerMove(paper, { pointerId: 1, clientX: 100, clientY: 100 });
+  expect(document.querySelector('polyline')!.getAttribute('points')).toBe('60,100 100,100 100,100');
+  fireEvent.pointerMove(paper, { pointerId: 1, clientX: 300, clientY: 100 });
+  fireEvent.pointerUp(paper, { pointerId: 1, clientX: 320, clientY: 100 });
+
+  const stretch = store.getState().stretch!;
+  expect(stretch).toMatchObject({ kind: 'deep', length: 'couple', name: 'Afternoon', line: ['a', 'b'] });
+  expect(screen.getByRole('button', { name: 'Dentist, small, next' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Taxes, large' })).toBeInTheDocument();
+  expect(document.querySelector('polyline')!.getAttribute('points')).toBe('60,100 100,100 132,100');
+  expect(document.querySelector('[data-terminus]')).toBeInTheDocument();
+});
+
+test('a drag from a bullet over nothing starts no stretch', () => {
+  const store = createStore({ ...EMPTY, stations: [dentist] });
+  render(<App store={store} />);
+  const bullet = screen.getByRole('button', { name: 'Body line. Starts a new stretch.' });
+  const paper = screen.getByRole('main', { name: 'The plane' });
+  fireEvent.pointerDown(bullet, { pointerId: 1, clientX: 40, clientY: 700 });
+  fireEvent.pointerMove(paper, { pointerId: 1, clientX: 400, clientY: 400 });
+  fireEvent.pointerUp(paper, { pointerId: 1, clientX: 400, clientY: 400 });
+  expect(store.getState().stretch).toBeNull();
+  expect(document.querySelector('polyline')).not.toBeInTheDocument();
 });
