@@ -102,7 +102,7 @@ Tests sit beside their module as `*.test.ts` or `*.test.tsx`.
   export const KIND_ORDER: Kind[];                        // deep, shallow, body, out
   ```
 
-- [ ] **Step 1: Root commit of the docs on main, then the build branch**
+- [x] **Step 1: Root commit of the docs on main, then the build branch**
 
 ```bash
 git add design docs
@@ -110,18 +110,18 @@ git commit -m "docs: Chronologic design and v1 plan"
 git checkout -b build/v1
 ```
 
-- [ ] **Step 2: Write the scaffold by hand**
+- [x] **Step 2: Write the scaffold by hand**
 
 `package.json` scripts: `dev` (vite), `build` (tsc -b && vite build), `preview`, `test` (vitest run), `test:watch` (vitest). Dependencies: react, react-dom. Dev: typescript, vite, @vitejs/plugin-react, vitest, jsdom, @testing-library/react, @testing-library/jest-dom, @testing-library/user-event, @types/react, @types/react-dom. `vite.config.ts` sets `test: { environment: 'jsdom', setupFiles: ['src/test-setup.ts'] }` and the setup file imports `@testing-library/jest-dom/vitest`. `tsconfig.json`: strict, `jsx: react-jsx`, `moduleResolution: bundler`, `types: ["vitest/globals"]` is not used, tests import from vitest. `index.html` sets `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`, links `tokens.css` through `main.tsx`, and has `<div id="root">`.
 
 `tokens.css` defines on `:root` the seven color tokens, the size tokens from Global Constraints (world sizes in px, HUD sizes in rem), the font stack, `background: var(--paper)` on `body`, `margin: 0`, `overflow: hidden`, `user-select: none`, and `@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important } }`.
 
-- [ ] **Step 3: Install and check the empty app builds**
+- [x] **Step 3: Install and check the empty app builds**
 
 Run: `npm install` then `npm run build`
 Expected: a `dist/` folder and no TypeScript errors.
 
-- [ ] **Step 4: Write the failing tests**
+- [x] **Step 4: Write the failing tests**
 
 ```ts
 // src/model/sizes.test.ts
@@ -149,19 +149,19 @@ test('every kind carries its initial, color and word', () => {
 });
 ```
 
-- [ ] **Step 5: Run the tests to verify they fail**
+- [x] **Step 5: Run the tests to verify they fail**
 
 Run: `npm test`
 Expected: FAIL, modules not found.
 
-- [ ] **Step 6: Implement `types.ts`, `sizes.ts`, `kinds.ts`**
+- [x] **Step 6: Implement `types.ts`, `sizes.ts`, `kinds.ts`**
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS, 3 tests.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A
@@ -185,7 +185,7 @@ git commit -m "feat: scaffold, tokens, shapes, kinds and capacity"
   ```
   A station fits when the running total of sizes up to and including it is at most `cap`. The first that does not fit and everything after it is beyond. Done stations cost their size like any other.
 
-- [ ] **Step 1: Write the failing test with the spec's worked example**
+- [x] **Step 1: Write the failing test with the spec's worked example**
 
 ```ts
 const s = (id: string, shape: Shape, done = false): Station => ({ id, title: id, shape, x: 0, y: 0, z: 0, done });
@@ -209,19 +209,19 @@ test('an empty order fits nothing and spends nothing', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/model/line.test.ts`
 Expected: FAIL, `fit` not found.
 
-- [ ] **Step 3: Implement `fit` in `src/model/line.ts`**
+- [x] **Step 3: Implement `fit` in `src/model/line.ts`**
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/model/line.test.ts`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/model/line.ts src/model/line.test.ts
@@ -245,7 +245,7 @@ git commit -m "feat: line fit rule"
   export function isOver(stretch: Stretch, now: number): boolean;     // remaining is 0
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('the name follows the hour', () => {
@@ -266,19 +266,19 @@ test('remaining is read from the clock, not counted', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/model/stretch.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `src/model/stretch.ts`**
+- [x] **Step 3: Implement `src/model/stretch.ts`**
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/model/stretch.test.ts`
 Expected: PASS, 2 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/model/stretch.ts src/model/stretch.test.ts
@@ -319,7 +319,7 @@ git commit -m "feat: stretch name and remaining time"
   export function reduce(world: World, action: Action): World;   // pure; unknown ids are ignored; the line is deduplicated keeping first occurrence and dropping ids that are not stations
   ```
 
-- [ ] **Step 1: Write the failing slide test**
+- [x] **Step 1: Write the failing slide test**
 
 ```ts
 const at = (id: string, x: number): Station => ({ id, title: id, shape: 'circle', x, y: 10, z: 0, done: false });
@@ -334,11 +334,11 @@ test('with nothing else on the plane the front is left of zero', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails, implement `slide.ts`, run to verify it passes**
+- [x] **Step 2: Run to verify it fails, implement `slide.ts`, run to verify it passes**
 
 Run: `npx vitest run src/model/slide.test.ts`
 
-- [ ] **Step 3: Write the failing reducer tests**
+- [x] **Step 3: Write the failing reducer tests**
 
 ```ts
 test('add, move, edit, delete', () => { /* add a circle at (10,20) → stations has it with z 0 and done false; move → x,y change; edit shape → changes; delete → gone */ });
@@ -368,19 +368,19 @@ test('redraw keeps the start time and replaces the line and kind', () => { /* st
 
 Write each as a real test with exact ids and coordinates.
 
-- [ ] **Step 4: Run to verify they fail**
+- [x] **Step 4: Run to verify they fail**
 
 Run: `npx vitest run src/model/reducer.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 5: Implement `src/model/reducer.ts`**
+- [x] **Step 5: Implement `src/model/reducer.ts`**
 
-- [ ] **Step 6: Run to verify all tests pass**
+- [x] **Step 6: Run to verify all tests pass**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/model
@@ -408,7 +408,7 @@ git commit -m "feat: world reducer with the slide to the front"
   export function useWorld(store: Store): World;                             // useSyncExternalStore
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('load returns EMPTY for missing, corrupt and wrongly shaped data', () => {
@@ -420,12 +420,12 @@ test('save then load round-trips a world', () => { /* use a Map-backed fake stor
 test('the store reduces and notifies, and persist writes every change', () => { /* subscribe, dispatch add, expect state and one setItem call */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
 Run: `npx vitest run src/store`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/store
@@ -458,7 +458,7 @@ git commit -m "feat: persisted store"
   export function labelFontPx(scale: number): number | null;   // null below LABEL_HIDE_BELOW, else min(17, max(13, 13 * scale)) in screen px
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('screen and world round-trip', () => {
@@ -489,11 +489,11 @@ test('labels hold 13 px, grow to 17, then hide', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
 Run: `npx vitest run src/plane`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/plane
@@ -533,7 +533,7 @@ git commit -m "feat: camera math and label rule"
   ```
   Rules: one pointer on paper pans once it moves past TAP_SLOP, otherwise it is a tap on up. One pointer on a station or bullet becomes a drag past TAP_SLOP, a tap on a quick up, and a longPress (station only) once LONG_PRESS_MS pass within the slop, after which up emits nothing. On the clock, down emits holdStart at once, up before HOLD_MS emits tap then holdEnd completed false, and tick past HOLD_MS emits holdEnd completed true. Two pointers emit pinch with factor = current distance over previous distance and the movement of the midpoint as dx, dy, and no pan. A third pointer is ignored. When one of two pointers lifts, the one left pans from its current position with no jump. `cancel` drops a pointer and emits a dragEnd at its last position if it was dragging.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('a short press on paper is a tap, a longer move is a pan', () => { /* down (0,0) t0; up (3,3) t100 → one tap on paper; down, move (20,0) → pan dx 20; further move → more pan; no tap on up */ });
@@ -547,12 +547,12 @@ test('a third pointer is ignored', () => { /* with a and b down, down c and move
 
 Write each as a real test with an `emit` spy and exact samples.
 
-- [ ] **Step 2: Run to verify they fail, implement `Recognizer`, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement `Recognizer`, run to verify they pass**
 
 Run: `npx vitest run src/plane/gestures.test.ts`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/plane/gestures.ts src/plane/gestures.test.ts
@@ -572,9 +572,9 @@ git commit -m "feat: gesture recognizer"
 - Consumes: store (Task 5), camera and labels (Task 6), `Recognizer` (Task 7).
 - Produces: `App({ store, now }: { store: Store; now?: () => number })`. `Plane` renders a full-screen element with `touch-action: none` and a child world layer whose `style.transform` is `cssTransform(camera)`; it attaches pointer handlers that build `Sample`s and read the `Target` from the nearest `[data-target]` ancestor (`data-target="station" data-id=...`, `data-target="bullet" data-line=...`, `data-target="clock"`, otherwise paper; anything inside the HUD that is not a bullet or the clock is `hud`). `Station` is a `<button>` at `left: x px; top: y px` centered by a translate, with a shape span sized from the tokens and a label below in `labelFontPx(scale) / scale` px, or no label when null. `Hud` is four absolutely positioned corner groups in screen space with 44 px hit areas.
 
-- [ ] **Step 1: Run `ui-consistency:finding-patterns` and record what it settles in `docs/ui-checklist.md`** (the spec and the four mockup boards are the only pages, so the checklist is the Global Constraints plus the HUD positions from the mockups: name at 44 px from the left and 20 px from the top, clock 40 px from the right and 16 px from the top, bullets 36 px from the left and 12 px from the bottom, add 40 px from the right and 16 px from the bottom)
+- [x] **Step 1: Run `ui-consistency:finding-patterns` and record what it settles in `docs/ui-checklist.md`** (the spec and the four mockup boards are the only pages, so the checklist is the Global Constraints plus the HUD positions from the mockups: name at 44 px from the left and 20 px from the top, clock 40 px from the right and 16 px from the top, bullets 36 px from the left and 12 px from the bottom, add 40 px from the right and 16 px from the bottom)
 
-- [ ] **Step 2: Write the failing component test**
+- [x] **Step 2: Write the failing component test**
 
 ```tsx
 test('the plane shows stations as shapes with labels and four HUD corners', () => {
@@ -587,19 +587,19 @@ test('the plane shows stations as shapes with labels and four HUD corners', () =
 test('the world layer carries the camera transform', () => { /* initial transform is translate(0px, 0px) scale(1) */ });
 ```
 
-- [ ] **Step 3: Run to verify it fails, implement the components, run to verify it passes**
+- [x] **Step 3: Run to verify it fails, implement the components, run to verify it passes**
 
 Run: `npx vitest run src/ui`
 
-- [ ] **Step 4: Wire pan and pinch**
+- [x] **Step 4: Wire pan and pinch**
 
 In `App`, hold `camera` in state; on `pan` apply `panBy`, on `pinch` apply `zoomAt(camera, center, factor)` then `panBy(dx, dy)`; also handle the `wheel` event on the plane as `zoomAt(camera, pointer, Math.exp(-deltaY / 500))`.
 
-- [ ] **Step 5: Look at it**
+- [x] **Step 5: Look at it**
 
 Run: `npm run dev`, open it in the built-in browser, drag the paper and zoom with the wheel. Expected: stations move with the paper, labels hide below half scale, the HUD stays put.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -623,21 +623,22 @@ git commit -m "feat: plane, camera and HUD"
   ```
   `CaptureField({ onAdd, lineColor })`: the add button (56, ink, paper plus). Tapping it opens the pill in place: ink background, a text input with paper text at 17 px and `aria-label="Station title"`, then three shape buttons in paper named "Add as a small station", "Add as a medium station", "Add as a large station". A shape button calls `onAdd(title, shape)` with a non-empty trimmed title and closes; an empty title does nothing. Return adds a circle, Escape closes. The input is focused when the pill opens. `App` places the station at `placeClear(screenToWorld(camera, viewport center), stations)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('placeClear nudges right until clear', () => {
   expect(placeClear({ x: 0, y: 0 }, [])).toEqual({ x: 0, y: 0 });
-  expect(placeClear({ x: 0, y: 0 }, [{ x: 10, y: 10 }])).toEqual({ x: 48, y: 0 });
-  expect(placeClear({ x: 0, y: 0 }, [{ x: 10, y: 10 }, { x: 50, y: 0 }])).toEqual({ x: 96, y: 0 });
+  expect(placeClear({ x: 0, y: 0 }, [{ x: 0, y: 0 }])).toEqual({ x: 48, y: 0 });
+  expect(placeClear({ x: 0, y: 0 }, [{ x: 0, y: 0 }, { x: 48, y: 0 }])).toEqual({ x: 96, y: 0 });
+  expect(placeClear({ x: 0, y: 0 }, [{ x: 10, y: 10 }])).toEqual({ x: 96, y: 0 }); // (48, 0) is still within a radius of (10, 10)
 });
 test('capture adds a station from a title and a shape', async () => { /* click Add a station, type 'Fix the printer', click medium → onAdd('Fix the printer', 'triangle'); pill closed */ });
 test('an empty title adds nothing and Return adds a circle', async () => { /* click medium with empty → onAdd not called; type 'x', press Enter → onAdd('x', 'circle') */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
@@ -656,7 +657,7 @@ git commit -m "feat: capture in the HUD"
 **Interfaces:**
 - `App` maps `dragStart/dragMove/dragEnd` on a station to `move` actions with `screenToWorld` positions, and `longPress` on a station to `editing = id`. `StationEditor({ station, onEdit, onSplit, onDelete, onClose })` is an ink pill centered at the bottom of the HUD, above the bullets: a title input (`aria-label="Station title"`), three paper shape buttons named "Small", "Medium", "Large" with the current one filled in the line color, "Split into N circles" only for triangle and square, and "Delete" which on first tap becomes "Delete, tap again" and on the second tap calls `onDelete`. Tap on paper closes it. `onSplit` is called with fresh ids from `crypto.randomUUID()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('the editor renames and resizes', async () => { /* type a new title → onEdit({ title }); click Large → onEdit({ shape: 'square' }) */ });
@@ -664,9 +665,9 @@ test('split is offered for a square and not a circle', () => { /* square → but
 test('delete asks for a second tap', async () => { /* first click → onDelete not called, button text 'Delete, tap again'; second → called */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
@@ -693,7 +694,7 @@ git commit -m "feat: move and edit stations"
   export function trainOn(route: Route, nextIndex: number): { at: Point; angle: number };   // midpoint of the route between station nextIndex-1 and nextIndex; for 0, the midpoint of the lead
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('routes with a diagonal first then a straight run', () => {
@@ -712,9 +713,9 @@ test('the train waits on the lead before the first station', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/plane/routing.ts src/plane/routing.test.ts
@@ -733,20 +734,20 @@ git commit -m "feat: line routing, terminus and train geometry"
 **Interfaces:**
 - `Line({ route, color, reachedCount, nextIndex, width })` renders one SVG `polyline` with `stroke-width` 10 world units, round caps and joins, through the route up to the last reached station plus the terminus overrun, the terminus bar (10 by 26, rotated to the segment angle, centered at `terminusOf`) and the train (30 by 20 pill at `trainOn`, rotated to its angle). While drawing, `App` keeps `draft: { kind, ids: string[] }` in state: on `dragStart` from a bullet it starts a draft, on each `dragMove` it appends any pending station within `HIT_RADIUS = 22` world units of the pointer that is not yet in the draft, and the route is drawn through the draft plus the pointer. On `dragEnd` with a non-empty draft it dispatches `start` (no stretch running, with `pendingLength ?? lastLength`, `now: Date.now()`, `hour: new Date().getHours()`) or `redraw` (stretch running). The line's stations are `fit(lineStations, capacity(length))`; beyond stations are drawn like any pending station and the line does not reach them.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```tsx
 test('the line is drawn in the kind color and ends in a terminus', () => { /* render Line; polyline stroke equals '#2440A4'; a terminus bar element exists with data-terminus */ });
 test('a drag from a bullet through two stations starts a stretch', () => { /* App with two stations; pointerdown on the Deep bullet, pointermove over each station's screen position, pointerup → store.getState().stretch.line equals both ids and kind 'deep' */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Look at it**
+- [x] **Step 3: Look at it**
 
 Run: `npm run dev`, draw a line through five stations of mixed sizes with "a couple of hours". Expected: the color stops after the stations that fit, the terminus bar sits after the last one, the rest stand on paper with no line.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
@@ -764,7 +765,7 @@ git commit -m "feat: draw a line from a bullet"
 **Interfaces:**
 - `Clock({ fraction, color, holding, onTap, onHold })`: a 44 px button named "Stretch clock. Tap to find the train, hold to end the stretch." whose 36 px disc is `conic-gradient(color 0 P%, var(--paper) P% 100%)` with `P = fraction * 100`; while `holding`, the disc scales down over `HOLD_MS` with a CSS transition. `App` ticks `now` once a second while a stretch runs and dispatches `end` when `isOver`. `tap` on a station on the current line dispatches `complete`, on a done station `restore`. The station shrinks to the 10 px dot with a 150 ms transition, and the train moves to `trainOn(route, firstPendingIndex)` with a 150 ms transition. `tap` on the clock sets the camera to `centerOn(camera, train.at, viewport, STRETCH_ZOOM)`; `holdEnd completed` dispatches `end`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```tsx
 test('the pie shows the remaining fraction with no digits', () => { /* render Clock fraction 0.64 → disc style contains 'conic-gradient' and '64%'; button text content is '' */ });
@@ -772,9 +773,9 @@ test('tapping a station on the line completes it and the train moves on', () => 
 test('the stretch ends by itself when the clock runs out', () => { /* fake timers; App with now() returning past the end after one tick → stretch null */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
@@ -792,16 +793,16 @@ git commit -m "feat: clock, completing, train and ending"
 **Interfaces:**
 - `Bullets({ pendingKind, pendingLength, onPickLength, lineColor })`: a `tap` on a bullet sets `pendingKind` and shows the four chips to the right of the bullets, with `LENGTH_WORDS`, the chosen one filled in the kind color with paper bold text and the others plain ink text, 36 px tall, no border. `NameBlock({ stretch, onRename })` shows the name in 22 bold and `"${KINDS[kind].word}, ${LENGTH_WORDS[length]}"` in 15 muted; a tap on the name turns it into an input that commits on blur or Return. With no stretch, the block is empty.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```tsx
 test('tapping a bullet shows the chips and picking one marks it', async () => { /* click Deep bullet → four chips; click 'half a day' → onPickLength('half'); chip aria-pressed true */ });
 test('the name block names the kind and length in words and renames on tap', async () => { /* 'Afternoon' and 'Deep, a couple of hours' visible; click name, type 'Writing', Enter → onRename('Writing') */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
@@ -813,7 +814,7 @@ git commit -m "feat: length chips, default name and renaming"
 ### Task 15: Sound, motion, the opening fly-to and install
 
 **Files:**
-- Create: `src/feedback/sound.ts`, `src/feedback/haptics.ts`, `src/feedback/motion.ts`, `public/manifest.webmanifest`, `public/icon.svg`, `scripts/icon.mjs`
+- Create: `src/feedback/sound.ts`, `src/feedback/haptics.ts`, `public/manifest.webmanifest`, `public/icon.svg`, `scripts/icon.mjs`
 - Modify: `src/ui/App.tsx`, `index.html`, `package.json` (script `icon`)
 - Test: `src/feedback/sound.test.ts`, `src/ui/App.test.tsx`
 
@@ -824,24 +825,24 @@ git commit -m "feat: length chips, default name and renaming"
   export function playTone(ctx: AudioContext, hz: number): void;       // sine, 120 ms, gain 0.2 with a 20 ms ramp out
   export function playChord(ctx: AudioContext): void;                  // three sines at 262, 330, 392 Hz, 600 ms, gain 0.15
   export function buzz(): void;                                        // navigator.vibrate?.(30)
-  export function prefersReducedMotion(): boolean;
   ```
+  Note from the build: no `motion.ts` was written, as the `prefers-reduced-motion` rule in `tokens.css` already removes every transition and animation, and nothing in the app needs to ask in code.
   `App` creates the `AudioContext` lazily on the first gesture, plays `pitchFor(stretch.kind)` on `complete`, and `playChord` plus `buzz` when `isOver` ends the stretch. On mount, if a stretch is running, the camera is set to `centerOn(HOME, trainOn(route, firstPending).at, viewport, STRETCH_ZOOM)`; the world layer's transform has a 400 ms transition that the reduced motion rule removes. The manifest has `name: "Chronologic"`, `display: "standalone"`, `orientation: "landscape"`, `background_color` and `theme_color` `#EEEBE5`, and icons `icon.svg` (any size) and `apple-touch-icon.png` (180). `index.html` links the manifest, sets `theme-color`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style` `default` and the apple touch icon. `scripts/icon.mjs` writes a 180 by 180 PNG of an ink disc on paper using only `zlib` (deflate, CRC32 written by hand).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('each kind has its own pitch', () => { expect(new Set(KIND_ORDER.map(pitchFor)).size).toBe(4); });
 test('opening on a running stretch centers the train at the stretch zoom', () => { /* App with a running stretch; world layer transform ends in 'scale(1.6)' */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run `node scripts/icon.mjs`, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run `node scripts/icon.mjs`, run to verify they pass**
 
-- [ ] **Step 3: Check the build and the install metadata**
+- [x] **Step 3: Check the build and the install metadata**
 
 Run: `npm run build` then `npm run preview`, open it in the built-in browser. Expected: no console errors, the manifest loads, the plane opens on the train when a stretch is running.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
@@ -852,15 +853,36 @@ git commit -m "feat: sound, motion, opening fly-to and install"
 
 ### Task 16: Whole-plan check
 
-- [ ] **Step 1: Run everything**
+- [x] **Step 1: Run everything**
 
 Run: `npm test` then `npm run build`
 Expected: every test passes, the build is clean.
 
-- [ ] **Step 2: Walk the friction rule in the running app**
+- [x] **Step 2: Walk the friction rule in the running app**
 
 Run: `npm run dev`. Open with a running stretch: the train and next station are on screen with no gesture. Capture: one tap, a few words, one tap. Start a stretch: a bullet, a chip, a drag. Expected: no extra gesture on any of the three.
 
-- [ ] **Step 3: Review the diff of the whole branch against the spec's Rules that never bend**
+- [x] **Step 3: Review the diff of the whole branch against the spec's Rules that never bend**
 
 Run: `git diff main...build/v1 --stat` and read every `src/ui` file for outlines, borders, box shadows, opacity, gradients other than the pie, digits in the clock, and anything pinned to the screen beyond the four corners. Fix and commit anything found.
+
+---
+
+## UI checklist (Task 8, step 1: ui-consistency finding-patterns)
+
+Sized as a new page, the whole phase. No page exists in the repository, so there is no family, no reference and no count: 0 members of 0 candidates in `src/ui`, read 2026-10-29. The shape was agreed in words in `design/chronologic-design.md` and in the four mockup boards (Plane, Zoomed in on the stretch, Choosing a length, Capturing a station), which the request names as the design. The theme is `src/styles/tokens.css`, custom properties written from the design's token tables. Everything below is therefore a proposal from the design, not what the project does, and each role is written as the element whose meaning it has, as nothing in the project is written yet (decisions, *What this does not decide*). Every component is a new piece; the design's stack section names them (world layer under a transform, line as SVG, stations as plain elements, HUD in screen space), so none is asked about.
+
+- [x] page holder — `<main class="plane">`, full viewport, paper background, `touch-action: none`, attaches the pointer handlers — the design, as asked
+- [x] world layer — a `<div>` whose `style.transform` is `cssTransform(camera)` with origin 0 0, nothing else styled — the design (camera section)
+- [x] station — `<button data-target="station" data-id>` at `left: x px; top: y px` centered by a translate; a shape `<span>` sized `var(--circle)`, `var(--triangle-w)` by `var(--triangle-h)` with the clip-path triangle, or `var(--square)`, filled `var(--ink)`; done = `var(--dot)` disc and the label in `var(--muted)`; label a `<span>` below the shape, font size `labelFontPx(scale) / scale` world px, absent when null; accessible name "title, small/medium/large[, done][, next]" — the mockups, matched to the theme
+- [x] line — one `<svg>` in the world layer, a `<polyline>` with `stroke-width` 10 world units, round caps and joins, stroke `KINDS[kind].color`; terminus bar `var(--terminus-w)` by `var(--terminus-l)` rotated to the segment; train `var(--train-l)` by `var(--train-w)` pill — the mockups
+- [x] HUD holder — four absolutely positioned corner groups in screen space, nothing else pinned: name 44 px from the left and 20 px from the top; clock 40 px from the right and 16 px from the top; bullets 36 px from the left and 12 px from the bottom; add 40 px from the right and 16 px from the bottom — the mockups (all three boards agree)
+- [x] name block — `<h1>` at `var(--name)` weight 700, `<p>` subtitle at `var(--subtitle)` in `var(--muted)` reading "Kind, length words"; empty with no stretch — the mockups
+- [x] clock — `<button data-target="clock">` `var(--hit)` square with a `var(--clock)` disc, background a two stop `conic-gradient`, no text content, accessible name says tap and hold — the mockups; the design's no digits rule
+- [x] bullets and chips — four `<button data-target="bullet" data-line>` of `var(--hit)` holding a `var(--bullet)` disc in the kind color with the initial in paper at 15 px weight 700; chips `var(--chip)` tall, selected = kind fill with paper bold text, others plain ink text, no border — the mockups (Choosing a length)
+- [x] add and capture — `<button>` `var(--add)` ink disc with a paper plus; open, an ink pill of the same height holding an `<input aria-label="Station title">` in paper at 17 px and three paper shape buttons — the mockups (Capturing a station)
+- [x] editor — an ink pill centered at the bottom of the HUD above the bullets, same height as the capture pill — the design (touch grammar), no mockup
+- [x] values through the theme: every color and size a `var(--…)`; no literal hex or px in `src/ui` except world geometry; no `border`, `outline`, `box-shadow`, `opacity`, `filter` or gradient other than the pie; focus and press = the shape filled with the line color — the design's rules that never bend
+- [x] not copied from the mockups: the fixed pixel positions of the sample stations, the 16 px line and 36 px circle of the zoomed board (the camera scales the world instead), the `<a href>` links between boards, the `{{line}}` prop hole
+
+Walked on 2026-10-29 at the end of Task 16 against the code on build/v1: every line holds. The world geometry constants in `src/plane/world.ts` are the one place sizes are written as numbers, as SVG attributes cannot read the tokens, and they match the tokens file.

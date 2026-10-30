@@ -1,0 +1,67 @@
+:root {
+  /* Colors. Opaque only, measured against paper in the design doc. */
+  --paper: #EEEBE5;
+  --ink: #2B2420;
+  --muted: #6B635C;
+  --deep: #2440A4;
+  --shallow: #A67C00;
+  --body: #1F7A3A;
+  --out: #C4251F;
+
+  /* World sizes, in world units (CSS px at scale 1). */
+  --line: 10px;
+  --circle: 22px;
+  --triangle-w: 24px;
+  --triangle-h: 22px;
+  --square: 20px;
+  --dot: 10px;
+  --train-l: 30px;
+  --train-w: 20px;
+  --terminus-w: 10px;
+  --terminus-l: 26px;
+  --label: 13px;
+  --label-zoomed: 17px;
+
+  /* HUD sizes, in rem so the browser text size scales them. */
+  --bullet: 1.75rem;
+  --hit: 2.75rem;
+  --clock: 2.25rem;
+  --add: 3.5rem;
+  --chip: 2.25rem;
+  --name: 1.375rem;
+  --subtitle: 0.9375rem;
+
+  --font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-weight: 400;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.plane {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  touch-action: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
