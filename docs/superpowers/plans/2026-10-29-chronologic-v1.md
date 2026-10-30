@@ -458,7 +458,7 @@ git commit -m "feat: persisted store"
   export function labelFontPx(scale: number): number | null;   // null below LABEL_HIDE_BELOW, else min(17, max(13, 13 * scale)) in screen px
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('screen and world round-trip', () => {
@@ -489,11 +489,11 @@ test('labels hold 13 px, grow to 17, then hide', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
 Run: `npx vitest run src/plane`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/plane
