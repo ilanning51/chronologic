@@ -1,5 +1,5 @@
-import { SHAPE_MINUTES } from './sizes';
-import type { Station } from './types';
+import { capacity, SHAPE_MINUTES } from './sizes';
+import type { Station, World } from './types';
 
 export interface Fit {
   /** Ids the color reaches, in line order. */
@@ -29,4 +29,18 @@ export function fit(order: Station[], cap: number): Fit {
     }
   }
   return { reached, beyond, spent };
+}
+
+/**
+ * The stations the running line reaches, in order, and the index of the next pending
+ * one among them, or -1 when none is pending. Empty with no stretch.
+ */
+export function reachedStations(world: World): { stations: Station[]; next: number } {
+  const stretch = world.stretch;
+  if (!stretch) return { stations: [], next: -1 };
+  const byId = new Map(world.stations.map((s) => [s.id, s]));
+  const onLine = stretch.line.map((id) => byId.get(id)).filter((s): s is Station => s !== undefined);
+  const { reached } = fit(onLine, capacity(stretch.length));
+  const stations = reached.map((id) => byId.get(id)!);
+  return { stations, next: stations.findIndex((s) => !s.done) };
 }

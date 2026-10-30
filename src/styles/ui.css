@@ -44,6 +44,10 @@
 .station .shape {
   display: block;
   background: var(--ink);
+  transition:
+    width 150ms ease-out,
+    height 150ms ease-out,
+    border-radius 150ms ease-out;
 }
 
 .shape.circle {
@@ -143,11 +147,18 @@ button:focus-visible {
   width: var(--clock);
   height: var(--clock);
   border-radius: 50%;
+  background: var(--pie);
+  transition: transform 150ms ease-out;
 }
 
-.hud-clock:focus-visible .pie,
-.hud-clock:active .pie {
+.hud-clock:focus-visible .pie {
   transform: scale(0.85);
+}
+
+/* Holding the clock: the pie shrinks over the hold, so letting go early reads as a cancel. */
+.hud-clock.holding .pie {
+  transform: scale(0.15);
+  transition: transform 600ms linear;
 }
 
 .hud-bullets {

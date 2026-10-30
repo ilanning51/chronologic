@@ -101,3 +101,85 @@ test('a drag from a bullet over nothing starts no stretch', () => {
   expect(store.getState().stretch).toBeNull();
   expect(document.querySelector('polyline')).not.toBeInTheDocument();
 });
+
+const running = (line: string[], length: 'hour' | 'couple' = 'couple') => ({
+  stations: [dentist, { ...taxes, title: 'Call mum', shape: 'circle' as const, x: 200 }],
+  stretch: { kind: 'deep' as const, length, name: 'Afternoon', startedAt: 0, line },
+  lastLength: length,
+});
+
+const press = (el: Element, x: number, y: number, pointerId = 1) => {
+  fireEvent.pointerDown(el, { pointerId, clientX: x, clientY: y });
+  fireEvent.pointerUp(el, { pointerId, clientX: x, clientY: y });
+};
+
+test('tapping a station on the line completes it, the train moves on, and a tap on the dot restores it', () => {
+  const store = createStore(running(['a', 'b']));
+  render(<App store={store} now={() => 60_000} />);
+  expect(document.querySelector('[data-train]')).toHaveAttribute('data-next', '0');
+
+  press(screen.getByRole('button', { name: 'Dentist, small, next' }), 100, 100);
+  expect(store.getState().stations[0].done).toBe(true);
+  expect(document.querySelector('[data-train]')).toHaveAttribute('data-next', '1');
+  expect(screen.getByRole('button', { name: 'Call mum, small, next' })).toBeInTheDocument();
+
+  press(screen.getByRole('button', { name: 'Dentist, small, done' }), 100, 100);
+  expect(store.getState().stations[0].done).toBe(false);
+  expect(document.querySelector('[data-train]')).toHaveAttribute('data-next', '0');
+});
+
+test('a station off the line does not complete on a tap', () => {
+  const store = createStore(running(['b']));
+  render(<App store={store} now={() => 60_000} />);
+  press(screen.getByRole('button', { name: 'Dentist, small' }), 100, 100);
+  expect(store.getState().stations[0].done).toBe(false);
+});
+
+test('the stretch ends by itself when the clock runs out, and the pending stations slide to the front', () => {
+  vi.useFakeTimers();
+  try {
+    let t = 0;
+    const store = createStore(running(['a', 'b'], 'hour'));
+    render(<App store={store} now={() => t} />);
+    t = 61 * 60_000;
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(store.getState().stretch).toBeNull();
+    const [a, b] = store.getState().stations;
+    expect(a.x).toBe(-128);
+    expect(b.x).toBe(-64);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('holding the clock ends the stretch, a quick tap does not', () => {
+  vi.useFakeTimers();
+  try {
+    const store = createStore(running(['a']));
+    render(<App store={store} now={() => 60_000} />);
+    const clock = screen.getByRole('button', { name: /Stretch clock/ });
+    press(clock, 900, 30);
+    expect(store.getState().stretch).not.toBeNull();
+
+    fireEvent.pointerDown(clock, { pointerId: 2, clientX: 900, clientY: 30 });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(clock).toHaveClass('holding');
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(store.getState().stretch).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('tapping the clock flies the camera to the train at the stretch zoom', () => {
+  const store = createStore(running(['a', 'b']));
+  render(<App store={store} now={() => 60_000} />);
+  press(screen.getByRole('button', { name: /Stretch clock/ }), 900, 30);
+  expect(screen.getByTestId('world').style.transform).toMatch(/scale\(1.6\)$/);
+});

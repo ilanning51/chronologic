@@ -743,11 +743,11 @@ test('a drag from a bullet through two stations starts a stretch', () => { /* Ap
 
 - [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Look at it**
+- [x] **Step 3: Look at it**
 
 Run: `npm run dev`, draw a line through five stations of mixed sizes with "a couple of hours". Expected: the color stops after the stations that fit, the terminus bar sits after the last one, the rest stand on paper with no line.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
@@ -765,7 +765,7 @@ git commit -m "feat: draw a line from a bullet"
 **Interfaces:**
 - `Clock({ fraction, color, holding, onTap, onHold })`: a 44 px button named "Stretch clock. Tap to find the train, hold to end the stretch." whose 36 px disc is `conic-gradient(color 0 P%, var(--paper) P% 100%)` with `P = fraction * 100`; while `holding`, the disc scales down over `HOLD_MS` with a CSS transition. `App` ticks `now` once a second while a stretch runs and dispatches `end` when `isOver`. `tap` on a station on the current line dispatches `complete`, on a done station `restore`. The station shrinks to the 10 px dot with a 150 ms transition, and the train moves to `trainOn(route, firstPendingIndex)` with a 150 ms transition. `tap` on the clock sets the camera to `centerOn(camera, train.at, viewport, STRETCH_ZOOM)`; `holdEnd completed` dispatches `end`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```tsx
 test('the pie shows the remaining fraction with no digits', () => { /* render Clock fraction 0.64 → disc style contains 'conic-gradient' and '64%'; button text content is '' */ });
@@ -773,9 +773,9 @@ test('tapping a station on the line completes it and the train moves on', () => 
 test('the stretch ends by itself when the clock runs out', () => { /* fake timers; App with now() returning past the end after one tick → stretch null */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A

@@ -8,10 +8,12 @@ interface StationProps {
   scale: number;
   /** Whether this is the next pending station on the running line. */
   next?: boolean;
+  /** Keyboard activation only; a touch tap goes through the plane's recognizer. */
+  onActivate?: () => void;
 }
 
 /** One task on the plane: a solid shape for its size, a dot once done, a label beneath. */
-export function Station({ station, scale, next = false }: StationProps) {
+export function Station({ station, scale, next = false, onActivate }: StationProps) {
   const label = labelFontPx(scale);
   const name = [station.title, SIZE_WORDS[station.shape], station.done ? 'done' : null, next ? 'next' : null]
     .filter(Boolean)
@@ -24,6 +26,9 @@ export function Station({ station, scale, next = false }: StationProps) {
       data-id={station.id}
       aria-label={name}
       style={{ left: station.x, top: station.y }}
+      onClick={(e) => {
+        if (e.detail === 0) onActivate?.();
+      }}
     >
       <span aria-hidden="true" className={`shape ${station.done ? 'dot' : station.shape}`} />
       {label !== null && (

@@ -10,6 +10,9 @@ interface HudProps {
   /** The fraction of the running stretch still to come. */
   fraction: number;
   lineColor: string;
+  /** Whether a finger is holding the clock. */
+  holding: boolean;
+  onFlyToTrain: () => void;
   onAdd: (title: string, shape: Shape) => void;
   /** The station open for editing after a long press, if any. */
   editing: Station | null;
@@ -20,11 +23,23 @@ interface HudProps {
 }
 
 /** Four stickers on the glass, one per corner. Nothing else is ever pinned to the screen. */
-export function Hud({ stretch, fraction, lineColor, onAdd, editing, onEdit, onSplit, onDelete, onCloseEditor }: HudProps) {
+export function Hud({
+  stretch,
+  fraction,
+  lineColor,
+  holding,
+  onFlyToTrain,
+  onAdd,
+  editing,
+  onEdit,
+  onSplit,
+  onDelete,
+  onCloseEditor,
+}: HudProps) {
   return (
     <div className="hud" data-target="hud">
       <NameBlock stretch={stretch} />
-      {stretch && <Clock fraction={fraction} color={lineColor} />}
+      {stretch && <Clock fraction={fraction} color={lineColor} holding={holding} onActivate={onFlyToTrain} />}
       <Bullets />
       {editing && (
         <StationEditor
