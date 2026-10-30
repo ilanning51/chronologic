@@ -33,7 +33,7 @@ test('a done station is named done and the clock has no digits', () => {
   expect(screen.getByRole('button', { name: 'Dentist, small, done' })).toBeInTheDocument();
   const clock = screen.getByRole('button', { name: /Stretch clock/ });
   expect(clock.textContent).toBe('');
-  expect(screen.getByRole('heading', { name: 'Afternoon' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /^Afternoon/ })).toBeInTheDocument();
   expect(screen.getByText('Deep, a couple of hours')).toBeInTheDocument();
 });
 
@@ -182,4 +182,29 @@ test('tapping the clock flies the camera to the train at the stretch zoom', () =
   render(<App store={store} now={() => 60_000} />);
   press(screen.getByRole('button', { name: /Stretch clock/ }), 900, 30);
   expect(screen.getByTestId('world').style.transform).toMatch(/scale\(1.6\)$/);
+});
+
+test('a tapped bullet shows the chips, and the chosen length is the one the drawn stretch gets', () => {
+  const store = createStore({ ...EMPTY, stations: [dentist, taxes] });
+  render(<App store={store} now={() => new Date(2026, 9, 29, 9, 0).getTime()} />);
+  const bullet = screen.getByRole('button', { name: 'Out line. Starts a new stretch.' });
+  const paper = screen.getByRole('main', { name: 'The plane' });
+
+  expect(screen.queryByRole('button', { name: 'half a day' })).not.toBeInTheDocument();
+  fireEvent.click(bullet);
+  expect(screen.getByRole('button', { name: 'a couple of hours' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'half a day' }));
+  expect(screen.getByRole('button', { name: 'half a day' })).toHaveAttribute('aria-pressed', 'true');
+
+  fireEvent.pointerDown(bullet, { pointerId: 1, clientX: 40, clientY: 700 });
+  fireEvent.pointerMove(paper, { pointerId: 1, clientX: 100, clientY: 100 });
+  fireEvent.pointerMove(paper, { pointerId: 1, clientX: 300, clientY: 100 });
+  fireEvent.pointerUp(paper, { pointerId: 1, clientX: 320, clientY: 100 });
+
+  expect(store.getState().stretch).toMatchObject({ kind: 'out', length: 'half', name: 'Morning', line: ['a', 'b'] });
+  expect(store.getState().lastLength).toBe('half');
+  expect(screen.queryByRole('button', { name: 'half a day' })).not.toBeInTheDocument();
+  expect(screen.getByText('Out, half a day')).toBeInTheDocument();
+  // 192 minutes of capacity: the circle and the square both fit now.
+  expect(document.querySelector('polyline')!.getAttribute('points')).toBe('60,100 100,100 300,100 332,100');
 });

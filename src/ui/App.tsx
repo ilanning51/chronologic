@@ -6,7 +6,7 @@ import { fit, reachedStations } from '../model/line';
 import { capacity } from '../model/sizes';
 import { SPLIT_PIECES } from '../model/slide';
 import { isOver, remaining } from '../model/stretch';
-import type { Kind, Shape, Station as StationData } from '../model/types';
+import type { Kind, Length, Shape, Station as StationData } from '../model/types';
 import { type Camera, centerOn, HOME, panBy, screenToWorld, STRETCH_ZOOM, zoomAt } from '../plane/camera';
 import { distance, type Point } from '../plane/geometry';
 import type { Gesture } from '../plane/gestures';
@@ -48,6 +48,9 @@ export function App({ store, now = Date.now }: AppProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const draftRef = useRef<Draft | null>(null);
   const [holding, setHolding] = useState(false);
+  const [pendingKind, setPendingKind] = useState<Kind | null>(null);
+  const [pendingLength, setPendingLength] = useState<Length | null>(null);
+  const pendingLengthRef = useRef<Length | null>(null);
   const [, setTick] = useState(0);
   /** Where the finger took hold of a station, so a move never jumps to the finger. */
   const grip = useRef<Point>({ x: 0, y: 0 });
@@ -99,8 +102,10 @@ export function App({ store, now = Date.now }: AppProps) {
         setCamera((c) => panBy(zoomAt(c, g.center, g.factor), g.dx, g.dy));
         return;
       case 'tap':
-        if (g.target.kind === 'paper') setEditing(null);
-        else if (g.target.kind === 'station') activate(g.target.id);
+        if (g.target.kind === 'paper') {
+          setEditing(null);
+          setPendingKind(null);
+        } else if (g.target.kind === 'station') activate(g.target.id);
         else if (g.target.kind === 'clock') flyToTrain();
         return;
       case 'longPress':
@@ -155,12 +160,15 @@ export function App({ store, now = Date.now }: AppProps) {
             store.dispatch({
               type: 'start',
               kind: current.kind,
-              length: state.lastLength,
+              length: pendingLengthRef.current ?? state.lastLength,
               line: current.ids,
               now: t,
               hour: new Date(t).getHours(),
             });
           }
+          setPendingKind(null);
+          pendingLengthRef.current = null;
+          setPendingLength(null);
         } else if (g.target.kind === 'station') {
           const under = screenToWorld(cam, g.at);
           store.dispatch({ type: 'move', id: g.target.id, x: under.x + grip.current.x, y: under.y + grip.current.y });
@@ -189,9 +197,11 @@ export function App({ store, now = Date.now }: AppProps) {
 
   let line: ReactNode = null;
   let nextId: string | null = null;
+  const length = pendingLength ?? world.lastLength;
+
   if (draft) {
     const stations = draft.ids.map((id) => byId.get(id)).filter((s): s is StationData => s !== undefined);
-    const { reached } = fit(stations, capacity(world.lastLength));
+    const { reached } = fit(stations, capacity(stretch ? stretch.length : length));
     const allFit = reached.length === stations.length;
     line = (
       <Line
@@ -221,6 +231,14 @@ export function App({ store, now = Date.now }: AppProps) {
           lineColor={lineColor}
           holding={holding}
           onFlyToTrain={flyToTrain}
+          onRename={(name) => store.dispatch({ type: 'rename', name })}
+          pendingKind={pendingKind}
+          length={length}
+          onPickKind={(kind) => setPendingKind((current) => (current === kind ? null : kind))}
+          onPickLength={(picked) => {
+            pendingLengthRef.current = picked;
+            setPendingLength(picked);
+          }}
           onAdd={addStation}
           editing={editingStation}
           onEdit={(change) => {

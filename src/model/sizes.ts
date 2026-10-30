@@ -21,6 +21,9 @@ export const LENGTH_WORDS: Record<Length, string> = {
   whole: 'the whole day',
 };
 
+/** The order the length chips sit in, shortest first. */
+export const LENGTH_ORDER: Length[] = ['hour', 'couple', 'half', 'whole'];
+
 /** Every planner over-packs, so the app absorbs it: a stretch holds this much of its length. */
 export const CAPACITY_RATIO = 0.8;
 

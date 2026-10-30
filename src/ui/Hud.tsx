@@ -1,4 +1,4 @@
-import type { Shape, Station, Stretch } from '../model/types';
+import type { Kind, Length, Shape, Station, Stretch } from '../model/types';
 import { Bullets } from './Bullets';
 import { CaptureField } from './CaptureField';
 import { Clock } from './Clock';
@@ -13,6 +13,13 @@ interface HudProps {
   /** Whether a finger is holding the clock. */
   holding: boolean;
   onFlyToTrain: () => void;
+  onRename: (name: string) => void;
+  /** The bullet last tapped, whose length chips are showing. */
+  pendingKind: Kind | null;
+  /** The length the next stretch will get. */
+  length: Length;
+  onPickKind: (kind: Kind) => void;
+  onPickLength: (length: Length) => void;
   onAdd: (title: string, shape: Shape) => void;
   /** The station open for editing after a long press, if any. */
   editing: Station | null;
@@ -29,6 +36,11 @@ export function Hud({
   lineColor,
   holding,
   onFlyToTrain,
+  onRename,
+  pendingKind,
+  length,
+  onPickKind,
+  onPickLength,
   onAdd,
   editing,
   onEdit,
@@ -38,9 +50,9 @@ export function Hud({
 }: HudProps) {
   return (
     <div className="hud" data-target="hud">
-      <NameBlock stretch={stretch} />
+      <NameBlock stretch={stretch} onRename={onRename} />
       {stretch && <Clock fraction={fraction} color={lineColor} holding={holding} onActivate={onFlyToTrain} />}
-      <Bullets />
+      <Bullets pendingKind={pendingKind} length={length} onPickKind={onPickKind} onPickLength={onPickLength} />
       {editing && (
         <StationEditor
           key={editing.id}

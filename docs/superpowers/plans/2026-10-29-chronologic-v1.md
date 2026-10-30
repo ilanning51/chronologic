@@ -793,16 +793,16 @@ git commit -m "feat: clock, completing, train and ending"
 **Interfaces:**
 - `Bullets({ pendingKind, pendingLength, onPickLength, lineColor })`: a `tap` on a bullet sets `pendingKind` and shows the four chips to the right of the bullets, with `LENGTH_WORDS`, the chosen one filled in the kind color with paper bold text and the others plain ink text, 36 px tall, no border. `NameBlock({ stretch, onRename })` shows the name in 22 bold and `"${KINDS[kind].word}, ${LENGTH_WORDS[length]}"` in 15 muted; a tap on the name turns it into an input that commits on blur or Return. With no stretch, the block is empty.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```tsx
 test('tapping a bullet shows the chips and picking one marks it', async () => { /* click Deep bullet → four chips; click 'half a day' → onPickLength('half'); chip aria-pressed true */ });
 test('the name block names the kind and length in words and renames on tap', async () => { /* 'Afternoon' and 'Deep, a couple of hours' visible; click name, type 'Writing', Enter → onRename('Writing') */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
