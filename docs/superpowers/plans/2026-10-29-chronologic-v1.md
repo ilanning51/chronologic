@@ -853,16 +853,16 @@ git commit -m "feat: sound, motion, opening fly-to and install"
 
 ### Task 16: Whole-plan check
 
-- [ ] **Step 1: Run everything**
+- [x] **Step 1: Run everything**
 
 Run: `npm test` then `npm run build`
 Expected: every test passes, the build is clean.
 
-- [ ] **Step 2: Walk the friction rule in the running app**
+- [x] **Step 2: Walk the friction rule in the running app**
 
 Run: `npm run dev`. Open with a running stretch: the train and next station are on screen with no gesture. Capture: one tap, a few words, one tap. Start a stretch: a bullet, a chip, a drag. Expected: no extra gesture on any of the three.
 
-- [ ] **Step 3: Review the diff of the whole branch against the spec's Rules that never bend**
+- [x] **Step 3: Review the diff of the whole branch against the spec's Rules that never bend**
 
 Run: `git diff main...build/v1 --stat` and read every `src/ui` file for outlines, borders, box shadows, opacity, gradients other than the pie, digits in the clock, and anything pinned to the screen beyond the four corners. Fix and commit anything found.
 
