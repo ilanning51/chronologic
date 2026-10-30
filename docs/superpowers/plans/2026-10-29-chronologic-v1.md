@@ -572,9 +572,9 @@ git commit -m "feat: gesture recognizer"
 - Consumes: store (Task 5), camera and labels (Task 6), `Recognizer` (Task 7).
 - Produces: `App({ store, now }: { store: Store; now?: () => number })`. `Plane` renders a full-screen element with `touch-action: none` and a child world layer whose `style.transform` is `cssTransform(camera)`; it attaches pointer handlers that build `Sample`s and read the `Target` from the nearest `[data-target]` ancestor (`data-target="station" data-id=...`, `data-target="bullet" data-line=...`, `data-target="clock"`, otherwise paper; anything inside the HUD that is not a bullet or the clock is `hud`). `Station` is a `<button>` at `left: x px; top: y px` centered by a translate, with a shape span sized from the tokens and a label below in `labelFontPx(scale) / scale` px, or no label when null. `Hud` is four absolutely positioned corner groups in screen space with 44 px hit areas.
 
-- [ ] **Step 1: Run `ui-consistency:finding-patterns` and record what it settles in `docs/ui-checklist.md`** (the spec and the four mockup boards are the only pages, so the checklist is the Global Constraints plus the HUD positions from the mockups: name at 44 px from the left and 20 px from the top, clock 40 px from the right and 16 px from the top, bullets 36 px from the left and 12 px from the bottom, add 40 px from the right and 16 px from the bottom)
+- [x] **Step 1: Run `ui-consistency:finding-patterns` and record what it settles in `docs/ui-checklist.md`** (the spec and the four mockup boards are the only pages, so the checklist is the Global Constraints plus the HUD positions from the mockups: name at 44 px from the left and 20 px from the top, clock 40 px from the right and 16 px from the top, bullets 36 px from the left and 12 px from the bottom, add 40 px from the right and 16 px from the bottom)
 
-- [ ] **Step 2: Write the failing component test**
+- [x] **Step 2: Write the failing component test**
 
 ```tsx
 test('the plane shows stations as shapes with labels and four HUD corners', () => {
@@ -587,19 +587,19 @@ test('the plane shows stations as shapes with labels and four HUD corners', () =
 test('the world layer carries the camera transform', () => { /* initial transform is translate(0px, 0px) scale(1) */ });
 ```
 
-- [ ] **Step 3: Run to verify it fails, implement the components, run to verify it passes**
+- [x] **Step 3: Run to verify it fails, implement the components, run to verify it passes**
 
 Run: `npx vitest run src/ui`
 
-- [ ] **Step 4: Wire pan and pinch**
+- [x] **Step 4: Wire pan and pinch**
 
 In `App`, hold `camera` in state; on `pan` apply `panBy`, on `pinch` apply `zoomAt(camera, center, factor)` then `panBy(dx, dy)`; also handle the `wheel` event on the plane as `zoomAt(camera, pointer, Math.exp(-deltaY / 500))`.
 
-- [ ] **Step 5: Look at it**
+- [x] **Step 5: Look at it**
 
 Run: `npm run dev`, open it in the built-in browser, drag the paper and zoom with the wheel. Expected: stations move with the paper, labels hide below half scale, the HUD stays put.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -864,3 +864,22 @@ Run: `npm run dev`. Open with a running stretch: the train and next station are 
 - [ ] **Step 3: Review the diff of the whole branch against the spec's Rules that never bend**
 
 Run: `git diff main...build/v1 --stat` and read every `src/ui` file for outlines, borders, box shadows, opacity, gradients other than the pie, digits in the clock, and anything pinned to the screen beyond the four corners. Fix and commit anything found.
+
+---
+
+## UI checklist (Task 8, step 1: ui-consistency finding-patterns)
+
+Sized as a new page, the whole phase. No page exists in the repository, so there is no family, no reference and no count: 0 members of 0 candidates in `src/ui`, read 2026-10-29. The shape was agreed in words in `design/chronologic-design.md` and in the four mockup boards (Plane, Zoomed in on the stretch, Choosing a length, Capturing a station), which the request names as the design. The theme is `src/styles/tokens.css`, custom properties written from the design's token tables. Everything below is therefore a proposal from the design, not what the project does, and each role is written as the element whose meaning it has, as nothing in the project is written yet (decisions, *What this does not decide*). Every component is a new piece; the design's stack section names them (world layer under a transform, line as SVG, stations as plain elements, HUD in screen space), so none is asked about.
+
+- [ ] page holder — `<main class="plane">`, full viewport, paper background, `touch-action: none`, attaches the pointer handlers — the design, as asked
+- [ ] world layer — a `<div>` whose `style.transform` is `cssTransform(camera)` with origin 0 0, nothing else styled — the design (camera section)
+- [ ] station — `<button data-target="station" data-id>` at `left: x px; top: y px` centered by a translate; a shape `<span>` sized `var(--circle)`, `var(--triangle-w)` by `var(--triangle-h)` with the clip-path triangle, or `var(--square)`, filled `var(--ink)`; done = `var(--dot)` disc and the label in `var(--muted)`; label a `<span>` below the shape, font size `labelFontPx(scale) / scale` world px, absent when null; accessible name "title, small/medium/large[, done][, next]" — the mockups, matched to the theme
+- [ ] line — one `<svg>` in the world layer, a `<polyline>` with `stroke-width` 10 world units, round caps and joins, stroke `KINDS[kind].color`; terminus bar `var(--terminus-w)` by `var(--terminus-l)` rotated to the segment; train `var(--train-l)` by `var(--train-w)` pill — the mockups
+- [ ] HUD holder — four absolutely positioned corner groups in screen space, nothing else pinned: name 44 px from the left and 20 px from the top; clock 40 px from the right and 16 px from the top; bullets 36 px from the left and 12 px from the bottom; add 40 px from the right and 16 px from the bottom — the mockups (all three boards agree)
+- [ ] name block — `<h1>` at `var(--name)` weight 700, `<p>` subtitle at `var(--subtitle)` in `var(--muted)` reading "Kind, length words"; empty with no stretch — the mockups
+- [ ] clock — `<button data-target="clock">` `var(--hit)` square with a `var(--clock)` disc, background a two stop `conic-gradient`, no text content, accessible name says tap and hold — the mockups; the design's no digits rule
+- [ ] bullets and chips — four `<button data-target="bullet" data-line>` of `var(--hit)` holding a `var(--bullet)` disc in the kind color with the initial in paper at 15 px weight 700; chips `var(--chip)` tall, selected = kind fill with paper bold text, others plain ink text, no border — the mockups (Choosing a length)
+- [ ] add and capture — `<button>` `var(--add)` ink disc with a paper plus; open, an ink pill of the same height holding an `<input aria-label="Station title">` in paper at 17 px and three paper shape buttons — the mockups (Capturing a station)
+- [ ] editor — an ink pill centered at the bottom of the HUD above the bullets, same height as the capture pill — the design (touch grammar), no mockup
+- [ ] values through the theme: every color and size a `var(--…)`; no literal hex or px in `src/ui` except world geometry; no `border`, `outline`, `box-shadow`, `opacity`, `filter` or gradient other than the pie; focus and press = the shape filled with the line color — the design's rules that never bend
+- [ ] not copied from the mockups: the fixed pixel positions of the sample stations, the 16 px line and 36 px circle of the zoomed board (the camera scales the world instead), the `<a href>` links between boards, the `{{line}}` prop hole

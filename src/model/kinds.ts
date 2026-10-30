@@ -18,3 +18,11 @@ export const KINDS: Record<Kind, KindSpec> = {
 
 /** The order the bullets sit in, left to right. */
 export const KIND_ORDER: Kind[] = ['deep', 'shallow', 'body', 'out'];
+
+/** The kind's color as the theme writes it, so the UI never carries a literal. */
+export function kindVar(kind: Kind): string {
+  return `var(--${kind})`;
+}
+
+/** The three shape sizes in words, for accessible names. */
+export const SIZE_WORDS = { circle: 'small', triangle: 'medium', square: 'large' } as const;
