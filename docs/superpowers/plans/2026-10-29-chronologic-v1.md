@@ -657,7 +657,7 @@ git commit -m "feat: capture in the HUD"
 **Interfaces:**
 - `App` maps `dragStart/dragMove/dragEnd` on a station to `move` actions with `screenToWorld` positions, and `longPress` on a station to `editing = id`. `StationEditor({ station, onEdit, onSplit, onDelete, onClose })` is an ink pill centered at the bottom of the HUD, above the bullets: a title input (`aria-label="Station title"`), three paper shape buttons named "Small", "Medium", "Large" with the current one filled in the line color, "Split into N circles" only for triangle and square, and "Delete" which on first tap becomes "Delete, tap again" and on the second tap calls `onDelete`. Tap on paper closes it. `onSplit` is called with fresh ids from `crypto.randomUUID()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 test('the editor renames and resizes', async () => { /* type a new title → onEdit({ title }); click Large → onEdit({ shape: 'square' }) */ });
@@ -665,9 +665,9 @@ test('split is offered for a square and not a circle', () => { /* square → but
 test('delete asks for a second tap', async () => { /* first click → onDelete not called, button text 'Delete, tap again'; second → called */ });
 ```
 
-- [ ] **Step 2: Run to verify they fail, implement, run to verify they pass**
+- [x] **Step 2: Run to verify they fail, implement, run to verify they pass**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
