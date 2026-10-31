@@ -37,7 +37,7 @@
 ## File structure
 
 ```
-src/model/types.ts          Shape, Size, Target, Stop, Train, Track, World          (rewrite)
+src/model/types.ts          Shape, Size, BubbleTarget, Stop, Train, Track, World          (rewrite)
 src/model/palette.ts        PALETTE: eight colours with pitches; colorVar()          (new)
 src/model/motion.ts         F, V, progress(), invertProgress()                       (new)
 src/model/train.ts          trackRoute(), legSeconds(), trainState(), rebase(), targetIndex()  (new)
