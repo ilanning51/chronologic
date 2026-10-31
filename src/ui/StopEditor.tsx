@@ -14,12 +14,36 @@ interface StopEditorProps {
   onClose: () => void;
 }
 
+const SIZES: { size: Size; label: string }[] = [
+  { size: 'small', label: 'Small' },
+  { size: 'medium', label: 'Medium' },
+  { size: 'large', label: 'Large' },
+];
+
+/**
+ * The delete that must be held: the plane's recognizer watches it through its data attributes,
+ * and the fill shrinks over the hold time while `holding` is set. Only a goal ever shows it.
+ */
+function HoldToDelete({ holding }: { holding: boolean }) {
+  return (
+    <button
+      type="button"
+      className={holding ? 'pill-text hold holding' : 'pill-text hold'}
+      data-target="hold"
+      data-id="delete"
+      aria-label="Hold to delete the line"
+    >
+      Hold to delete
+    </button>
+  );
+}
+
 /**
  * Opens on a long press, as an ink pill in the HUD. On a done dot it offers "Not done" and,
- * on the goal, a hold-to-delete that removes the line. A pending stop gets its title field;
- * the shape and size controls arrive with the edit half.
+ * on the goal, a hold-to-delete that removes the line. A pending stop gets its title field,
+ * its shape (not the goal's) and size, and Delete: at once for a stop, held for the goal.
  */
-export function StopEditor({ stop, goal, done, holding, onEdit, onUndo, onClose }: StopEditorProps) {
+export function StopEditor({ stop, goal, done, holding, onEdit, onDelete, onUndo, onClose }: StopEditorProps) {
   const [title, setTitle] = useState(stop.title);
   const input = useRef<HTMLInputElement>(null);
 
@@ -40,17 +64,7 @@ export function StopEditor({ stop, goal, done, holding, onEdit, onUndo, onClose 
         <button type="button" className="pill-text" aria-label="Not done" onClick={onUndo}>
           Not done
         </button>
-        {goal && (
-          <button
-            type="button"
-            className={holding ? 'pill-text hold holding' : 'pill-text hold'}
-            data-target="hold"
-            data-id="delete"
-            aria-label="Hold to delete the line"
-          >
-            Hold to delete
-          </button>
-        )}
+        {goal && <HoldToDelete holding={holding} />}
       </div>
     );
   }
@@ -70,6 +84,38 @@ export function StopEditor({ stop, goal, done, holding, onEdit, onUndo, onClose 
         autoComplete="off"
         enterKeyHint="done"
       />
+      {!goal &&
+        (['circle', 'triangle'] as const).map((shape) => (
+          <button
+            key={shape}
+            type="button"
+            className="shape-button"
+            aria-label={shape === 'circle' ? 'Step' : 'Sub-goal'}
+            aria-pressed={stop.shape === shape}
+            onClick={() => onEdit({ shape })}
+          >
+            <span aria-hidden="true" className={`shape ${shape} medium`} />
+          </button>
+        ))}
+      {SIZES.map(({ size, label }) => (
+        <button
+          key={size}
+          type="button"
+          className="pill-text"
+          aria-label={label}
+          aria-pressed={stop.size === size}
+          onClick={() => onEdit({ size })}
+        >
+          {label}
+        </button>
+      ))}
+      {goal ? (
+        <HoldToDelete holding={holding} />
+      ) : (
+        <button type="button" className="pill-text" aria-label="Delete" onClick={onDelete}>
+          Delete
+        </button>
+      )}
     </div>
   );
 }

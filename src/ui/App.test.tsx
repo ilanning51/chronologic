@@ -3,7 +3,7 @@ import tokensCss from '../styles/tokens.css?raw';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
-import { trainState } from '../model/train';
+import { legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { createStore } from '../store/store';
 import { running } from '../test/fixtures';
@@ -370,4 +370,70 @@ test('Escape on a new goal name removes the track', () => {
   });
   expect(store.getState().tracks).toHaveLength(1);
   expect(screen.queryByRole('textbox', { name: 'Line name' })).not.toBeInTheDocument();
+});
+
+/** A long press on a stop, released, so its editor is open. */
+function openEditorOn(name: RegExp) {
+  const el = screen.getByRole('button', { name });
+  fireEvent.pointerDown(el, { pointerId: 1, clientX: 500, clientY: 400 });
+  act(() => {
+    vi.advanceTimersByTime(600);
+  });
+  fireEvent.pointerUp(el, { pointerId: 1, clientX: 500, clientY: 400 });
+}
+
+test('size buttons set the size', () => {
+  vi.useFakeTimers();
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openEditorOn(/^Dentist/);
+  act(() => screen.getByRole('button', { name: 'Large' }).click());
+  expect(stopNamed(store, 'dentist').size).toBe('large');
+  expect(screen.getByRole('button', { name: 'Large' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('delete on a stop removes it and merges the legs', () => {
+  vi.useFakeTimers();
+  const world = running();
+  world.tracks[0].stops = ['dentist', 'mid', 'wristband'];
+  world.stops = [
+    { id: 'dentist', title: 'Dentist', shape: 'circle', size: 'medium', x: 1000, y: 0, done: false },
+    { id: 'mid', title: 'Lab', shape: 'triangle', size: 'medium', x: 2000, y: 0, done: false },
+    { id: 'wristband', title: 'Wristband', shape: 'circle', size: 'large', x: 3000, y: 0, done: false },
+  ];
+  const store = createStore(world);
+  const total = () => {
+    const s = store.getState();
+    const route = trackRoute(s.tracks[0], new Map(s.stops.map((x) => [x.id, x])));
+    return s.tracks[0].stops.reduce((sum, _id, leg) => sum + legSeconds(route, leg), 0);
+  };
+  const before = total();
+  render(<App store={store} now={() => 500_000} />);
+  openEditorOn(/^Lab/);
+  act(() => screen.getByRole('button', { name: 'Delete' }).click());
+  const state = store.getState();
+  expect(state.stops.find((s) => s.id === 'mid')).toBeUndefined();
+  expect(state.tracks[0].stops).toEqual(['dentist', 'wristband']);
+  expect(total()).toBeCloseTo(before, 6);
+  expect(screen.queryByRole('group', { name: 'Edit stop' })).not.toBeInTheDocument();
+});
+
+test('delete on the goal needs a completed hold; a short hold does nothing', () => {
+  vi.useFakeTimers();
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openEditorOn(/^Wristband/);
+  expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  const hold = () => screen.getByRole('button', { name: 'Hold to delete the line' });
+  fireEvent.pointerDown(hold(), { pointerId: 2, clientX: 500, clientY: 700 });
+  act(() => {
+    vi.advanceTimersByTime(300);
+  });
+  fireEvent.pointerUp(hold(), { pointerId: 2, clientX: 500, clientY: 700 });
+  expect(store.getState().tracks).toHaveLength(1);
+  fireEvent.pointerDown(hold(), { pointerId: 2, clientX: 500, clientY: 700 });
+  act(() => {
+    vi.advanceTimersByTime(700);
+  });
+  expect(store.getState().tracks).toEqual([]);
 });

@@ -36,3 +36,28 @@ test('a pending stop edits its title and closes on Return', () => {
   fireEvent.keyDown(title, { key: 'Enter' });
   expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+test('a pending stop offers shapes, sizes and an immediate Delete', () => {
+  const { onEdit, onDelete } = setup({ goal: false, done: false });
+  expect(screen.getByRole('button', { name: 'Step' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Sub-goal' }));
+  expect(onEdit).toHaveBeenCalledWith({ shape: 'triangle' });
+  expect(screen.getByRole('button', { name: 'Medium' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Large' }));
+  expect(onEdit).toHaveBeenCalledWith({ size: 'large' });
+  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(onDelete).toHaveBeenCalledTimes(1);
+});
+
+test('the pending goal has no shape buttons and deletes only by a hold', () => {
+  const { onDelete } = setup({ goal: true, done: false });
+  expect(screen.queryByRole('button', { name: 'Step' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Sub-goal' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Large' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  const hold = screen.getByRole('button', { name: 'Hold to delete the line' });
+  expect(hold).toHaveAttribute('data-target', 'hold');
+  expect(hold).toHaveAttribute('data-id', 'delete');
+  fireEvent.click(hold);
+  expect(onDelete).not.toHaveBeenCalled();
+});

@@ -332,7 +332,10 @@ export function App({ store, now = Date.now }: AppProps) {
         done={editedStop.done}
         holding={holding}
         onEdit={(change) => store.dispatch({ type: 'edit', id: editedStop.id, ...change })}
-        onDelete={() => {}}
+        onDelete={() => {
+          store.dispatch({ type: 'delete', id: editedStop.id, now: now() });
+          setEditing(null);
+        }}
         onUndo={() => {
           store.dispatch({ type: 'undo', trackId: editedTrack.id, now: now() });
           setEditing(null);
