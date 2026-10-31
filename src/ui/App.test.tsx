@@ -528,3 +528,44 @@ test('the next stop sits above its neighbours, so crowded hit targets give it th
   // The world is its own stacking layer, so the raised stop stays under the HUD.
   expect(/\.world\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/isolation:\s*isolate/);
 });
+
+/** Presses on a stop 4 px off its centre, moves the finger through screen x positions and lets go at the last. */
+function dragStopThrough(name: RegExp, xs: number[]) {
+  const el = screen.getByRole('button', { name });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+  for (const to of xs) fireEvent.pointerMove(el, { pointerId: 1, clientX: to, clientY: y });
+  fireEvent.pointerUp(el, { pointerId: 1, clientX: xs[xs.length - 1], clientY: y });
+}
+
+test('dragging the next stop behind the train and back leaves the train where it was', () => {
+  const NOW = 500_000;
+  const store = createStore(running());
+  render(<App store={store} now={() => NOW} />);
+  const seconds = () => {
+    const s = store.getState();
+    return trainState(s.tracks[0], new Map(s.stops.map((x) => [x.id, x])), NOW).seconds;
+  };
+  const before = seconds();
+  const start = left(/^Dentist/) + 4;
+  act(() => dragStopThrough(/^Dentist/, [trainX() - 30, start]));
+  expect(stopNamed(store, 'dentist').x).toBeCloseTo(1000, 6);
+  expect(seconds()).toBeCloseTo(before, 6);
+});
+
+test('dragging the goal through the train and beyond never collapses the stops ahead', () => {
+  const NOW = 500_000;
+  const world = running();
+  world.stops[1].x = 1300;
+  const store = createStore(world);
+  render(<App store={store} now={() => NOW} />);
+  const at = trainState(world.tracks[0], new Map(world.stops.map((s) => [s.id, s])), NOW).at;
+  const start = left(/^Wristband/) + 4;
+  // Over the train exactly, then well past where the goal began.
+  act(() => dragStopThrough(/^Wristband/, [trainX() + 4, start + 100]));
+  const goal = stopNamed(store, 'wristband');
+  const k = (goal.x - at.x) / (1300 - at.x);
+  expect(k).toBeGreaterThan(1);
+  expect(stopNamed(store, 'dentist').x - at.x).toBeCloseTo(k * (1000 - at.x), 6);
+});

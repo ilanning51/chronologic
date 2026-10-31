@@ -3,7 +3,7 @@ import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { newId } from '../model/ids';
-import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
+import { DEFAULT_GOAL_SECONDS, type GoalDragStart } from '../model/reducer';
 import { nextIndex, targetIndex, trainState } from '../model/train';
 import {
   type Camera,
@@ -93,8 +93,18 @@ export function App({ store, now = Date.now }: AppProps) {
   const editingRef = useRef(editing);
   editingRef.current = editing;
   const audio = useRef<AudioContext | null>(null);
-  /** The pending stop under a finger, and how far its centre sits from where the finger landed. */
-  const dragging = useRef<{ id: string; track: string; goal: boolean; grip: Point } | null>(null);
+  /**
+   * The pending stop under a finger, how far its centre sits from where the finger landed, and
+   * the drag's start: the train's seconds then and, for the goal, the points it scales from.
+   */
+  const dragging = useRef<{
+    id: string;
+    track: string;
+    goal: boolean;
+    grip: Point;
+    keep: number;
+    from?: GoalDragStart;
+  } | null>(null);
 
   /** Whether the tray of tiles is open. */
   const [trayOpen, setTrayOpen] = useState(false);
@@ -165,26 +175,38 @@ export function App({ store, now = Date.now }: AppProps) {
       return;
     }
     if (target.kind !== 'stop') return;
-    const stop = store.getState().stops.find((s) => s.id === target.id);
-    if (!stop || stop.done) return;
+    const state = store.getState();
+    const stop = state.stops.find((s) => s.id === target.id);
+    const track = state.tracks.find((t) => t.id === target.track);
+    if (!stop || stop.done || !track) return;
+    const byId = new Map(state.stops.map((s) => [s.id, s]));
+    const train = trainState(track, byId, now());
     const under = screenToWorld(cameraRef.current, g.at);
+    const ahead = Object.fromEntries(
+      track.stops.slice(track.train.leg, -1).map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]),
+    );
     dragging.current = {
       id: stop.id,
       track: target.track,
       goal: target.goal,
       grip: { x: stop.x - under.x, y: stop.y - under.y },
+      keep: train.seconds,
+      from: target.goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
     };
   };
 
-  /** Puts the dragged stop where the finger is, plus the grip so the shape never jumps. */
+  /**
+   * Puts the dragged stop where the finger is, plus the grip so the shape never jumps. Every move
+   * works from the drag's start, so where the finger wandered on the way never matters.
+   */
   const dragTo = (at: Point) => {
     const d = dragging.current;
     if (!d) return;
     const under = screenToWorld(cameraRef.current, at);
     const x = under.x + d.grip.x;
     const y = under.y + d.grip.y;
-    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now() });
-    else store.dispatch({ type: 'move', id: d.id, x, y, now: now() });
+    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
+    else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
   };
 
   /** Carries a tile: the ghost follows the finger, or sits on the line it would join. */

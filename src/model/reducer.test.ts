@@ -127,6 +127,18 @@ describe('move', () => {
     expect(reduce(w, { type: 'move', id: 'g', x: 5, y: 5, now })).toBe(w);
     expect(reduce(w, { type: 'move', id: 'zzz', x: 5, y: 5, now })).toBe(w);
   });
+
+  test('a move that keeps the seconds of the drag start gives them back after a shorter leg', () => {
+    const world = running();
+    const keep = stateOf(world).seconds;
+    // Pulled behind the train, the leg is shorter than the train's offset and the train waits.
+    const pulled = reduce(world, { type: 'move', id: 'a', x: 200, y: 0, now, keep });
+    expect(stateOf(pulled)).toMatchObject({ waiting: true });
+    // Put back where it was, the train has its seconds again.
+    const back = reduce(pulled, { type: 'move', id: 'a', x: 1000, y: 0, now, keep });
+    expect(stateOf(back).seconds).toBeCloseTo(keep);
+    expect(back.tracks[0].train).toEqual(world.tracks[0].train);
+  });
 });
 
 describe('moveGoal', () => {
@@ -155,6 +167,21 @@ describe('moveGoal', () => {
     const same = reduce(under, { type: 'moveGoal', trackId, x: 700, y: 0, now });
     expect(stopOf(same, 'a')).toMatchObject({ x: 1000, y: 0 });
     expect(stopOf(same, 'g')).toMatchObject({ x: 700, y: 0 });
+  });
+
+  test('with the drag start snapshot, each move scales the original stops, so passing over the train collapses nothing', () => {
+    const world = running();
+    const keep = stateOf(world).seconds;
+    const from = { train: { x: 500, y: 0 }, goal: { x: 3000, y: 1000 }, ahead: { a: { x: 1000, y: 0 }, b: { x: 1000, y: 1000 } } };
+    // Exactly over the train, k = 0 for this move only.
+    const over = reduce(world, { type: 'moveGoal', trackId, x: 500, y: 0, now, keep, from });
+    expect(stopOf(over, 'b')).toMatchObject({ x: 500, y: 0 });
+    const beyond = reduce(over, { type: 'moveGoal', trackId, x: 5500, y: 2000, now, keep, from });
+    expect(stopOf(beyond, 'a').x).toBeCloseTo(1500);
+    expect(stopOf(beyond, 'a').y).toBeCloseTo(0);
+    expect(stopOf(beyond, 'b').x).toBeCloseTo(1500);
+    expect(stopOf(beyond, 'b').y).toBeCloseTo(2000);
+    expect(stateOf(beyond).seconds).toBeCloseTo(keep);
   });
 
   test('is ignored when the goal is done or the train is parked', () => {
@@ -196,7 +223,7 @@ describe('delete', () => {
     expect(stateOf(next).seconds).toBeCloseTo(500);
   });
 
-  test('a stop behind the train goes and the leg index drops by one', () => {
+  test('the dot just behind the train goes: the merged leg counts the removed leg, so the train never goes back', () => {
     const w = running();
     w.stops[0] = stop('a', 'circle', 1000, 0, true);
     w.tracks[0].train = { leg: 1, departedAt: now - 300_000 };
@@ -204,6 +231,19 @@ describe('delete', () => {
     const next = reduce(w, { type: 'delete', id: 'a', now });
     expect(next.tracks[0].stops).toEqual(['b', 'g']);
     expect(next.tracks[0].train.leg).toBe(0);
+    // The removed leg, origin to a, was 1000 s long.
+    expect(stateOf(next).seconds).toBeCloseTo(before + 1000);
+  });
+
+  test('a dot further behind the train goes and the leg index drops by one, seconds kept', () => {
+    const w = running();
+    w.stops[0] = stop('a', 'circle', 1000, 0, true);
+    w.stops[1] = stop('b', 'triangle', 1000, 1000, true);
+    w.tracks[0].train = { leg: 2, departedAt: now - 300_000 };
+    const before = stateOf(w).seconds;
+    const next = reduce(w, { type: 'delete', id: 'a', now });
+    expect(next.tracks[0].stops).toEqual(['b', 'g']);
+    expect(next.tracks[0].train.leg).toBe(1);
     expect(stateOf(next).seconds).toBeCloseTo(before);
   });
 
