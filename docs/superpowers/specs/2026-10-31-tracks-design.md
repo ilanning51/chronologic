@@ -88,9 +88,16 @@ The total never changes because a step was discovered. Crowding is the only sign
 estimate was short, and the remedy is to drag the goal.
 
 **The train's planned position is an invariant under editing.** Any edit to a track (drag a
-stop, drag the goal, add, delete) recomputes the train's departure time so that the train stays
-exactly where it was on the line, as a fraction along its current leg. The train never jumps
-because a stop was moved.
+stop, drag the goal, add, delete, not done) keeps the train's planned-time offset along the
+track, and so its place on the line, exactly where it was. The edit then recomputes the train's
+departure time by inverting the motion profile for whatever leg the train now finds itself on, so
+the picture does not change and the clock continues from there. The train never jumps because a
+stop was moved. Two consequences:
+
+- No stop can be dragged or dropped past the train. Drags are clamped at the train's position.
+- Done stops (dots) are not draggable. Track behind the train never moves.
+- Deleting the stop the train is waiting at leaves the train where it is, now mid-way along the
+  merged leg and rolling toward the next stop.
 
 ## Time, the camera and scale
 
@@ -162,7 +169,9 @@ step, delete it or drag it later. This keeps "the train never passes a stop" tru
 
 **Arriving at the goal.** The train stops at the square and waits. Tapping the square completes
 the project: the square shrinks to a dot, the train parks, and the whole track dims to the muted
-ink. It stays on the plane as a line of dots. Deleting it is a long press on the dotted goal.
+ink. It stays on the plane as a line of dots. A long press on the dotted goal opens the same
+small panel as any most-recent dot: "not done", which restores the goal and puts the train back
+to waiting at it, and delete, which is the hold-to-confirm described under the editor.
 
 **Time while closed.** Positions are computed from departure times and the real clock, so a
 train that was rolling keeps rolling while the app is closed and is where it should be on
@@ -284,6 +293,12 @@ Marked here so they can be checked while reading:
 6. Deleting a track is the one hold-to-confirm in the app.
 7. Tap on a train zooms to the motion zoom.
 8. The tray holds three tiles; size is set afterwards in the editor.
+9. Edits preserve the train's planned-time offset, not its fraction of a leg, and departure time
+   is re-derived from it. Found by the builder check; this is the only reading under which the
+   train never moves on screen because of an edit.
+10. A long press on a finished track's goal dot opens a panel (not done, hold-to-delete) rather
+    than deleting directly, so the one-confirm rule holds and the gesture means the same thing
+    everywhere.
 
 ## Left to the builder
 
@@ -292,8 +307,8 @@ Marked here so they can be checked while reading:
 - The other four palette colours.
 - How the layout handles zoom anchoring when the leg floor makes the mapping non-linear.
 - Snapping distance for the tray drag, and how a drop between rows picks a track.
-- The physics of the goal drag when the train is mid-leg (scale the remaining part of the
-  current leg, preserve the train's fraction).
+- The goal drag when the train is mid-leg: scale only the part of the current leg ahead of the
+  train, keep the train's offset, and re-derive its departure time as the invariant says.
 - Build order. Suggested: model and physics as pure modules with tests; layout and camera;
   rendering of tracks, stops, trains; gestures; tray and capture; editor; bubbles; opening;
   persistence; feedback.
