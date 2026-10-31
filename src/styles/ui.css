@@ -1,8 +1,10 @@
-/* The world layer is screen space: positions are already in pixels, so nothing here transforms. */
+/* The world layer is screen space: positions are already in pixels, so nothing here transforms.
+   It is its own stacking layer, so a raised stop never rises above the HUD drawn after it. */
 .world {
   position: absolute;
   left: 0;
   top: 0;
+  isolation: isolate;
 }
 
 /* A track lives in the world layer under the stops and draws outside its own box. */
@@ -41,6 +43,11 @@
   width: var(--tap);
   height: var(--tap);
   transform: translate(-50%, -50%);
+}
+
+/* Where hit targets overlap, the next stop, the only one a tap completes, is on top. */
+.stop.next {
+  z-index: 1;
 }
 
 .stop .shape {

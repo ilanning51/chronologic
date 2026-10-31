@@ -16,7 +16,8 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
 
 /**
  * One task on the plane: a solid shape for its kind and size, a dot once done, a label
- * beneath when there is room. The shape's centre sits on the stop's screen point.
+ * beneath when there is room. The shape's centre sits on the stop's screen point. The next
+ * stop is raised above the rest, so where hit targets crowd it is the one a tap finds.
  */
 export function Stop({ stop, track, color }: StopProps) {
   const name = [
@@ -30,7 +31,7 @@ export function Stop({ stop, track, color }: StopProps) {
   return (
     <button
       type="button"
-      className={stop.done ? 'stop done' : 'stop'}
+      className={stop.done ? 'stop done' : stop.next ? 'stop next' : 'stop'}
       data-target="stop"
       data-id={stop.id}
       data-track={track}

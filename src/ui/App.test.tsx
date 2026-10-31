@@ -518,3 +518,13 @@ test('under strict mode a new name field stays open until it is answered', () =>
   });
   expect(stopNamed(store, store.getState().tracks[1].stops[0]).title).toBe('Thesis');
 });
+
+test('the next stop sits above its neighbours, so crowded hit targets give it the tap', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  expect(screen.getByRole('button', { name: /^Dentist/ })).toHaveClass('next');
+  expect(screen.getByRole('button', { name: /^Wristband/ })).not.toHaveClass('next');
+  const rule = /\.stop\.next\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(rule).toMatch(/z-index:\s*1/);
+  // The world is its own stacking layer, so the raised stop stays under the HUD.
+  expect(/\.world\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/isolation:\s*isolate/);
+});
