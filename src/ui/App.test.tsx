@@ -1,3 +1,5 @@
+import uiCss from '../styles/ui.css?raw';
+import tokensCss from '../styles/tokens.css?raw';
 import { render, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import type { World } from '../model/types';
@@ -47,4 +49,14 @@ test('a done stop is a dot and a finished track is muted', () => {
   expect(lines.length).toBeGreaterThan(0);
   for (const line of lines) expect((line as SVGLineElement).style.stroke).toBe('var(--muted)');
   expect(document.querySelector('[data-train]')).not.toHaveAttribute('data-target');
+});
+
+test('every stop has a centered 44 px hit target that paints nothing', () => {
+  // jsdom does not lay out pseudo-elements, so read the rule itself.
+  const rule = /\.stop::before\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(rule).toMatch(/width:\s*var\(--tap\)/);
+  expect(rule).toMatch(/height:\s*var\(--tap\)/);
+  expect(rule).toMatch(/translate\(-50%, -50%\)/);
+  expect(rule).not.toMatch(/background|border|outline|box-shadow/);
+  expect(tokensCss).toMatch(/--tap:\s*44px/);
 });

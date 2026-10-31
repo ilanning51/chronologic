@@ -18,6 +18,8 @@
   --train-l: 30px;
   --train-w: 20px;
   --label: 13px;
+  /* The least hit target for anything pressable, in CSS px. */
+  --tap: 44px;
   --circle-small: 14px;
   --circle-medium: 22px;
   --circle-large: 30px;

@@ -32,6 +32,17 @@
   cursor: pointer;
 }
 
+/* The 44 px rule: every stop has a centered 44 px hit target, however small its shape. It paints nothing. */
+.stop::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--tap);
+  height: var(--tap);
+  transform: translate(-50%, -50%);
+}
+
 .stop .shape {
   position: absolute;
   left: 0;
