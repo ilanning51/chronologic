@@ -6,6 +6,8 @@ import type { Shape, Size } from '../model/types';
  */
 export const TRACK_WIDTH = 10;
 export const TRAIN = { length: 30, width: 20, radius: 6 };
+/** The least hit target for anything pressable, matching --tap in the tokens. */
+export const TAP_PX = 44;
 /** A finished stop, drawn as a dot whatever its shape. */
 export const DOT = 10;
 

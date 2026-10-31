@@ -35,6 +35,7 @@ test('a done stop is a dot and a finished track is muted', () => {
   expect(lines.length).toBeGreaterThan(0);
   for (const line of lines) expect((line as SVGLineElement).style.stroke).toBe('var(--muted)');
   expect(document.querySelector('[data-train]')).not.toHaveAttribute('data-target');
+  expect(document.querySelector('[data-target="train"]')).not.toBeInTheDocument();
 });
 
 test('every stop has a centered 44 px hit target that paints nothing', () => {
@@ -580,4 +581,19 @@ test('a right click on a pending stop is a long press: the editor opens and noth
   expect(stopNamed(store, 'dentist').done).toBe(false);
   // The browser's own menu stays shut.
   expect(fireEvent.contextMenu(dentist)).toBe(false);
+});
+
+test('a rolling train has a 44 px hit target that paints nothing; a parked one has none', () => {
+  render(<App store={createStore(running())} now={() => 500_000} />);
+  const hit = document.querySelector('[data-target="train"]:not([data-train])')!;
+  expect(hit).toHaveAttribute('width', '44');
+  expect(hit).toHaveAttribute('height', '44');
+  expect(hit).toHaveAttribute('fill', 'none');
+  expect(hit).toHaveAttribute('pointer-events', 'all');
+  expect(hit).toHaveAttribute('data-track', 't1');
+});
+
+test('the editor text buttons are a full tap tall', () => {
+  const rule = /\.pill-text\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(rule).toMatch(/height:\s*var\(--tap\)/);
 });

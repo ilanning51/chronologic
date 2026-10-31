@@ -15,7 +15,8 @@
   overflow: visible;
 }
 
-.track .train {
+.track .train,
+.track .train-hit {
   transform-box: fill-box;
   transform-origin: center;
 }
@@ -221,10 +222,10 @@ button:focus-visible {
 }
 
 .pill-text {
-  height: var(--chip);
+  height: var(--tap);
   padding: 0 0.875rem;
   border: 0;
-  border-radius: calc(var(--chip) / 2);
+  border-radius: calc(var(--tap) / 2);
   background: none;
   color: var(--paper);
   font: inherit;
