@@ -1,10 +1,5 @@
 import { distance, type Point } from './geometry';
 
-/** World units the line begins before its first station. */
-export const LEAD = 40;
-/** World units the line runs past its last reached station before the terminus bar. */
-export const TERMINUS_OVERRUN = 32;
-
 export interface Route {
   /** Polyline vertices, horizontal, vertical and 45 degree segments only. */
   vertices: Point[];
@@ -22,12 +17,12 @@ function angleOf(a: Point, b: Point): number {
 /**
  * Routes a line through stations the way the subway map does: between two stations a
  * 45 degree segment first, covering the shorter axis, then a straight run for the rest.
+ * The first vertex is the first station itself; nothing is drawn before it.
  */
 export function routeThrough(points: Point[]): Route {
   if (points.length === 0) return { vertices: [], stationAt: [] };
-  const first = points[0];
-  const vertices: Point[] = [{ x: first.x - LEAD, y: first.y }, first];
-  const stationAt = [1];
+  const vertices: Point[] = [points[0]];
+  const stationAt = [0];
   for (let i = 1; i < points.length; i++) {
     const from = points[i - 1];
     const to = points[i];
@@ -67,21 +62,42 @@ export function pointAlong(vertices: Point[], from: number, to: number, fraction
   return { at: vertices[to], angle: 0 };
 }
 
-/** Where the terminus bar sits: past the last station, continuing the way the line came in. */
-export function terminusOf(route: Route): { at: Point; angle: number } {
-  const last = route.stationAt[route.stationAt.length - 1];
-  const end = route.vertices[last];
-  const before = route.vertices[last - 1];
-  const length = distance(before, end);
-  const dir = length === 0 ? { x: 1, y: 0 } : { x: (end.x - before.x) / length, y: (end.y - before.y) / length };
-  return { at: { x: end.x + dir.x * TERMINUS_OVERRUN, y: end.y + dir.y * TERMINUS_OVERRUN }, angle: angleOf(before, end) };
+/** The length of the route between two vertex indices, following every segment. */
+export function pathLength(vertices: Point[], from: number, to: number): number {
+  let total = 0;
+  for (let i = from; i < to; i++) total += distance(vertices[i], vertices[i + 1]);
+  return total;
 }
 
-/** Where the train sits: halfway along the route before the next pending station. */
-export function trainOn(route: Route, nextIndex: number): { at: Point; angle: number } {
-  if (route.stationAt.length === 0) return { at: { x: 0, y: 0 }, angle: 0 };
-  const index = Math.min(nextIndex, route.stationAt.length - 1);
-  const from = index === 0 ? 0 : route.stationAt[index - 1];
-  const to = route.stationAt[index];
-  return pointAlong(route.vertices, from, to, 0.5);
+/** The vertex indices of the leg from station leg to station leg + 1. */
+export function legSpan(route: Route, leg: number): { from: number; to: number } {
+  return { from: route.stationAt[leg], to: route.stationAt[leg + 1] };
+}
+
+/**
+ * The closest point on the route to p. Each leg is searched segment by segment; the foot
+ * of the perpendicular is clamped to the segment. offset is the path distance from the
+ * leg's first vertex to that point, dist the straight-line distance from p to it.
+ * On a tie the earlier leg wins.
+ */
+export function nearestOnRoute(route: Route, p: Point): { leg: number; offset: number; at: Point; dist: number } {
+  const { vertices, stationAt } = route;
+  if (stationAt.length < 2) return { leg: 0, offset: 0, at: vertices[0], dist: distance(p, vertices[0]) };
+  let best: { leg: number; offset: number; at: Point; dist: number } | null = null;
+  for (let leg = 0; leg < stationAt.length - 1; leg++) {
+    const span = legSpan(route, leg);
+    let travelled = 0;
+    for (let i = span.from; i < span.to; i++) {
+      const a = vertices[i];
+      const b = vertices[i + 1];
+      const length = distance(a, b);
+      const projected = length === 0 ? 0 : ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (length * length);
+      const t = Math.min(1, Math.max(0, projected));
+      const at = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      const dist = distance(p, at);
+      if (best === null || dist < best.dist) best = { leg, offset: travelled + length * t, at, dist };
+      travelled += length;
+    }
+  }
+  return best!;
 }
