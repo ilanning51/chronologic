@@ -1,5 +1,6 @@
 import uiCss from '../styles/ui.css?raw';
 import tokensCss from '../styles/tokens.css?raw';
+import { StrictMode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
@@ -467,4 +468,53 @@ test('a long press on a bubble flies to its target', () => {
   });
   fireEvent.pointerUp(bubble, { pointerId: 1, clientX: 500, clientY: 400 });
   expect(Math.abs(left(/^Wristband/) - window.innerWidth / 2)).toBeLessThan(1);
+});
+
+/** The bare paper of the plane, which reads as no target at all. */
+const paper = () => screen.getByRole('main', { name: 'The plane' });
+
+test('a tap on paper while naming a new line keeps the line and saves what was typed', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  const goalId = store.getState().tracks[1].stops[0];
+  fireEvent.change(screen.getByRole('textbox', { name: 'Line name' }), { target: { value: 'Thesis' } });
+  // On a touchscreen the pointerup arrives before the browser blurs the field: no blur event here.
+  act(() => tapOn(paper()));
+  expect(store.getState().tracks).toHaveLength(2);
+  expect(stopNamed(store, goalId).title).toBe('Thesis');
+  expect(screen.queryByRole('textbox', { name: 'Line name' })).not.toBeInTheDocument();
+});
+
+test('dropping a second tile while a name field holds text saves the first title', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  act(() => dragTile('Step', midLeg()));
+  const first = store.getState().tracks[0].stops[1];
+  fireEvent.change(screen.getByRole('textbox', { name: 'Stop title' }), { target: { value: 'Order parts' } });
+  const a = left(/^Dentist/);
+  const b = left(/^Wristband/);
+  act(() => dragTile('Sub-goal', { x: a + (b - a) * 0.8, y: midLeg().y }));
+  expect(store.getState().tracks[0].stops).toHaveLength(4);
+  expect(stopNamed(store, first).title).toBe('Order parts');
+  expect(screen.getByRole('textbox', { name: 'Stop title' })).toHaveValue('');
+});
+
+test('under strict mode a new name field stays open until it is answered', () => {
+  const store = createStore(running());
+  render(
+    <StrictMode>
+      <App store={store} now={() => WAITING} />
+    </StrictMode>,
+  );
+  openTray();
+  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  const field = screen.getByRole('textbox', { name: 'Line name' });
+  act(() => {
+    fireEvent.change(field, { target: { value: 'Thesis' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+  });
+  expect(stopNamed(store, store.getState().tracks[1].stops[0]).title).toBe('Thesis');
 });

@@ -231,7 +231,7 @@ export function App({ store, now = Date.now }: AppProps) {
     setCamera(centerOn(cam, middle, viewport, fitLeg(DEFAULT_GOAL_SECONDS, viewport.w, 1 / 2)));
   };
 
-  /** Leaving a name unfinished keeps a bare stop, but a goal with no name is no line at all. */
+  /** Escape on a name keeps a bare stop, but a goal escaped from is no line at all. */
   const cancelNaming = () => {
     const n = namingRef.current;
     setNaming(null);
@@ -255,7 +255,8 @@ export function App({ store, now = Date.now }: AppProps) {
         } else if (g.target.kind === 'paper') {
           setEditing(null);
           setTrayOpen(false);
-          cancelNaming();
+          // A tap elsewhere commits an open name. A touchscreen blurs only after this tap, so blur now.
+          (document.activeElement as HTMLElement | null)?.blur();
         }
         return;
       case 'longPress':
@@ -371,8 +372,10 @@ export function App({ store, now = Date.now }: AppProps) {
       y={(named?.y ?? -100) - 16}
       label={naming.kind === 'goal' ? 'Line name' : 'Stop title'}
       onCommit={(title) => {
-        store.dispatch({ type: 'edit', id: naming.id, title });
-        setNaming(null);
+        const id = naming.id;
+        store.dispatch({ type: 'edit', id, title });
+        // A field replaced by a newer one commits as it goes; the newer one stays open.
+        setNaming((n) => (n?.id === id ? null : n));
       }}
       onCancel={cancelNaming}
     />
