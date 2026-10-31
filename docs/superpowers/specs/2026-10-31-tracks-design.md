@@ -74,8 +74,11 @@ future version can share a stop between lines.
   the track is made.
 - Size is effort. Small, medium, large, drawn as three sizes of the shape. Default medium; the
   goal defaults to large.
-- Position is time. A stop's position is its planned offset in seconds from the track's origin
-  (where the train started). The distance between two stops is the planned time for that leg.
+- Position is time. A stop sits anywhere on the plane, and the track is routed through the stops
+  in order by the v1 algorithm (a 45 degree segment covering the shorter axis, then a straight
+  run, round joins). A leg's planned time is the length of that routed path between two stops,
+  in world units, where one world unit is one second. Dragging a stop anywhere changes the two
+  legs beside it and nothing else.
 - Done shrinks the shape to a dot. Done stops stay on the line.
 
 **The train** is where the project is, now. It is either rolling toward stop i, having departed
@@ -83,9 +86,12 @@ the previous stop (or the origin) at a known real time, or waiting at stop i. A 
 with its train rolling from the origin toward the first stop, departing at creation time.
 
 **The goal pins the length; stops subdivide it.** When a track is made the goal is placed a
-default distance out and dragged to where it belongs. Adding a stop splits the leg it lands in.
-The total never changes because a step was discovered. Crowding is the only signal that the
-estimate was short, and the remedy is to drag the goal.
+default distance out and dragged to where it belongs. Adding a stop drops it onto the routed
+path, so it splits the leg it lands in and the total is unchanged. Dragging that stop off the
+path afterwards bends the route through it, and the two legs beside it get longer or shorter by
+exactly the bend. So the total changes only when you move something, never because a step was
+discovered. Crowding is the signal that the estimate was short, and the remedy is to drag the
+goal, which scales everything ahead of the train.
 
 **The train's planned position is an invariant under editing.** Any edit to a track (drag a
 stop, drag the goal, add, delete, not done) keeps the train's planned-time offset along the
@@ -94,38 +100,42 @@ departure time by inverting the motion profile for whatever leg the train now fi
 the picture does not change and the clock continues from there. The train never jumps because a
 stop was moved. Two consequences:
 
-- No stop can be dragged or dropped past the train. Drags are clamped at the train's position.
+- If the next stop is dragged so close that its leg becomes shorter than the train's offset, the
+  train is at the stop and waiting. You pulled the platform to the train; that is the one edit
+  that moves it, and you did it on purpose.
 - Done stops (dots) are not draggable. Track behind the train never moves.
 - Deleting the stop the train is waiting at leaves the train where it is, now mid-way along the
   merged leg and rolling toward the next stop.
 
 ## Time, the camera and scale
 
-The camera holds a pan in pixels (both axes), and one scale: seconds per screen pixel. Zooming
-multiplies the scale by a fixed factor per step, so zoom is logarithmic. It is anchored on the
-pointer or the pinch centre.
+The plane is the v1 plane: world space where stops live, and a camera that is a translation
+and a scale. World units are seconds, so a day of track is a long way and a month is a very
+long way. Zooming multiplies the scale by a fixed factor per step, so zoom is logarithmic, and
+it is anchored on the pointer or the pinch centre. The range is wide, on the order of a thousand
+to one or more.
 
-**A leg's drawn length** is its planned seconds divided by the scale, with a floor in pixels.
-Zoomed far out the floor wins on every leg and a track is a diagram with even spacing, like the
-subway map, which is not to scale on purpose. Zoomed far in, time wins and the legs are to scale.
-There is no mode switch; the two are ends of one rule.
+**Only positions scale.** Track width, stop sizes, train size, dot size, label font: all
+constant in screen pixels at every zoom. Shape and size stay readable from any height. Zoomed
+far out a track is its shape, a thick coloured line through small solid shapes. Zoomed far in a
+screen holds a few minutes of one leg.
 
-**Nothing else scales.** Track width, stop sizes, train size, dot size, label font, row spacing:
-all constant in screen pixels at every zoom. Shape and size stay readable from any height.
+**Layout.** A track is routed through its origin (where the train started), then its stops in
+order, then the goal, by the 45 degree algorithm. The train sits on the routed path at its
+offset along the current leg. Tracks are placed wherever their stops are dragged and have no
+relationship to each other on the plane. Left is not sooner, up is not anything; the only
+meaning in a position is the length of the path it makes.
 
-**Layout.** Each track is a horizontal row. Rows are stacked top to bottom in creation order with
-a constant pixel spacing. A track is laid out from its own origin: the origin is at the row's x
-of zero, stops follow to the right at the cumulative drawn length of their legs, and the train
-sits within its leg at its progress fraction of that leg's drawn length. Tracks are not aligned
-to one another in time; each is its own line, and its train moves right along a line that holds
-still. Vertical position carries no meaning.
+**What zoom does to the train.** On screen the train's cruising speed is the world speed times
+the camera scale. Zoomed out that is nothing. Zoomed all the way in the train visibly rolls.
+Suggested range: at maximum zoom one second of track is about twenty pixels, so a cruising train
+moves a clear twenty-five pixels a second; at minimum zoom a month of track fits a screen. The
+builder tunes both ends so motion is unmistakable at one end and every project fits at the
+other.
 
-**What zoom does to the train.** On screen the train's cruising speed is its leg's drawn length
-per leg time. Zoomed out that is nothing. Zoomed all the way in a screen holds a few minutes of
-track and the train visibly rolls. Suggested range: at maximum zoom one pixel is about a
-twentieth of a second, so a cruising train crosses a screen in well under a minute; at minimum
-zoom one pixel is several hours. The builder tunes both ends so motion is unmistakable at one
-end and a year of track fits at the other.
+**A note for the builder on big numbers.** A month is about 2.6 million world units. Compute
+screen positions in code for what is on screen rather than CSS-scaling one world layer by a
+factor of a hundred-thousandth, as float precision in the compositor will not survive that.
 
 **Labels.** A stop's title sits beneath its shape at a constant font size. The goal's label and
 the next stop's label always show. Other labels show when there is room between neighbours and
@@ -181,10 +191,11 @@ reopening.
 
 - One finger on empty paper pans. Two fingers zoom and pan together. The wheel zooms about the
   pointer.
-- One finger on a stop drags it along its line, between its two neighbours, never past them. The
-  two legs beside it change; nothing else moves.
-- One finger on the goal drags it left or right and scales every leg ahead of the train in
-  proportion. Track behind the train never moves.
+- One finger on a stop drags it anywhere on the plane. The track re-routes through it, the two
+  legs beside it change length, and nothing else moves.
+- One finger on the goal drags it anywhere, and every stop ahead of the train moves with it in
+  proportion, scaled about the train's position, so the whole remaining track stretches or
+  squeezes and keeps its shape. Track behind the train never moves.
 - A tap on the next stop completes it (on arrival or early). A tap on any other pending stop
   does nothing.
 - A long press on a stop or the goal opens the editor. A drag of more than ten pixels is a move,
@@ -207,15 +218,16 @@ new-line tile (a square with a train). The tray stays open until the plus is tap
 empty paper is tapped, so several stops can be dropped in a row.
 
 **Adding a stop.** Drag a circle or triangle out of the tray. As it nears a track it snaps onto
-the line and rides along it under the finger, showing where it will split the leg. It snaps only
-to track ahead of the train and before the goal. Let go and it is a stop at that point; the drop
-point is the leg length. A field opens beside it for the title. Return commits. Escape or a tap
-elsewhere leaves it as a bare shape, to be named later by a long press.
+the routed path and rides along it under the finger, showing where it will split the leg. It
+snaps only to path ahead of the train and before the goal. Let go and it is a stop at that point
+on the path, so the total is unchanged; the drop point is how the leg divides. A field opens
+beside it for the title. Return commits. Escape or a tap elsewhere leaves it as a bare shape, to
+be named later by a long press. Dragging it off the path afterwards is how you tidy the map.
 
-**Starting a project.** Tap the new-line tile. A new row appears below the last with a train at
-the origin and a square a default distance to the right, and a field opens for the goal's title.
-Return commits; Escape removes the track. The next colour is taken from the palette. Drag the
-square to where the goal really is.
+**Starting a project.** Tap the new-line tile. A new track appears with its origin and train at
+the centre of the view, nudged clear of anything there, and its square a default distance to
+the right, and a field opens for the goal's title. Return commits; Escape removes the track. The
+next colour is taken from the palette. Drag the square to where the goal really is.
 
 Suggested default goal distance: thirty days. Claude's call.
 
@@ -232,18 +244,19 @@ position is preserved as everywhere.
 ## Edge bubbles
 
 Each track has a target: next stop, next sub-goal, or goal. Default is goal, because the goal
-is the reason the feature exists. When a track's row is in view and its target is off screen, a
-bubble sits on the window edge at that row, on the side the target is. The bubble carries the
-target's shape in the track's colour and its title, nothing else. When the target comes on
-screen the bubble goes. Tracks whose row is off screen get no bubble.
+is the reason the feature exists. When any part of a track is in view and its target is off
+screen, a bubble sits on the window edge where the straight line from the screen centre to the
+target leaves the screen, so it also points the way to pan. The bubble carries the target's
+shape in the track's colour and its title, nothing else. When the target comes on screen the
+bubble goes. Tracks with nothing in view get no bubble.
 
 ## Opening
 
 The camera opens centred on the train whose next stop is nearest in time. A waiting train
 counts as nearest of all, since its stop is ready now. Ties go to the most recently touched
 track. The zoom is set so that train's current leg (or next leg, if waiting) spans about a third
-of the screen width, clamped to the zoom range. Rows are constant pixels apart, so the
-neighbouring tracks are in view. With no tracks, the plane opens empty with the tray closed.
+of the screen width, clamped to the zoom range. With no tracks, the plane opens empty with the
+tray closed.
 
 ## Feedback
 
@@ -283,9 +296,9 @@ id. No camera is saved; opening decides the camera.
 
 Marked here so they can be checked while reading:
 
-1. Tracks are laid out from their own origins and not aligned to each other in time, so the
-   track holds still and the train moves. (An alternative aligned every train in one "now"
-   column, which would have made the track slide and the train stand still.)
+1. Tracks are free shapes on the plane and have no time relationship to each other, so the
+   track stays put and the train moves along it. (An alternative aligned every train in one
+   "now" column, which would have made the track slide and the train stand still.)
 2. The motion profile uses fixed fifths rather than a fixed acceleration; see the note above.
 3. Only the next stop can be completed.
 4. Bubble default is the goal.
@@ -302,13 +315,13 @@ Marked here so they can be checked while reading:
 
 ## Left to the builder
 
-- Exact pixel constants: leg floor, row spacing, stop sizes, zoom range and step, label room
-  rule, bubble size.
+- Exact pixel constants: stop sizes, zoom range and step, label room rule, bubble size.
 - The other four palette colours.
-- How the layout handles zoom anchoring when the leg floor makes the mapping non-linear.
-- Snapping distance for the tray drag, and how a drop between rows picks a track.
-- The goal drag when the train is mid-leg: scale only the part of the current leg ahead of the
-  train, keep the train's offset, and re-derive its departure time as the invariant says.
+- Rendering at large world coordinates (see the note under the camera).
+- Snapping distance for the tray drag, and which track wins when two paths are near.
+- The goal drag when the train is mid-leg: scale stop positions about the train's point on the
+  path, keep the train's offset along its leg, and re-derive its departure time as the invariant
+  says.
 - Build order. Suggested: model and physics as pure modules with tests; layout and camera;
   rendering of tracks, stops, trains; gestures; tray and capture; editor; bubbles; opening;
   persistence; feedback.
@@ -317,7 +330,6 @@ Marked here so they can be checked while reading:
 
 - Relationships between tracks: a transfer stop shared by two lines, one line waiting on
   another. Global stop identity is kept now so this needs no migration.
-- Reordering rows.
 - A dark palette.
 - History of finished tracks beyond their dots.
 - Import from Todoist.
