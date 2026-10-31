@@ -10,13 +10,14 @@ export interface Camera {
   scale: number;
 }
 
-export const MIN_SCALE = 0.25;
-export const MAX_SCALE = 4;
-export const DEFAULT_ZOOM = 1;
-/** The zoom the camera flies to on a running stretch: labels at 17 px, the line thick. */
-export const STRETCH_ZOOM = 1.6;
+/** Pixels per second of plan: a month fits across a screen at the far end. */
+export const MIN_SCALE = 0.0002;
+/** Zoomed all the way in, a second of plan is twenty pixels. */
+export const MAX_SCALE = 20;
+/** The scale the camera flies to when it follows the train. */
+export const MOTION_SCALE = MAX_SCALE;
 
-export const HOME: Camera = { x: 0, y: 0, scale: DEFAULT_ZOOM };
+export const HOME: Camera = { x: 0, y: 0, scale: 0.01 };
 
 function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
@@ -47,6 +48,17 @@ export function centerOn(_c: Camera, world: Point, viewport: { w: number; h: num
   return { x: viewport.w / 2 - world.x * s, y: viewport.h / 2 - world.y * s, scale: s };
 }
 
-export function cssTransform(c: Camera): string {
-  return `translate(${c.x}px, ${c.y}px) scale(${c.scale})`;
+/** How much of the viewport width a leg should fill, as a scale, kept inside the zoom range. */
+export function fitLeg(legSeconds: number, viewportW: number, fraction = 1 / 3): number {
+  if (legSeconds === 0) return MAX_SCALE;
+  return clampScale((viewportW * fraction) / legSeconds);
+}
+
+/** A camera part of the way from a to b: straight in position, geometric in scale so zoom feels even. */
+export function interpolate(a: Camera, b: Camera, t: number): Camera {
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+    scale: a.scale * (b.scale / a.scale) ** t,
+  };
 }

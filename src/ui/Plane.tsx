@@ -1,5 +1,5 @@
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef } from 'react';
-import { type Camera, cssTransform } from '../plane/camera';
+import type { Camera } from '../plane/camera';
 import type { Point } from '../plane/geometry';
 import { type Gesture, Recognizer, type Sample, type Target } from '../plane/gestures';
 
@@ -101,7 +101,7 @@ export function Plane({ camera, lineColor, flying, onGesture, onZoom, hud, child
         stopTickingWhenIdle();
       }}
     >
-      <div className={flying ? 'world flying' : 'world'} data-testid="world" style={{ transform: cssTransform(camera) }}>
+      <div className={flying ? 'world flying' : 'world'} data-testid="world" style={{ transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})` }}>
         {children}
       </div>
       {hud}

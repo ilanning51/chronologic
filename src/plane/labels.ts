@@ -1,14 +1,19 @@
-/** Below this camera scale the plane is shapes and lines only, as text at four pixels is noise. */
-export const LABEL_HIDE_BELOW = 0.5;
-
-const LABEL_PX = 13;
-const LABEL_ZOOMED_PX = 17;
+import { LABEL_ROOM_PX } from './world';
 
 /**
- * The size of a station label in screen pixels, or null when labels hide. Labels never
- * shrink below 13 px while zooming out, and grow to 17 px as you zoom in on a stretch.
+ * Which stops get a label: the `always` ones first, then each other stop from left to right
+ * unless a label already shown sits within LABEL_ROOM_PX of it. Crowded stops go unlabeled
+ * rather than overlap.
  */
-export function labelFontPx(scale: number): number | null {
-  if (scale < LABEL_HIDE_BELOW) return null;
-  return Math.min(LABEL_ZOOMED_PX, Math.max(LABEL_PX, LABEL_PX * scale));
+export function labelsWithRoom(stops: { id: string; x: number }[], always: Set<string>): Set<string> {
+  const sorted = [...stops].sort((a, b) => a.x - b.x);
+  const shown = new Set(sorted.filter((s) => always.has(s.id)).map((s) => s.id));
+  const shownX = sorted.filter((s) => shown.has(s.id)).map((s) => s.x);
+  for (const s of sorted) {
+    if (shown.has(s.id)) continue;
+    if (shownX.some((x) => Math.abs(x - s.x) < LABEL_ROOM_PX)) continue;
+    shown.add(s.id);
+    shownX.push(s.x);
+  }
+  return shown;
 }
