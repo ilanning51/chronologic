@@ -2,27 +2,37 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
+import { newId } from '../model/ids';
+import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
 import { nextIndex, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
+  fitLeg,
   HOME,
   interpolate,
   MOTION_SCALE,
   panBy,
   screenToWorld,
+  worldToScreen,
   zoomAt,
 } from '../plane/camera';
 import type { Gesture } from '../plane/gestures';
 import type { Point } from '../plane/geometry';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
+import { placeClear } from '../plane/placement';
+import { snapToTracks } from '../plane/snap';
 import { tickMsFor } from '../plane/tick';
+import { SNAP_PX } from '../plane/world';
 import { type Store, useWorld } from '../store/store';
+import { Ghost } from './Ghost';
+import { NameField } from './NameField';
 import { Plane } from './Plane';
 import { Stop } from './Stop';
 import { StopEditor } from './StopEditor';
 import { Track } from './Track';
+import { Tray } from './Tray';
 
 export interface AppProps {
   store: Store;
@@ -84,6 +94,17 @@ export function App({ store, now = Date.now }: AppProps) {
   /** The pending stop under a finger, and how far its centre sits from where the finger landed. */
   const dragging = useRef<{ id: string; track: string; goal: boolean; grip: Point } | null>(null);
 
+  /** Whether the tray of tiles is open. */
+  const [trayOpen, setTrayOpen] = useState(false);
+  /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
+  const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; x: number; y: number; snapped: boolean } | null>(null);
+  /** The shape and snap of the tile drag in flight; a ref so the drop reads the latest move. */
+  const dragTile = useRef<{ shape: 'circle' | 'triangle'; snap: ReturnType<typeof snapToTracks> } | null>(null);
+  /** The stop or goal whose name field is open. */
+  const [naming, setNaming] = useState<{ id: string; kind: 'stop' | 'goal'; trackId: string } | null>(null);
+  const namingRef = useRef(naming);
+  namingRef.current = naming;
+
   useEffect(() => {
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener('resize', onResize);
@@ -133,7 +154,14 @@ export function App({ store, now = Date.now }: AppProps) {
   /** Starts dragging a pending stop; a dot is left alone for the whole drag. */
   const startDrag = (g: Extract<Gesture, { type: 'dragStart' }>) => {
     dragging.current = null;
+    dragTile.current = null;
     const target = g.target;
+    if (target.kind === 'tile') {
+      if (target.tile === 'line') return;
+      dragTile.current = { shape: target.tile, snap: null };
+      carryTile(g.at);
+      return;
+    }
     if (target.kind !== 'stop') return;
     const stop = store.getState().stops.find((s) => s.id === target.id);
     if (!stop || stop.done) return;
@@ -157,6 +185,57 @@ export function App({ store, now = Date.now }: AppProps) {
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now() });
   };
 
+  /** Carries a tile: the ghost follows the finger, or sits on the line it would join. */
+  const carryTile = (at: Point) => {
+    const d = dragTile.current;
+    if (!d) return;
+    const cam = cameraRef.current;
+    d.snap = snapToTracks(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale);
+    const shown = d.snap ? worldToScreen(cam, d.snap.at) : at;
+    setGhost({ shape: d.shape, x: shown.x, y: shown.y, snapped: d.snap !== null });
+  };
+
+  /** Dropping on a line adds a stop exactly there, so the track's total never changes. */
+  const dropTile = () => {
+    const d = dragTile.current;
+    dragTile.current = null;
+    setGhost(null);
+    if (!d?.snap) return;
+    const id = newId();
+    store.dispatch({
+      type: 'addStop',
+      trackId: d.snap.trackId,
+      id,
+      shape: d.shape,
+      leg: d.snap.leg,
+      x: d.snap.at.x,
+      y: d.snap.at.y,
+      now: now(),
+    });
+    setNaming({ id, kind: 'stop', trackId: d.snap.trackId });
+  };
+
+  /** A new line starts clear of everything at the centre of the view, its goal thirty days out. */
+  const newLine = () => {
+    const cam = cameraRef.current;
+    const state = store.getState();
+    const taken = [...state.stops, ...state.tracks.map((t) => t.origin)];
+    const origin = placeClear(screenToWorld(cam, { x: viewport.w / 2, y: viewport.h / 2 }), taken, 48 / cam.scale);
+    const id = newId();
+    const goalId = newId();
+    store.dispatch({ type: 'newTrack', id, goalId, title: '', origin, now: now() });
+    setNaming({ id: goalId, kind: 'goal', trackId: id });
+    const middle = { x: origin.x + DEFAULT_GOAL_SECONDS / 2, y: origin.y };
+    setCamera(centerOn(cam, middle, viewport, fitLeg(DEFAULT_GOAL_SECONDS, viewport.w, 1 / 2)));
+  };
+
+  /** Leaving a name unfinished keeps a bare stop, but a goal with no name is no line at all. */
+  const cancelNaming = () => {
+    const n = namingRef.current;
+    setNaming(null);
+    if (n?.kind === 'goal') store.dispatch({ type: 'delete', id: n.id, now: now() });
+  };
+
   const onGesture = (g: Gesture) => {
     switch (g.type) {
       case 'pan':
@@ -168,7 +247,13 @@ export function App({ store, now = Date.now }: AppProps) {
       case 'tap':
         if (g.target.kind === 'train') motionZoom(g.target.track);
         else if (g.target.kind === 'stop') complete(g.target.track, g.target.id);
-        else if (g.target.kind === 'paper') setEditing(null);
+        else if (g.target.kind === 'tile') {
+          if (g.target.tile === 'line') newLine();
+        } else if (g.target.kind === 'paper') {
+          setEditing(null);
+          setTrayOpen(false);
+          cancelNaming();
+        }
         return;
       case 'longPress':
         if (g.target.kind === 'stop') openEditor(g.target.track, g.target.id);
@@ -193,9 +278,15 @@ export function App({ store, now = Date.now }: AppProps) {
         startDrag(g);
         return;
       case 'dragMove':
-        dragTo(g.at);
+        if (g.target.kind === 'tile') carryTile(g.at);
+        else dragTo(g.at);
         return;
       case 'dragEnd':
+        if (g.target.kind === 'tile') {
+          carryTile(g.at);
+          dropTile();
+          return;
+        }
         dragTo(g.at);
         dragging.current = null;
         return;
@@ -250,12 +341,37 @@ export function App({ store, now = Date.now }: AppProps) {
       />
     ) : null;
 
+  const named = naming
+    ? views.flatMap((v) => v.stops).find((s) => s.id === naming.id)
+    : undefined;
+  const nameField = naming && (
+    <NameField
+      key={naming.id}
+      x={(named?.x ?? -100) + 24}
+      y={(named?.y ?? -100) - 16}
+      label={naming.kind === 'goal' ? 'Line name' : 'Stop title'}
+      onCommit={(title) => {
+        store.dispatch({ type: 'edit', id: naming.id, title });
+        setNaming(null);
+      }}
+      onCancel={cancelNaming}
+    />
+  );
+  const hud = (
+    <>
+      {editor}
+      <Tray open={trayOpen} onToggle={() => setTrayOpen((o) => !o)} />
+      {nameField}
+    </>
+  );
+
   return (
-    <Plane onGesture={onGesture} onZoom={onZoom} hud={editor}>
+    <Plane onGesture={onGesture} onZoom={onZoom} hud={hud}>
       {views.map((v) => (
         <Track key={v.id} view={v} />
       ))}
       {views.flatMap((v) => v.stops.map((s) => <Stop key={s.id} stop={s} track={v.id} color={v.color} />))}
+      {ghost && <Ghost {...ghost} />}
     </Plane>
   );
 }

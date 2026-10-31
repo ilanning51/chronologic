@@ -278,3 +278,86 @@ button:focus-visible {
   transform: scale(0.15);
   transition: transform 600ms linear;
 }
+
+/* The tray: three paper-on-ink tiles beside the plus, dragged onto a line or tapped. */
+.hud-tray {
+  position: absolute;
+  right: calc(2.5rem + var(--add) + 0.75rem);
+  bottom: 1rem;
+  height: var(--add);
+  padding: 0 0.375rem;
+  border-radius: calc(var(--add) / 2);
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.tile {
+  width: var(--hit);
+  height: var(--hit);
+  padding: 0;
+  border: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.tile .shape {
+  display: block;
+  background: var(--paper);
+}
+
+.tile:focus-visible .shape,
+.tile:active .shape {
+  background: var(--track-color);
+}
+
+/* The shape carried from the tray, centered on its screen point. Muted until it sits on a line. */
+.ghost {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.ghost .shape {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  background: var(--muted);
+  transform: translate(-50%, -50%);
+}
+
+.ghost.snapped .shape {
+  background: var(--ink);
+}
+
+/* The name field: the pill, set beside the shape it names. */
+.name-field {
+  position: absolute;
+  height: var(--chip);
+  padding: 0 0.875rem;
+  border-radius: calc(var(--chip) / 2);
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+}
+
+.name-field input {
+  width: 9rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--paper);
+  caret-color: var(--paper);
+  font: inherit;
+  font-size: 1.0625rem;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}

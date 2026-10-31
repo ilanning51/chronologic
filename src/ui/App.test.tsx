@@ -2,6 +2,7 @@ import uiCss from '../styles/ui.css?raw';
 import tokensCss from '../styles/tokens.css?raw';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
 import { trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import type { World } from '../model/types';
@@ -303,4 +304,91 @@ test('a dot does not move', () => {
   act(() => dragStop(/^Dentist/, 50, 30));
   expect(store.getState()).toBe(before);
   expect(stopNamed(store, 'dentist')).toMatchObject({ x: 1000, y: 0 });
+});
+
+/** Opens the tray with the plus. */
+const openTray = () => act(() => screen.getByRole('button', { name: 'Add' }).click());
+
+/** Drags a tile to a screen point and lets go. */
+function dragTile(name: string, to: { x: number; y: number }) {
+  const tile = screen.getByRole('button', { name });
+  fireEvent.pointerDown(tile, { pointerId: 1, clientX: 900, clientY: 740 });
+  fireEvent.pointerMove(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+  fireEvent.pointerUp(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+}
+
+/** The screen point halfway between Dentist and Wristband, a few pixels off the line. */
+function midLeg(dy = 6) {
+  const a = screen.getByRole('button', { name: /^Dentist/ });
+  const b = screen.getByRole('button', { name: /^Wristband/ });
+  return {
+    x: (parseFloat(a.style.left) + parseFloat(b.style.left)) / 2,
+    y: parseFloat(a.style.top) + dy,
+  };
+}
+
+test('dragging a circle from the tray onto a track adds a stop there and opens the name field', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const target = midLeg();
+  act(() => dragTile('Step', target));
+  const state = store.getState();
+  expect(state.tracks[0].stops).toHaveLength(3);
+  const added = state.stops.find((s) => s.id === state.tracks[0].stops[1])!;
+  expect(added).toMatchObject({ shape: 'circle', title: '' });
+  expect(added.x).toBeCloseTo(2000, 3);
+  expect(added.y).toBeCloseTo(0, 3);
+  const field = screen.getByRole('textbox', { name: 'Stop title' });
+  act(() => {
+    fireEvent.change(field, { target: { value: 'Order ADS1298' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+  });
+  expect(store.getState().stops.find((s) => s.id === added.id)?.title).toBe('Order ADS1298');
+  expect(screen.queryByRole('textbox', { name: 'Stop title' })).not.toBeInTheDocument();
+});
+
+test('dropping a tile on empty paper adds nothing', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const before = store.getState();
+  const at = midLeg(300);
+  act(() => dragTile('Sub-goal', at));
+  expect(store.getState()).toBe(before);
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+});
+
+test('the new line tile makes a track with a goal thirty days out and names it', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  const { tracks, stops } = store.getState();
+  expect(tracks).toHaveLength(2);
+  const made = tracks[1];
+  const goal = stops.find((s) => s.id === made.stops[0])!;
+  expect(goal.x - made.origin.x).toBe(DEFAULT_GOAL_SECONDS);
+  expect(goal.y).toBe(made.origin.y);
+  const field = screen.getByRole('textbox', { name: 'Line name' });
+  act(() => {
+    fireEvent.change(field, { target: { value: 'Thesis' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+  });
+  expect(store.getState().stops.find((s) => s.id === goal.id)?.title).toBe('Thesis');
+  // The tray stays open.
+  expect(screen.getByRole('button', { name: 'Step' })).toBeInTheDocument();
+});
+
+test('Escape on a new goal name removes the track', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  expect(store.getState().tracks).toHaveLength(2);
+  act(() => {
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Line name' }), { key: 'Escape' });
+  });
+  expect(store.getState().tracks).toHaveLength(1);
+  expect(screen.queryByRole('textbox', { name: 'Line name' })).not.toBeInTheDocument();
 });
