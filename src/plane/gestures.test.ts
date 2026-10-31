@@ -13,9 +13,11 @@ function rig() {
 }
 
 const paper: Target = { kind: 'paper' };
-const stationA: Target = { kind: 'station', id: 'a' };
-const bulletDeep: Target = { kind: 'bullet', line: 'deep' };
-const clock: Target = { kind: 'clock' };
+const stopA: Target = { kind: 'stop', id: 'a', track: 't', goal: false };
+const tileCircle: Target = { kind: 'tile', tile: 'circle' };
+const holdDelete: Target = { kind: 'hold', id: 'delete' };
+const bubble: Target = { kind: 'bubble', track: 't' };
+const train: Target = { kind: 'train', track: 't' };
 const hud: Target = { kind: 'hud' };
 
 test('the thresholds are the spec values', () => {
@@ -43,85 +45,85 @@ test('a short press on paper is a tap, a longer move is a pan', () => {
   ]);
 });
 
-test('a station becomes a drag only past the slop', () => {
+test('a stop becomes a drag only past the slop', () => {
   const { r, emit, gestures } = rig();
-  r.down({ id: 1, x: 100, y: 100, t: 0 }, stationA);
+  r.down({ id: 1, x: 100, y: 100, t: 0 }, stopA);
   r.move({ id: 1, x: 109, y: 100, t: 10 });
   expect(emit).not.toHaveBeenCalled();
   r.move({ id: 1, x: 111, y: 100, t: 20 });
   r.up({ id: 1, x: 120, y: 100, t: 30 });
   expect(gestures()).toEqual([
-    { type: 'dragStart', target: stationA, at: { x: 100, y: 100 } },
-    { type: 'dragMove', target: stationA, at: { x: 111, y: 100 } },
-    { type: 'dragEnd', target: stationA, at: { x: 120, y: 100 } },
+    { type: 'dragStart', target: stopA, at: { x: 100, y: 100 } },
+    { type: 'dragMove', target: stopA, at: { x: 111, y: 100 } },
+    { type: 'dragEnd', target: stopA, at: { x: 120, y: 100 } },
   ]);
 });
 
-test('a quick release on a station is a tap', () => {
+test('a quick release on a stop is a tap', () => {
   const { r, gestures } = rig();
-  r.down({ id: 1, x: 5, y: 5, t: 0 }, stationA);
+  r.down({ id: 1, x: 5, y: 5, t: 0 }, stopA);
   r.move({ id: 1, x: 7, y: 5, t: 50 });
   r.up({ id: 1, x: 7, y: 5, t: 150 });
-  expect(gestures()).toEqual([{ type: 'tap', target: stationA, at: { x: 5, y: 5 } }]);
+  expect(gestures()).toEqual([{ type: 'tap', target: stopA, at: { x: 5, y: 5 } }]);
 });
 
-test('holding a station fires a long press and swallows the tap', () => {
+test('holding a stop fires a long press and swallows the tap', () => {
   const { r, emit, gestures } = rig();
-  r.down({ id: 1, x: 5, y: 5, t: 0 }, stationA);
+  r.down({ id: 1, x: 5, y: 5, t: 0 }, stopA);
   r.tick(499);
   expect(emit).not.toHaveBeenCalled();
   r.tick(500);
-  expect(gestures()).toEqual([{ type: 'longPress', target: stationA, at: { x: 5, y: 5 } }]);
+  expect(gestures()).toEqual([{ type: 'longPress', target: stopA, at: { x: 5, y: 5 } }]);
   r.tick(700);
   r.up({ id: 1, x: 5, y: 5, t: 800 });
   expect(gestures()).toHaveLength(1);
 });
 
-test('a long press does not fire once the pointer has moved, and a bullet never long presses', () => {
+test('a long press does not fire once the pointer has moved, and a tile never long presses', () => {
   const { r, types, emit } = rig();
-  r.down({ id: 1, x: 0, y: 0, t: 0 }, stationA);
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, stopA);
   r.move({ id: 1, x: 20, y: 0, t: 10 });
   r.tick(600);
   expect(types()).toEqual(['dragStart', 'dragMove']);
   r.up({ id: 1, x: 20, y: 0, t: 620 });
 
   emit.mockClear();
-  r.down({ id: 2, x: 0, y: 0, t: 1000 }, bulletDeep);
+  r.down({ id: 2, x: 0, y: 0, t: 1000 }, tileCircle);
   r.tick(1600);
   expect(emit).not.toHaveBeenCalled();
   r.up({ id: 2, x: 0, y: 0, t: 1700 });
   expect(types()).toEqual(['tap']);
 });
 
-test('the clock taps on a quick release and completes on a hold', () => {
+test('the hold target taps on a quick release and completes on a hold', () => {
   const { r, emit, gestures, types } = rig();
-  r.down({ id: 1, x: 0, y: 0, t: 0 }, clock);
-  expect(gestures()).toEqual([{ type: 'holdStart', target: clock }]);
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, holdDelete);
+  expect(gestures()).toEqual([{ type: 'holdStart', target: holdDelete }]);
   r.up({ id: 1, x: 0, y: 0, t: 200 });
   expect(gestures().slice(1)).toEqual([
-    { type: 'tap', target: clock, at: { x: 0, y: 0 } },
-    { type: 'holdEnd', target: clock, completed: false },
+    { type: 'tap', target: holdDelete, at: { x: 0, y: 0 } },
+    { type: 'holdEnd', target: holdDelete, completed: false },
   ]);
 
   emit.mockClear();
-  r.down({ id: 1, x: 0, y: 0, t: 1000 }, clock);
+  r.down({ id: 1, x: 0, y: 0, t: 1000 }, holdDelete);
   r.tick(1599);
   expect(types()).toEqual(['holdStart']);
   r.tick(1600);
-  expect(gestures()[1]).toEqual({ type: 'holdEnd', target: clock, completed: true });
+  expect(gestures()[1]).toEqual({ type: 'holdEnd', target: holdDelete, completed: true });
   r.tick(1700);
   r.up({ id: 1, x: 0, y: 0, t: 1800 });
   expect(types()).toEqual(['holdStart', 'holdEnd']);
 });
 
-test('sliding off the clock cancels the hold', () => {
+test('sliding off the hold target cancels the hold', () => {
   const { r, gestures } = rig();
-  r.down({ id: 1, x: 0, y: 0, t: 0 }, clock);
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, holdDelete);
   r.move({ id: 1, x: 30, y: 0, t: 100 });
   r.up({ id: 1, x: 30, y: 0, t: 200 });
   expect(gestures()).toEqual([
-    { type: 'holdStart', target: clock },
-    { type: 'holdEnd', target: clock, completed: false },
+    { type: 'holdStart', target: holdDelete },
+    { type: 'holdEnd', target: holdDelete, completed: false },
   ]);
 });
 
@@ -150,7 +152,7 @@ test('losing one of two fingers continues as a pan with no jump', () => {
 
 test('a second finger on a pending tap makes it a pinch, not a tap', () => {
   const { r, types } = rig();
-  r.down({ id: 1, x: 0, y: 0, t: 0 }, stationA);
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, stopA);
   r.down({ id: 2, x: 100, y: 0, t: 10 }, paper);
   r.up({ id: 2, x: 100, y: 0, t: 20 });
   r.up({ id: 1, x: 0, y: 0, t: 30 });
@@ -169,33 +171,33 @@ test('a third pointer is ignored', () => {
   expect(types()).toEqual(['pinch']);
 });
 
-test('a drag from a bullet is reported with the bullet as its target', () => {
+test('a drag from a tile is reported with the bullet as its target', () => {
   const { r, gestures } = rig();
-  r.down({ id: 1, x: 40, y: 300, t: 0 }, bulletDeep);
+  r.down({ id: 1, x: 40, y: 300, t: 0 }, tileCircle);
   r.move({ id: 1, x: 80, y: 280, t: 10 });
   r.up({ id: 1, x: 90, y: 270, t: 20 });
   expect(gestures()).toEqual([
-    { type: 'dragStart', target: bulletDeep, at: { x: 40, y: 300 } },
-    { type: 'dragMove', target: bulletDeep, at: { x: 80, y: 280 } },
-    { type: 'dragEnd', target: bulletDeep, at: { x: 90, y: 270 } },
+    { type: 'dragStart', target: tileCircle, at: { x: 40, y: 300 } },
+    { type: 'dragMove', target: tileCircle, at: { x: 80, y: 280 } },
+    { type: 'dragEnd', target: tileCircle, at: { x: 90, y: 270 } },
   ]);
 });
 
 test('cancel ends a drag at its last position and a hold without completing', () => {
   const { r, emit, gestures } = rig();
-  r.down({ id: 1, x: 0, y: 0, t: 0 }, stationA);
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, stopA);
   r.move({ id: 1, x: 20, y: 0, t: 10 });
   r.cancel(1);
-  expect(gestures()[2]).toEqual({ type: 'dragEnd', target: stationA, at: { x: 20, y: 0 } });
+  expect(gestures()[2]).toEqual({ type: 'dragEnd', target: stopA, at: { x: 20, y: 0 } });
   r.up({ id: 1, x: 20, y: 0, t: 20 });
   expect(gestures()).toHaveLength(3);
 
   emit.mockClear();
-  r.down({ id: 2, x: 0, y: 0, t: 100 }, clock);
+  r.down({ id: 2, x: 0, y: 0, t: 100 }, holdDelete);
   r.cancel(2);
   expect(gestures()).toEqual([
-    { type: 'holdStart', target: clock },
-    { type: 'holdEnd', target: clock, completed: false },
+    { type: 'holdStart', target: holdDelete },
+    { type: 'holdEnd', target: holdDelete, completed: false },
   ]);
 });
 
@@ -208,5 +210,22 @@ test('a tap on the hud is reported and a drag on it does nothing', () => {
   r.down({ id: 1, x: 0, y: 0, t: 100 }, hud);
   r.move({ id: 1, x: 50, y: 50, t: 110 });
   r.up({ id: 1, x: 50, y: 50, t: 120 });
+  expect(emit).not.toHaveBeenCalled();
+});
+
+test('holding a bubble fires a long press with the bubble as its target', () => {
+  const { r, gestures } = rig();
+  r.down({ id: 1, x: 5, y: 5, t: 0 }, bubble);
+  r.tick(500);
+  expect(gestures()).toEqual([{ type: 'longPress', target: bubble, at: { x: 5, y: 5 } }]);
+});
+
+test('a drag starting on a bubble or a train emits nothing', () => {
+  const { r, emit } = rig();
+  for (const target of [bubble, train]) {
+    r.down({ id: 1, x: 0, y: 0, t: 0 }, target);
+    r.move({ id: 1, x: 50, y: 50, t: 10 });
+    r.up({ id: 1, x: 50, y: 50, t: 20 });
+  }
   expect(emit).not.toHaveBeenCalled();
 });

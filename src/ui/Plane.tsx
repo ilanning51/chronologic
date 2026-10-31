@@ -23,12 +23,23 @@ function targetOf(el: EventTarget | null): Target {
   const hit = el instanceof Element ? el.closest<HTMLElement>('[data-target]') : null;
   if (!hit) return { kind: 'paper' };
   switch (hit.dataset.target) {
-    case 'station':
-      return { kind: 'station', id: hit.dataset.id ?? '' };
-    case 'bullet':
-      return { kind: 'bullet', line: hit.dataset.line ?? '' };
-    case 'clock':
-      return { kind: 'clock' };
+    case 'stop':
+      return {
+        kind: 'stop',
+        id: hit.dataset.id ?? '',
+        track: hit.dataset.track ?? '',
+        goal: hit.dataset.goal !== undefined,
+      };
+    case 'train':
+      return { kind: 'train', track: hit.dataset.track ?? '' };
+    case 'bubble':
+      return { kind: 'bubble', track: hit.dataset.track ?? '' };
+    case 'tile': {
+      const tile = hit.dataset.tile;
+      return { kind: 'tile', tile: tile === 'triangle' || tile === 'line' ? tile : 'circle' };
+    }
+    case 'hold':
+      return { kind: 'hold', id: hit.dataset.id ?? '' };
     default:
       return { kind: 'hud' };
   }

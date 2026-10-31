@@ -3,9 +3,11 @@ import { distance, type Point } from './geometry';
 /** What a pointer went down on. Read from the DOM by the plane, never by this module. */
 export type Target =
   | { kind: 'paper' }
-  | { kind: 'station'; id: string }
-  | { kind: 'bullet'; line: string }
-  | { kind: 'clock' }
+  | { kind: 'stop'; id: string; track: string; goal: boolean }
+  | { kind: 'train'; track: string }
+  | { kind: 'bubble'; track: string }
+  | { kind: 'tile'; tile: 'circle' | 'triangle' | 'line' }
+  | { kind: 'hold'; id: string }
   | { kind: 'hud' };
 
 /** One pointer event, in screen pixels and milliseconds. */
@@ -35,10 +37,10 @@ export const HOLD_MS = 600;
 type Mode =
   | 'pending' // down, not yet moved past the slop
   | 'pan' // paper, moving
-  | 'drag' // station or bullet, moving
-  | 'hold' // clock, waiting for HOLD_MS
-  | 'held' // clock, hold completed
-  | 'pressed' // station, long press fired
+  | 'drag' // stop or tile, moving
+  | 'hold' // hold target, waiting for HOLD_MS
+  | 'held' // hold target, hold completed
+  | 'pressed' // stop or bubble, long press fired
   | 'pinch' // one of two pointers
   | 'dead'; // nothing more will come of this pointer
 
@@ -78,7 +80,7 @@ export class Recognizer {
       return;
     }
 
-    if (target.kind === 'clock') {
+    if (target.kind === 'hold') {
       tracked.mode = 'hold';
       this.emit({ type: 'holdStart', target });
     }
@@ -113,7 +115,7 @@ export class Recognizer {
           t.mode = 'pan';
           this.emit({ type: 'pan', dx: p.x - t.anchor.x, dy: p.y - t.anchor.y });
           t.anchor = p;
-        } else if (t.target.kind === 'station' || t.target.kind === 'bullet') {
+        } else if (t.target.kind === 'stop' || t.target.kind === 'tile') {
           t.mode = 'drag';
           this.emit({ type: 'dragStart', target: t.target, at: t.start });
           this.emit({ type: 'dragMove', target: t.target, at: p });
@@ -180,7 +182,7 @@ export class Recognizer {
   /** Lets time pass: long presses and completed holds fire from here. */
   tick(now: number): void {
     for (const t of this.pointers.values()) {
-      if (t.mode === 'pending' && t.target.kind === 'station' && now - t.startT >= LONG_PRESS_MS) {
+      if (t.mode === 'pending' && (t.target.kind === 'stop' || t.target.kind === 'bubble') && now - t.startT >= LONG_PRESS_MS) {
         t.mode = 'pressed';
         this.emit({ type: 'longPress', target: t.target, at: t.start });
       } else if (t.mode === 'hold' && now - t.startT >= HOLD_MS) {
