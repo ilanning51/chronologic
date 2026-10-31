@@ -450,6 +450,7 @@ test('a track whose goal is off screen shows a bubble naming it, and a tap cycle
   render(<App store={store} now={() => 500_000} />);
   const bubble = document.querySelector('[data-target="bubble"]')!;
   expect(bubble).toHaveAccessibleName(/^Wristband, goal/);
+  expect((bubble as HTMLElement).style.transform).toContain('-100%');
   act(() => tapOn(bubble));
   expect(store.getState().tracks[0].target).toBe('next');
   expect(document.querySelector('[data-target="bubble"]')).not.toBeInTheDocument();

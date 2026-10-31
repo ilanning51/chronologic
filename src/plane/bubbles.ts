@@ -3,12 +3,17 @@ import type { Point } from './geometry';
 /** How far in from the window edge a bubble sits, so it never touches the glass. */
 export const BUBBLE_INSET_PX = 16;
 
+/** Where a bubble sits, and which inset edge it hangs from. */
+export interface BubbleSpot extends Point {
+  side: 'left' | 'right' | 'top' | 'bottom';
+}
+
 /**
  * Where a bubble for an off-screen target sits: the point where the ray from the viewport
- * centre to the target crosses the edge, pulled in by the inset. Null when the target is
+ * centre to the target crosses the edge, pulled in by the inset, and the edge it crossed. Null when the target is
  * already on screen.
  */
-export function bubbleFor(target: Point, viewport: { w: number; h: number }): Point | null {
+export function bubbleFor(target: Point, viewport: { w: number; h: number }): BubbleSpot | null {
   if (target.x >= 0 && target.x <= viewport.w && target.y >= 0 && target.y <= viewport.h) return null;
   const cx = viewport.w / 2;
   const cy = viewport.h / 2;
@@ -18,5 +23,6 @@ export function bubbleFor(target: Point, viewport: { w: number; h: number }): Po
   const tx = dx === 0 ? Infinity : (dx > 0 ? viewport.w - BUBBLE_INSET_PX - cx : BUBBLE_INSET_PX - cx) / dx;
   const ty = dy === 0 ? Infinity : (dy > 0 ? viewport.h - BUBBLE_INSET_PX - cy : BUBBLE_INSET_PX - cy) / dy;
   const t = Math.min(tx, ty);
-  return { x: cx + t * dx, y: cy + t * dy };
+  const side = tx <= ty ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'bottom' : 'top';
+  return { x: cx + t * dx, y: cy + t * dy, side };
 }

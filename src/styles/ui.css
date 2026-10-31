@@ -377,7 +377,6 @@ button:focus-visible {
   gap: 0.5rem;
   outline: none;
   cursor: pointer;
-  transform: translate(-50%, -50%);
 }
 
 .bubble .shape {
