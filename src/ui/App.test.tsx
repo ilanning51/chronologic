@@ -31,6 +31,9 @@ test('a done stop is a dot and a finished track is muted', () => {
   render(<App store={createStore(world)} now={() => 500_000} />);
   const dentist = screen.getByRole('button', { name: /^Dentist, step, medium, done/ });
   expect(dentist.querySelector('.shape.dot')).toBeInTheDocument();
+  // The whole track dims, dots and all.
+  expect(dentist).toHaveClass('finished');
+  expect(/\.stop\.finished \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/background:\s*var\(--muted\)/);
   const lines = document.querySelectorAll('svg.track line');
   expect(lines.length).toBeGreaterThan(0);
   for (const line of lines) expect((line as SVGLineElement).style.stroke).toBe('var(--muted)');
@@ -596,4 +599,43 @@ test('a rolling train has a 44 px hit target that paints nothing; a parked one h
 test('the editor text buttons are a full tap tall', () => {
   const rule = /\.pill-text\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
   expect(rule).toMatch(/height:\s*var\(--tap\)/);
+});
+
+/** Taps the train, whatever it is doing. */
+const tapTrain = () =>
+  act(() => {
+    fireEvent.pointerDown(train(), { pointerId: 1, clientX: 500, clientY: 400 });
+    fireEvent.pointerUp(train(), { pointerId: 1, clientX: 500, clientY: 400 });
+  });
+
+test('after the hand pans, the next tap on the train follows it again instead of flying back', () => {
+  reduceMotion();
+  render(<App store={createStore(running())} now={() => 980_000} />);
+  const opening = ahead();
+  tapTrain();
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 160, clientY: 100 });
+    fireEvent.pointerUp(paper(), { pointerId: 1, clientX: 160, clientY: 100 });
+  });
+  tapTrain();
+  expect(ahead() / opening).toBeCloseTo(MAX_SCALE / (1 / 3), 3);
+  expect(Math.abs(trainX() - window.innerWidth / 2)).toBeLessThan(1);
+});
+
+test('after the wheel zooms, the next tap on the train follows it again instead of flying back', () => {
+  reduceMotion();
+  render(<App store={createStore(running())} now={() => 980_000} />);
+  const opening = ahead();
+  tapTrain();
+  act(() => {
+    fireEvent.wheel(paper(), { deltaY: 100, clientX: 100, clientY: 100 });
+  });
+  tapTrain();
+  expect(ahead() / opening).toBeCloseTo(MAX_SCALE / (1 / 3), 3);
+});
+
+test('no v1 leftovers remain in the stylesheets', () => {
+  expect(uiCss).not.toMatch(/\.hud-capture|\.chip\b|bullets/);
+  expect(tokensCss).not.toMatch(/--train-[lw]/);
 });

@@ -128,7 +128,11 @@ export function App({ store, now = Date.now }: AppProps) {
     setCamera(openingCamera(store.getState(), now(), { w: window.innerWidth, h: window.innerHeight }));
   }, []);
 
-  const onZoom = useCallback((p: Point, factor: number) => setCamera((c) => zoomAt(c, p, factor)), []);
+  /** The hand moving the camera ends any motion zoom: the next tap on a train follows it afresh. */
+  const onZoom = useCallback((p: Point, factor: number) => {
+    stash.current = null;
+    setCamera((c) => zoomAt(c, p, factor));
+  }, []);
 
   /** The audio context is made on the first gesture that needs it, as browsers require. */
   const sound = (): AudioContext | null => {
@@ -263,9 +267,11 @@ export function App({ store, now = Date.now }: AppProps) {
   const onGesture = (g: Gesture) => {
     switch (g.type) {
       case 'pan':
+        stash.current = null;
         setCamera((c) => panBy(c, g.dx, g.dy));
         return;
       case 'pinch':
+        stash.current = null;
         setCamera((c) => panBy(zoomAt(c, g.center, g.factor), g.dx, g.dy));
         return;
       case 'tap':
@@ -392,6 +398,7 @@ export function App({ store, now = Date.now }: AppProps) {
       key={naming.id}
       x={(named?.x ?? -100) + 24}
       y={(named?.y ?? -100) - 16}
+      viewport={viewport}
       label={naming.kind === 'goal' ? 'Line name' : 'Stop title'}
       onCommit={(title) => {
         const id = naming.id;
@@ -426,7 +433,7 @@ export function App({ store, now = Date.now }: AppProps) {
       {views.map((v) => (
         <Track key={v.id} view={v} />
       ))}
-      {views.flatMap((v) => v.stops.map((s) => <Stop key={s.id} stop={s} track={v.id} color={v.color} />))}
+      {views.flatMap((v) => v.stops.map((s) => <Stop key={s.id} stop={s} track={v.id} color={v.color} finished={v.finished} />))}
       {ghost && <Ghost {...ghost} />}
     </Plane>
   );

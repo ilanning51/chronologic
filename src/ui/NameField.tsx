@@ -1,8 +1,10 @@
-import { type KeyboardEvent, useEffect, useRef } from 'react';
+import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 interface NameFieldProps {
   x: number;
   y: number;
+  /** The window, which the field always stays wholly inside. */
+  viewport: { w: number; h: number };
   label: string;
   onCommit: (title: string) => void;
   onCancel: () => void;
@@ -13,8 +15,17 @@ interface NameFieldProps {
  * Escape cancels, and walking away commits. It acts once, whichever of the three comes first.
  * Walking away includes the field being taken off the screen: a touchscreen may replace or
  * remove it before the browser ever blurs it, and what was typed is kept all the same.
+ * It sits at (x, y) unless that would put any of it off the window; then it is pulled back on.
  */
-export function NameField({ x, y, label, onCommit, onCancel }: NameFieldProps) {
+export function NameField({ x, y, viewport, label, onCommit, onCancel }: NameFieldProps) {
+  const box = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (el && (el.offsetWidth !== size.w || el.offsetHeight !== size.h)) setSize({ w: el.offsetWidth, h: el.offsetHeight });
+  });
+  const left = Math.max(0, Math.min(x, viewport.w - size.w));
+  const top = Math.max(0, Math.min(y, viewport.h - size.h));
   const done = useRef(false);
   const input = useRef<HTMLInputElement>(null);
   const latest = useRef(onCommit);
@@ -45,7 +56,7 @@ export function NameField({ x, y, label, onCommit, onCancel }: NameFieldProps) {
     }
   };
   return (
-    <div className="name-field" data-target="hud" style={{ left: x, top: y }}>
+    <div ref={box} className="name-field" data-target="hud" style={{ left, top }}>
       <input
         ref={input}
         type="text"

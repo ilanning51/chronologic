@@ -15,8 +15,6 @@
   /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
   --track: 10px;
   --dot: 10px;
-  --train-l: 30px;
-  --train-w: 20px;
   --label: 13px;
   /* The least hit target for anything pressable, in CSS px. */
   --tap: 44px;
