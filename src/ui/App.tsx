@@ -4,7 +4,7 @@ import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { newId } from '../model/ids';
 import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
-import { nextIndex, trainState } from '../model/train';
+import { nextIndex, targetIndex, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
@@ -19,6 +19,7 @@ import {
 } from '../plane/camera';
 import type { Gesture } from '../plane/gestures';
 import type { Point } from '../plane/geometry';
+import { bubbleFor } from '../plane/bubbles';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
 import { placeClear } from '../plane/placement';
@@ -26,6 +27,7 @@ import { snapToTracks } from '../plane/snap';
 import { tickMsFor } from '../plane/tick';
 import { SNAP_PX } from '../plane/world';
 import { type Store, useWorld } from '../store/store';
+import { Bubble } from './Bubble';
 import { Ghost } from './Ghost';
 import { NameField } from './NameField';
 import { Plane } from './Plane';
@@ -247,6 +249,7 @@ export function App({ store, now = Date.now }: AppProps) {
       case 'tap':
         if (g.target.kind === 'train') motionZoom(g.target.track);
         else if (g.target.kind === 'stop') complete(g.target.track, g.target.id);
+        else if (g.target.kind === 'bubble') store.dispatch({ type: 'cycleTarget', trackId: g.target.track });
         else if (g.target.kind === 'tile') {
           if (g.target.tile === 'line') newLine();
         } else if (g.target.kind === 'paper') {
@@ -257,6 +260,7 @@ export function App({ store, now = Date.now }: AppProps) {
         return;
       case 'longPress':
         if (g.target.kind === 'stop') openEditor(g.target.track, g.target.id);
+        else if (g.target.kind === 'bubble') flyToTarget(g.target.track);
         return;
       case 'holdStart':
         if (g.target.kind === 'hold' && g.target.id === 'delete') setHolding(true);
@@ -293,6 +297,19 @@ export function App({ store, now = Date.now }: AppProps) {
       default:
         return; // the other gestures arrive with the tasks that use them
     }
+  };
+
+  /** A long press on a bubble flies to the stop it points at, keeping the current scale. */
+  const flyToTarget = (trackId: string) => {
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
+    if (!track) return;
+    const stops = new Map(state.stops.map((s) => [s.id, s]));
+    const i = targetIndex(track, stops);
+    const target = i === null ? undefined : stops.get(track.stops[i]);
+    if (!target) return;
+    const c = cameraRef.current;
+    fly(c, centerOn(c, target, viewport, c.scale));
   };
 
   /** The first tap on a train flies in to follow it; the next flies back to where you were. */
@@ -360,8 +377,19 @@ export function App({ store, now = Date.now }: AppProps) {
       onCancel={cancelNaming}
     />
   );
+  const bubbles = views.flatMap((v) => {
+    if (!v.anyInView) return [];
+    const track = world.tracks.find((t) => t.id === v.id);
+    const i = track ? targetIndex(track, byId) : null;
+    const target = track && i !== null ? byId.get(track.stops[i]) : undefined;
+    if (!track || !target) return [];
+    // The stop may be off the grown viewport and so missing from the view: use its world point.
+    const at = bubbleFor(worldToScreen(camera, target), viewport);
+    return at ? [<Bubble key={v.id} track={v.id} color={v.color} shape={target.shape} title={target.title} {...at} />] : [];
+  });
   const hud = (
     <>
+      {bubbles}
       {editor}
       <Tray open={trayOpen} onToggle={() => setTrayOpen((o) => !o)} />
       {nameField}

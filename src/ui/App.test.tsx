@@ -437,3 +437,33 @@ test('delete on the goal needs a completed hold; a short hold does nothing', () 
   });
   expect(store.getState().tracks).toEqual([]);
 });
+
+/** The goal moved far right; with the train mid-leg to Dentist, the opening camera leaves it off screen. */
+function farGoal() {
+  const world = running();
+  world.stops[1].x = 1e6;
+  return world;
+}
+
+test('a track whose goal is off screen shows a bubble naming it, and a tap cycles it to the next stop', () => {
+  const store = createStore(farGoal());
+  render(<App store={store} now={() => 500_000} />);
+  const bubble = document.querySelector('[data-target="bubble"]')!;
+  expect(bubble).toHaveAccessibleName(/^Wristband, goal/);
+  act(() => tapOn(bubble));
+  expect(store.getState().tracks[0].target).toBe('next');
+  expect(document.querySelector('[data-target="bubble"]')).not.toBeInTheDocument();
+});
+
+test('a long press on a bubble flies to its target', () => {
+  vi.useFakeTimers();
+  reduceMotion();
+  render(<App store={createStore(farGoal())} now={() => 500_000} />);
+  const bubble = document.querySelector('[data-target="bubble"]')!;
+  fireEvent.pointerDown(bubble, { pointerId: 1, clientX: 500, clientY: 400 });
+  act(() => {
+    vi.advanceTimersByTime(600);
+  });
+  fireEvent.pointerUp(bubble, { pointerId: 1, clientX: 500, clientY: 400 });
+  expect(Math.abs(left(/^Wristband/) - window.innerWidth / 2)).toBeLessThan(1);
+});

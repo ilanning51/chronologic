@@ -361,3 +361,31 @@ button:focus-visible {
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* The edge bubble: a paper pill on the window edge, the target's shape in the track color. */
+.bubble {
+  position: absolute;
+  min-height: var(--tap);
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: calc(var(--tap) / 2);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  outline: none;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+
+.bubble .shape {
+  display: block;
+  flex: none;
+  background: var(--track-color);
+}
+
+.bubble .title {
+  white-space: nowrap;
+}
