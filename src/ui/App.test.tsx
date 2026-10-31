@@ -244,3 +244,17 @@ test('completing a station plays the stretch kind tone', () => {
     vi.unstubAllGlobals();
   }
 });
+
+test('dragging a station on the line suspends the train and terminus ease until the finger lifts', () => {
+  const store = createStore(running(['a', 'b']));
+  render(<App store={store} now={() => 60_000} />);
+  const line = () => document.querySelector('svg.line');
+  const button = screen.getByRole('button', { name: 'Dentist, small, next' });
+
+  expect(line()).not.toHaveClass('dragging');
+  fireEvent.pointerDown(button, { pointerId: 1, clientX: 100, clientY: 100 });
+  fireEvent.pointerMove(button, { pointerId: 1, clientX: 150, clientY: 130 });
+  expect(line()).toHaveClass('dragging');
+  fireEvent.pointerUp(button, { pointerId: 1, clientX: 150, clientY: 130 });
+  expect(line()).not.toHaveClass('dragging');
+});

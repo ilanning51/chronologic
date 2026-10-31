@@ -13,10 +13,12 @@ interface LineProps {
   nextIndex: number | null;
   /** Whether to draw the terminus bar after the last point. */
   terminus: boolean;
+  /** Whether a station is under a finger; the train and terminus then snap instead of easing. */
+  dragging?: boolean;
 }
 
 /** The colored line: a routed polyline, the terminus bar that is the only fit signal, and the train. */
-export function Line({ points, tail, color, nextIndex, terminus }: LineProps) {
+export function Line({ points, tail, color, nextIndex, terminus, dragging = false }: LineProps) {
   if (points.length === 0) return null;
   const route = routeThrough(points);
   const end = terminusOf(route);
@@ -25,7 +27,7 @@ export function Line({ points, tail, color, nextIndex, terminus }: LineProps) {
   const train = nextIndex !== null && !tail ? trainOn(route, nextIndex) : null;
 
   return (
-    <svg className="line" aria-hidden="true" width="1" height="1">
+    <svg className={dragging ? 'line dragging' : 'line'} aria-hidden="true" width="1" height="1">
       <polyline
         points={path}
         fill="none"

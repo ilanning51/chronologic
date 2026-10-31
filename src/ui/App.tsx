@@ -62,6 +62,8 @@ export function App({ store, now = Date.now }: AppProps) {
   const audio = useRef<AudioContext | null>(null);
   /** Where the finger took hold of a station, so a move never jumps to the finger. */
   const grip = useRef<Point>({ x: 0, y: 0 });
+  /** Whether a station is under a finger, so the line snaps to it instead of easing. */
+  const [dragging, setDragging] = useState(false);
 
   const stretch = world.stretch;
   const nowMs = now();
@@ -170,6 +172,7 @@ export function App({ store, now = Date.now }: AppProps) {
           if (!station) return;
           const under = screenToWorld(cam, g.at);
           grip.current = { x: station.x - under.x, y: station.y - under.y };
+          setDragging(true);
         }
         return;
       }
@@ -213,6 +216,7 @@ export function App({ store, now = Date.now }: AppProps) {
         } else if (g.target.kind === 'station') {
           const under = screenToWorld(cam, g.at);
           store.dispatch({ type: 'move', id: g.target.id, x: under.x + grip.current.x, y: under.y + grip.current.y });
+          setDragging(false);
         }
         return;
       }
@@ -256,7 +260,9 @@ export function App({ store, now = Date.now }: AppProps) {
   } else if (stretch) {
     const { stations, next } = reachedStations(world);
     nextId = next >= 0 ? stations[next].id : null;
-    line = <Line points={stations.map(at)} color={lineColor} nextIndex={next >= 0 ? next : null} terminus />;
+    line = (
+      <Line points={stations.map(at)} color={lineColor} nextIndex={next >= 0 ? next : null} terminus dragging={dragging} />
+    );
   }
 
   return (

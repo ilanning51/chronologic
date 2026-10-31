@@ -26,6 +26,12 @@
   transition: transform 150ms ease-out;
 }
 
+/* Only a completion slides the train; a dragged station moves its line with no lag. */
+.line.dragging .train,
+.line.dragging .terminus {
+  transition: none;
+}
+
 /* Stations. The shape's center sits on the station's world point. */
 .station {
   position: absolute;

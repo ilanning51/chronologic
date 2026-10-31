@@ -30,3 +30,10 @@ test('with no points nothing is drawn, and with nothing pending the train is hid
   expect(done.container.querySelector('polyline')).toBeInTheDocument();
   expect(done.container.querySelector('[data-train]')).not.toBeInTheDocument();
 });
+
+test('while a station is dragged the line is marked dragging, so the train and terminus do not ease', () => {
+  const still = render(<Line points={two} color="var(--deep)" nextIndex={1} terminus />);
+  expect(still.container.querySelector('svg')).not.toHaveClass('dragging');
+  const moving = render(<Line points={two} color="var(--deep)" nextIndex={1} terminus dragging />);
+  expect(moving.container.querySelector('svg')).toHaveClass('dragging');
+});
