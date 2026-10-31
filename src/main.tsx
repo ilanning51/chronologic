@@ -1,10 +1,12 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/tokens.css';
-import { createStore } from './store/store';
+import { createStore, persist } from './store/store';
+import { load } from './store/storage';
 import { App } from './ui/App';
 
-const store = createStore({ tracks: [], stops: [], lastTouched: null });
+const store = createStore(load(localStorage));
+persist(store, localStorage);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
