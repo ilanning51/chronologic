@@ -1,49 +1,19 @@
 import { EMPTY } from '../model/reducer';
-import type { Kind, Length, Shape, Station, Stretch, World } from '../model/types';
+import type { World } from '../model/types';
 
 /** Bump the version in the key when the shape of World changes; an old world then opens as empty. */
-export const STORAGE_KEY = 'chronologic.v1';
-
-const SHAPES: readonly Shape[] = ['circle', 'triangle', 'square'];
-const KINDS: readonly Kind[] = ['deep', 'shallow', 'body', 'out'];
-const LENGTHS: readonly Length[] = ['hour', 'couple', 'half', 'whole'];
+export const STORAGE_KEY = 'chronologic.v2';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
 }
 
-function isStation(v: unknown): v is Station {
-  return (
-    isRecord(v) &&
-    typeof v.id === 'string' &&
-    typeof v.title === 'string' &&
-    SHAPES.includes(v.shape as Shape) &&
-    typeof v.x === 'number' &&
-    typeof v.y === 'number' &&
-    v.z === 0 &&
-    typeof v.done === 'boolean'
-  );
-}
-
-function isStretch(v: unknown): v is Stretch {
-  return (
-    isRecord(v) &&
-    KINDS.includes(v.kind as Kind) &&
-    LENGTHS.includes(v.length as Length) &&
-    typeof v.name === 'string' &&
-    typeof v.startedAt === 'number' &&
-    Array.isArray(v.line) &&
-    v.line.every((id) => typeof id === 'string')
-  );
-}
-
 function isWorld(v: unknown): v is World {
   return (
     isRecord(v) &&
-    Array.isArray(v.stations) &&
-    v.stations.every(isStation) &&
-    (v.stretch === null || isStretch(v.stretch)) &&
-    LENGTHS.includes(v.lastLength as Length)
+    Array.isArray(v.tracks) &&
+    Array.isArray(v.stops) &&
+    (v.lastTouched === null || typeof v.lastTouched === 'string')
   );
 }
 

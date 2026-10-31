@@ -1,11 +1,10 @@
-import type { Kind } from '../model/types';
 import { distance, type Point } from './geometry';
 
 /** What a pointer went down on. Read from the DOM by the plane, never by this module. */
 export type Target =
   | { kind: 'paper' }
   | { kind: 'station'; id: string }
-  | { kind: 'bullet'; line: Kind }
+  | { kind: 'bullet'; line: string }
   | { kind: 'clock' }
   | { kind: 'hud' };
 

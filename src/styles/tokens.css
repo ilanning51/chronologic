@@ -3,24 +3,21 @@
   --paper: #EEEBE5;
   --ink: #2B2420;
   --muted: #6B635C;
-  --deep: #2440A4;
-  --shallow: #A67C00;
-  --body: #1F7A3A;
-  --out: #C4251F;
+  --track-blue: #2440A4;
+  --track-ochre: #A67C00;
+  --track-green: #1F7A3A;
+  --track-red: #C4251F;
+  --track-plum: #6B2D8B;
+  --track-teal: #0F6E7A;
+  --track-rust: #B5500F;
+  --track-slate: #3D4F63;
 
-  /* World sizes, in world units (CSS px at scale 1). */
-  --line: 10px;
-  --circle: 22px;
-  --triangle-w: 24px;
-  --triangle-h: 22px;
-  --square: 20px;
+  /* Screen sizes, in CSS px. Shape sizes per size arrive with the stop component. */
+  --track: 10px;
   --dot: 10px;
   --train-l: 30px;
   --train-w: 20px;
-  --terminus-w: 10px;
-  --terminus-l: 26px;
   --label: 13px;
-  --label-zoomed: 17px;
 
   /* HUD sizes, in rem so the browser text size scales them. */
   --bullet: 1.75rem;

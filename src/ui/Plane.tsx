@@ -1,5 +1,4 @@
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef } from 'react';
-import type { Kind } from '../model/types';
 import { type Camera, cssTransform } from '../plane/camera';
 import type { Point } from '../plane/geometry';
 import { type Gesture, Recognizer, type Sample, type Target } from '../plane/gestures';
@@ -27,7 +26,7 @@ function targetOf(el: EventTarget | null): Target {
     case 'station':
       return { kind: 'station', id: hit.dataset.id ?? '' };
     case 'bullet':
-      return { kind: 'bullet', line: hit.dataset.line as Kind };
+      return { kind: 'bullet', line: hit.dataset.line ?? '' };
     case 'clock':
       return { kind: 'clock' };
     default:
