@@ -569,3 +569,15 @@ test('dragging the goal through the train and beyond never collapses the stops a
   expect(k).toBeGreaterThan(1);
   expect(stopNamed(store, 'dentist').x - at.x).toBeCloseTo(k * (1000 - at.x), 6);
 });
+
+test('a right click on a pending stop is a long press: the editor opens and nothing completes', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const dentist = screen.getByRole('button', { name: /^Dentist/ });
+  fireEvent.pointerDown(dentist, { pointerId: 1, button: 2, clientX: 500, clientY: 400 });
+  fireEvent.pointerUp(dentist, { pointerId: 1, button: 2, clientX: 500, clientY: 400 });
+  expect(screen.getByRole('group', { name: 'Edit stop' })).toBeInTheDocument();
+  expect(stopNamed(store, 'dentist').done).toBe(false);
+  // The browser's own menu stays shut.
+  expect(fireEvent.contextMenu(dentist)).toBe(false);
+});

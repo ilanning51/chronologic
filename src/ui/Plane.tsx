@@ -12,6 +12,9 @@ interface PlaneProps {
 /** How often the recognizer is told that time passed while a pointer is down. */
 const TICK_MS = 50;
 
+/** PointerEvent.button for the secondary (usually right) mouse button. */
+const RIGHT_BUTTON = 2;
+
 /** Reads what a pointer went down on from the nearest data-target. */
 function targetOf(el: EventTarget | null): Target {
   const hit = el instanceof Element ? el.closest<HTMLElement>('[data-target]') : null;
@@ -44,6 +47,7 @@ const sample = (e: ReactPointerEvent): Sample => ({ id: e.pointerId, x: e.client
 /**
  * The full-screen paper. It turns pointer events into samples for the recognizer and
  * draws the world layer in screen space (no transform), with the HUD on top in screen space.
+ * A right click is a long press at once, straight to the app; the recognizer never sees it.
  */
 export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
   const latest = useRef(onGesture);
@@ -89,15 +93,24 @@ export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
       className="plane"
       aria-label="The plane"
       onPointerDown={(e) => {
+        if (e.button === RIGHT_BUTTON) {
+          onGesture({ type: 'longPress', target: targetOf(e.target), at: { x: e.clientX, y: e.clientY } });
+          return;
+        }
         pointersDown.current += 1;
         recognizer.down(sample(e), targetOf(e.target));
         startTicking();
       }}
       onPointerMove={(e) => recognizer.move(sample(e))}
       onPointerUp={(e) => {
+        if (e.button === RIGHT_BUTTON) return;
         pointersDown.current = Math.max(0, pointersDown.current - 1);
         recognizer.up(sample(e));
         stopTickingWhenIdle();
+      }}
+      onContextMenu={(e) => {
+        // The browser's menu is kept only in a text field, where it is how you paste.
+        if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
       }}
       onPointerCancel={(e) => {
         pointersDown.current = Math.max(0, pointersDown.current - 1);
