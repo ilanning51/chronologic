@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
-import { trainState } from '../model/train';
+import { buzz } from '../feedback/haptics';
+import { pitchFor, playChord, playTone } from '../feedback/sound';
+import { nextIndex, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
@@ -18,6 +20,7 @@ import { tickMsFor } from '../plane/tick';
 import { type Store, useWorld } from '../store/store';
 import { Plane } from './Plane';
 import { Stop } from './Stop';
+import { StopEditor } from './StopEditor';
 import { Track } from './Track';
 
 export interface AppProps {
@@ -70,6 +73,11 @@ export function App({ store, now = Date.now }: AppProps) {
   const fly = useFly(setCamera);
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
   const [time, setTime] = useState(now);
+  /** The stop whose editor is open, if any. */
+  const [editing, setEditing] = useState<string | null>(null);
+  /** Whether a finger is holding the delete button. */
+  const [holding, setHolding] = useState(false);
+  const audio = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
@@ -84,6 +92,39 @@ export function App({ store, now = Date.now }: AppProps) {
 
   const onZoom = useCallback((p: Point, factor: number) => setCamera((c) => zoomAt(c, p, factor)), []);
 
+  /** The audio context is made on the first gesture that needs it, as browsers require. */
+  const sound = (): AudioContext | null => {
+    if (!audio.current && typeof AudioContext !== 'undefined') audio.current = new AudioContext();
+    const ctx = audio.current;
+    if (ctx && typeof ctx.resume === 'function' && ctx.state === 'suspended') void ctx.resume();
+    return ctx;
+  };
+
+  /** Only the stop the train is heading for completes; the goal adds the chord and the buzz. */
+  const complete = (trackId: string, stopId: string) => {
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
+    const stop = state.stops.find((s) => s.id === stopId);
+    if (!track || !stop || stop.done || nextIndex(track) !== track.stops.indexOf(stopId)) return;
+    const goal = stopId === track.stops[track.stops.length - 1];
+    store.dispatch({ type: 'complete', trackId, now: now() });
+    const ctx = sound();
+    if (ctx) {
+      playTone(ctx, pitchFor(track.color));
+      if (goal) playChord(ctx);
+    }
+    if (goal) buzz();
+  };
+
+  /** A long press opens the editor on the most recent dot, or on any pending stop. */
+  const openEditor = (trackId: string, stopId: string) => {
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
+    const stop = state.stops.find((s) => s.id === stopId);
+    if (!track || !stop) return;
+    if (!stop.done || track.stops.indexOf(stopId) === track.train.leg - 1) setEditing(stopId);
+  };
+
   const onGesture = (g: Gesture) => {
     switch (g.type) {
       case 'pan':
@@ -94,7 +135,27 @@ export function App({ store, now = Date.now }: AppProps) {
         return;
       case 'tap':
         if (g.target.kind === 'train') motionZoom(g.target.track);
+        else if (g.target.kind === 'stop') complete(g.target.track, g.target.id);
+        else if (g.target.kind === 'paper') setEditing(null);
         return;
+      case 'longPress':
+        if (g.target.kind === 'stop') openEditor(g.target.track, g.target.id);
+        return;
+      case 'holdStart':
+        if (g.target.kind === 'hold' && g.target.id === 'delete') setHolding(true);
+        return;
+      case 'holdEnd': {
+        if (g.target.kind !== 'hold' || g.target.id !== 'delete') return;
+        setHolding(false);
+        if (g.completed && editing) {
+          const track = store.getState().tracks.find((t) => t.stops.includes(editing));
+          if (track && editing === track.stops[track.stops.length - 1]) {
+            store.dispatch({ type: 'delete', id: editing, now: now() });
+            setEditing(null);
+          }
+        }
+        return;
+      }
       default:
         return; // the other gestures arrive with the tasks that use them
     }
@@ -126,8 +187,28 @@ export function App({ store, now = Date.now }: AppProps) {
     return () => window.clearInterval(id);
   }, [rolling, camera.scale, now]);
 
+  const editedTrack = editing ? world.tracks.find((t) => t.stops.includes(editing)) : undefined;
+  const editedStop = editing ? byId.get(editing) : undefined;
+  const editor =
+    editedTrack && editedStop ? (
+      <StopEditor
+        key={editedStop.id}
+        stop={editedStop}
+        goal={editedTrack.stops[editedTrack.stops.length - 1] === editedStop.id}
+        done={editedStop.done}
+        holding={holding}
+        onEdit={() => {}}
+        onDelete={() => {}}
+        onUndo={() => {
+          store.dispatch({ type: 'undo', trackId: editedTrack.id, now: now() });
+          setEditing(null);
+        }}
+        onClose={() => setEditing(null)}
+      />
+    ) : null;
+
   return (
-    <Plane onGesture={onGesture} onZoom={onZoom} hud={null}>
+    <Plane onGesture={onGesture} onZoom={onZoom} hud={editor}>
       {views.map((v) => (
         <Track key={v.id} view={v} />
       ))}

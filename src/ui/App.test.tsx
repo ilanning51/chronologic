@@ -1,7 +1,8 @@
 import uiCss from '../styles/ui.css?raw';
 import tokensCss from '../styles/tokens.css?raw';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
+import { trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import type { World } from '../model/types';
 import { createStore } from '../store/store';
@@ -101,4 +102,98 @@ test('tapping the train zooms to the motion scale and tapping again returns', ()
   expect(ahead() / opening).toBeCloseTo(MAX_SCALE / (1 / 3), 3);
   act(tap);
   expect(ahead()).toBeCloseTo(opening, 6);
+});
+
+/** A quick press and release on an element. */
+function tapOn(el: Element) {
+  fireEvent.pointerDown(el, { pointerId: 1, clientX: 500, clientY: 400 });
+  fireEvent.pointerUp(el, { pointerId: 1, clientX: 500, clientY: 400 });
+}
+
+/** An AudioContext stand-in that counts the oscillators it is asked for. */
+function fakeAudio() {
+  const made = vi.fn();
+  class FakeAudioContext {
+    currentTime = 0;
+    destination = {};
+    createOscillator() {
+      made();
+      return { type: 'sine', frequency: { value: 0 }, connect: vi.fn(), start: vi.fn(), stop: vi.fn() };
+    }
+    createGain() {
+      return { gain: { value: 0, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() }, connect: vi.fn() };
+    }
+  }
+  vi.stubGlobal('AudioContext', FakeAudioContext);
+  return made;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+test('tapping the next stop completes it and the train departs toward the following stop', () => {
+  const NOW = 500_000;
+  const store = createStore(running());
+  render(<App store={store} now={() => NOW} />);
+  act(() => tapOn(screen.getByRole('button', { name: /^Dentist/ })));
+  expect(screen.getByRole('button', { name: /^Dentist.*done/ })).toBeInTheDocument();
+  expect(store.getState().tracks[0].train).toEqual({ leg: 1, departedAt: NOW });
+});
+
+test('tapping a later stop does nothing', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const before = store.getState();
+  act(() => tapOn(screen.getByRole('button', { name: /^Wristband/ })));
+  expect(store.getState()).toBe(before);
+});
+
+test('the goal completion plays the chord and buzzes', () => {
+  const oscillators = fakeAudio();
+  const vibrate = vi.fn();
+  vi.stubGlobal('navigator', { ...navigator, vibrate });
+  const world = running();
+  world.stops[0].done = true;
+  world.tracks[0].train = { leg: 1, departedAt: 0 };
+  const store = createStore(world);
+  render(<App store={store} now={() => 3_000_000} />);
+  act(() => tapOn(screen.getByRole('button', { name: /^Wristband/ })));
+  expect(store.getState().tracks[0].train.leg).toBe(2);
+  expect(oscillators).toHaveBeenCalledTimes(4); // one tone and three chord notes
+  expect(vibrate).toHaveBeenCalledTimes(1);
+});
+
+test('a plain stop completion plays one tone and does not buzz', () => {
+  const oscillators = fakeAudio();
+  const vibrate = vi.fn();
+  vi.stubGlobal('navigator', { ...navigator, vibrate });
+  render(<App store={createStore(running())} now={() => 500_000} />);
+  act(() => tapOn(screen.getByRole('button', { name: /^Dentist/ })));
+  expect(oscillators).toHaveBeenCalledTimes(1);
+  expect(vibrate).not.toHaveBeenCalled();
+});
+
+test('a long press on the most recent dot offers Not done, which puts the train back waiting there', () => {
+  vi.useFakeTimers();
+  const world = running();
+  world.stops[0].done = true;
+  world.tracks[0].train = { leg: 1, departedAt: 0 };
+  const store = createStore(world);
+  render(<App store={store} now={() => 500_000} />);
+  const dentist = screen.getByRole('button', { name: /^Dentist.*done/ });
+  fireEvent.pointerDown(dentist, { pointerId: 1, clientX: 500, clientY: 400 });
+  act(() => {
+    vi.advanceTimersByTime(600);
+  });
+  fireEvent.pointerUp(dentist, { pointerId: 1, clientX: 500, clientY: 400 });
+  act(() => {
+    screen.getByRole('button', { name: 'Not done' }).click();
+  });
+  const state = store.getState();
+  expect(state.tracks[0].train.leg).toBe(0);
+  const byId = new Map(state.stops.map((s) => [s.id, s]));
+  expect(trainState(state.tracks[0], byId, 500_000).waiting).toBe(true);
+  expect(screen.queryByRole('group', { name: 'Done stop' })).not.toBeInTheDocument();
 });

@@ -254,3 +254,27 @@ button:focus-visible {
   background: var(--track-color);
   color: var(--paper);
 }
+
+/* Hold to delete: the button fills with the track's color, then drains over HOLD_MS, so
+   letting go early reads as a cancel. Opaque, no outline. */
+.pill-text.hold {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.pill-text.hold::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--track-color);
+  transform: scale(1);
+  transition: none;
+}
+
+.pill-text.hold.holding::before {
+  transform: scale(0.15);
+  transition: transform 600ms linear;
+}
