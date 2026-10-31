@@ -10,6 +10,7 @@ import {
   interpolate,
   MOTION_SCALE,
   panBy,
+  screenToWorld,
   zoomAt,
 } from '../plane/camera';
 import type { Gesture } from '../plane/gestures';
@@ -80,6 +81,8 @@ export function App({ store, now = Date.now }: AppProps) {
   const editingRef = useRef(editing);
   editingRef.current = editing;
   const audio = useRef<AudioContext | null>(null);
+  /** The pending stop under a finger, and how far its centre sits from where the finger landed. */
+  const dragging = useRef<{ id: string; track: string; goal: boolean; grip: Point } | null>(null);
 
   useEffect(() => {
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
@@ -127,6 +130,33 @@ export function App({ store, now = Date.now }: AppProps) {
     if (!stop.done || track.stops.indexOf(stopId) === track.train.leg - 1) setEditing(stopId);
   };
 
+  /** Starts dragging a pending stop; a dot is left alone for the whole drag. */
+  const startDrag = (g: Extract<Gesture, { type: 'dragStart' }>) => {
+    dragging.current = null;
+    const target = g.target;
+    if (target.kind !== 'stop') return;
+    const stop = store.getState().stops.find((s) => s.id === target.id);
+    if (!stop || stop.done) return;
+    const under = screenToWorld(cameraRef.current, g.at);
+    dragging.current = {
+      id: stop.id,
+      track: target.track,
+      goal: target.goal,
+      grip: { x: stop.x - under.x, y: stop.y - under.y },
+    };
+  };
+
+  /** Puts the dragged stop where the finger is, plus the grip so the shape never jumps. */
+  const dragTo = (at: Point) => {
+    const d = dragging.current;
+    if (!d) return;
+    const under = screenToWorld(cameraRef.current, at);
+    const x = under.x + d.grip.x;
+    const y = under.y + d.grip.y;
+    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now() });
+    else store.dispatch({ type: 'move', id: d.id, x, y, now: now() });
+  };
+
   const onGesture = (g: Gesture) => {
     switch (g.type) {
       case 'pan':
@@ -159,6 +189,16 @@ export function App({ store, now = Date.now }: AppProps) {
         }
         return;
       }
+      case 'dragStart':
+        startDrag(g);
+        return;
+      case 'dragMove':
+        dragTo(g.at);
+        return;
+      case 'dragEnd':
+        dragTo(g.at);
+        dragging.current = null;
+        return;
       default:
         return; // the other gestures arrive with the tasks that use them
     }

@@ -250,3 +250,57 @@ test('letting go of delete early cancels: the line stays and the fill stops', ()
   expect(store.getState().tracks).toHaveLength(1);
   expect(screen.getByRole('button', { name: 'Hold to delete the line' })).not.toHaveClass('holding');
 });
+
+/** Presses on a stop 4 px off its centre, moves the finger by (dx, dy) and lets go. */
+function dragStop(name: RegExp, dx: number, dy: number) {
+  const el = screen.getByRole('button', { name });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+  fireEvent.pointerMove(el, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+  fireEvent.pointerUp(el, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+}
+
+/** Screen pixels per world second, read from where the two stops are drawn. */
+const scaleOnScreen = (apart = 2000) => (left(/^Wristband/) - left(/^Dentist/)) / apart;
+const stopNamed = (store: ReturnType<typeof createStore>, id: string) => store.getState().stops.find((s) => s.id === id)!;
+
+test('dragging a stop moves it in world seconds keeping the grip', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleOnScreen();
+  act(() => dragStop(/^Dentist/, 50, 30));
+  const dentist = stopNamed(store, 'dentist');
+  expect(dentist.x).toBeCloseTo(1000 + 50 / scale, 6);
+  expect(dentist.y).toBeCloseTo(30 / scale, 6);
+});
+
+test('dragging the goal scales the stops ahead of the train', () => {
+  const NOW = 500_000;
+  const world = running();
+  world.stops[1].x = 1300; // close enough that both stops are on screen mid-leg
+  const store = createStore(world);
+  render(<App store={store} now={() => NOW} />);
+  const before = new Map(store.getState().stops.map((s) => [s.id, s]));
+  const at = trainState(store.getState().tracks[0], before, NOW).at;
+  const scale = scaleOnScreen(300);
+  act(() => dragStop(/^Wristband/, 100, 0));
+  const dist = (id: string, byId: Map<string, { x: number; y: number }>) => byId.get(id)!.x - at.x;
+  const after = new Map(store.getState().stops.map((s) => [s.id, s]));
+  const goalFactor = dist('wristband', after) / dist('wristband', before);
+  expect(goalFactor).toBeCloseTo((1300 - at.x + 100 / scale) / (1300 - at.x), 6);
+  expect(goalFactor).toBeGreaterThan(1);
+  expect(dist('dentist', after) / dist('dentist', before)).toBeCloseTo(goalFactor, 6);
+});
+
+test('a dot does not move', () => {
+  const world = running();
+  world.stops[0].done = true;
+  world.tracks[0].train = { leg: 1, departedAt: 0 };
+  const store = createStore(world);
+  render(<App store={store} now={() => 500_000} />);
+  const before = store.getState();
+  act(() => dragStop(/^Dentist/, 50, 30));
+  expect(store.getState()).toBe(before);
+  expect(stopNamed(store, 'dentist')).toMatchObject({ x: 1000, y: 0 });
+});
