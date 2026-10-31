@@ -197,3 +197,56 @@ test('a long press on the most recent dot offers Not done, which puts the train 
   expect(trainState(state.tracks[0], byId, 500_000).waiting).toBe(true);
   expect(screen.queryByRole('group', { name: 'Done stop' })).not.toBeInTheDocument();
 });
+
+test('a long press on a pending stop lets you rename it', () => {
+  vi.useFakeTimers();
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const wristband = screen.getByRole('button', { name: /^Wristband/ });
+  fireEvent.pointerDown(wristband, { pointerId: 1, clientX: 500, clientY: 400 });
+  act(() => {
+    vi.advanceTimersByTime(600);
+  });
+  fireEvent.pointerUp(wristband, { pointerId: 1, clientX: 500, clientY: 400 });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Stop title' }), { target: { value: 'Bracelet' } });
+  expect(store.getState().stops.find((s) => s.id === 'wristband')?.title).toBe('Bracelet');
+});
+
+/** A finished track with its goal's editor open and the delete button on screen. */
+function openGoalEditor() {
+  vi.useFakeTimers();
+  const world = running();
+  world.stops = world.stops.map((s) => ({ ...s, done: true }));
+  world.tracks[0].train = { leg: 2, departedAt: 0 };
+  const store = createStore(world);
+  render(<App store={store} now={() => 5_000_000} />);
+  const goal = screen.getByRole('button', { name: /^Wristband.*done/ });
+  fireEvent.pointerDown(goal, { pointerId: 1, clientX: 500, clientY: 400 });
+  act(() => {
+    vi.advanceTimersByTime(600);
+  });
+  fireEvent.pointerUp(goal, { pointerId: 1, clientX: 500, clientY: 400 });
+  return { store, hold: screen.getByRole('button', { name: 'Hold to delete the line' }) };
+}
+
+test('holding delete on the goal dot past the hold time deletes the line and closes the editor', () => {
+  const { store, hold } = openGoalEditor();
+  fireEvent.pointerDown(hold, { pointerId: 2, clientX: 500, clientY: 700 });
+  expect(hold).toHaveClass('holding');
+  act(() => {
+    vi.advanceTimersByTime(700);
+  });
+  expect(store.getState().tracks).toEqual([]);
+  expect(screen.queryByRole('group', { name: 'Done stop' })).not.toBeInTheDocument();
+});
+
+test('letting go of delete early cancels: the line stays and the fill stops', () => {
+  const { store, hold } = openGoalEditor();
+  fireEvent.pointerDown(hold, { pointerId: 2, clientX: 500, clientY: 700 });
+  act(() => {
+    vi.advanceTimersByTime(300);
+  });
+  fireEvent.pointerUp(hold, { pointerId: 2, clientX: 500, clientY: 700 });
+  expect(store.getState().tracks).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Hold to delete the line' })).not.toHaveClass('holding');
+});

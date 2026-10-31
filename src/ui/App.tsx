@@ -77,6 +77,8 @@ export function App({ store, now = Date.now }: AppProps) {
   const [editing, setEditing] = useState<string | null>(null);
   /** Whether a finger is holding the delete button. */
   const [holding, setHolding] = useState(false);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
   const audio = useRef<AudioContext | null>(null);
 
   useEffect(() => {
@@ -147,10 +149,11 @@ export function App({ store, now = Date.now }: AppProps) {
       case 'holdEnd': {
         if (g.target.kind !== 'hold' || g.target.id !== 'delete') return;
         setHolding(false);
-        if (g.completed && editing) {
-          const track = store.getState().tracks.find((t) => t.stops.includes(editing));
-          if (track && editing === track.stops[track.stops.length - 1]) {
-            store.dispatch({ type: 'delete', id: editing, now: now() });
+        const open = editingRef.current;
+        if (g.completed && open) {
+          const track = store.getState().tracks.find((t) => t.stops.includes(open));
+          if (track && open === track.stops[track.stops.length - 1]) {
+            store.dispatch({ type: 'delete', id: open, now: now() });
             setEditing(null);
           }
         }
@@ -197,7 +200,7 @@ export function App({ store, now = Date.now }: AppProps) {
         goal={editedTrack.stops[editedTrack.stops.length - 1] === editedStop.id}
         done={editedStop.done}
         holding={holding}
-        onEdit={() => {}}
+        onEdit={(change) => store.dispatch({ type: 'edit', id: editedStop.id, ...change })}
         onDelete={() => {}}
         onUndo={() => {
           store.dispatch({ type: 'undo', trackId: editedTrack.id, now: now() });
