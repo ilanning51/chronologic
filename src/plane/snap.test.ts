@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { running } from '../ui/App.test';
+import { running } from '../test/fixtures';
 import { snapToTracks } from './snap';
 
 const NOW = 500_000; // 500 s into the 1000 s leg to Dentist
