@@ -1,14 +1,8 @@
-import { type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef } from 'react';
-import type { Camera } from '../plane/camera';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef } from 'react';
 import type { Point } from '../plane/geometry';
 import { type Gesture, Recognizer, type Sample, type Target } from '../plane/gestures';
 
 interface PlaneProps {
-  camera: Camera;
-  /** The running line's color as the theme writes it; press and focus fill with it. */
-  lineColor: string;
-  /** Whether the camera is flying somewhere, which eases the transform instead of snapping. */
-  flying: boolean;
   onGesture: (gesture: Gesture) => void;
   onZoom: (at: Point, factor: number) => void;
   hud: ReactNode;
@@ -49,9 +43,9 @@ const sample = (e: ReactPointerEvent): Sample => ({ id: e.pointerId, x: e.client
 
 /**
  * The full-screen paper. It turns pointer events into samples for the recognizer and
- * draws the world layer under the camera transform, with the HUD on top in screen space.
+ * draws the world layer in screen space (no transform), with the HUD on top in screen space.
  */
-export function Plane({ camera, lineColor, flying, onGesture, onZoom, hud, children }: PlaneProps) {
+export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
   const latest = useRef(onGesture);
   latest.current = onGesture;
   const recognizer = useMemo(() => new Recognizer((g) => latest.current(g)), []);
@@ -94,7 +88,6 @@ export function Plane({ camera, lineColor, flying, onGesture, onZoom, hud, child
       ref={main}
       className="plane"
       aria-label="The plane"
-      style={{ ['--line-color' as string]: lineColor } as CSSProperties}
       onPointerDown={(e) => {
         pointersDown.current += 1;
         recognizer.down(sample(e), targetOf(e.target));
@@ -112,7 +105,7 @@ export function Plane({ camera, lineColor, flying, onGesture, onZoom, hud, child
         stopTickingWhenIdle();
       }}
     >
-      <div className={flying ? 'world flying' : 'world'} data-testid="world" style={{ transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})` }}>
+      <div className="world">
         {children}
       </div>
       {hud}

@@ -12,21 +12,29 @@
   --track-rust: #B5500F;
   --track-slate: #3D4F63;
 
-  /* Screen sizes, in CSS px. Shape sizes per size arrive with the stop component. */
+  /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
   --track: 10px;
   --dot: 10px;
   --train-l: 30px;
   --train-w: 20px;
   --label: 13px;
+  --circle-small: 14px;
+  --circle-medium: 22px;
+  --circle-large: 30px;
+  --triangle-small-w: 16px;
+  --triangle-small-h: 14px;
+  --triangle-medium-w: 24px;
+  --triangle-medium-h: 22px;
+  --triangle-large-w: 32px;
+  --triangle-large-h: 30px;
+  --square-small: 13px;
+  --square-medium: 20px;
+  --square-large: 28px;
 
   /* HUD sizes, in rem so the browser text size scales them. */
-  --bullet: 1.75rem;
   --hit: 2.75rem;
-  --clock: 2.25rem;
   --add: 3.5rem;
   --chip: 2.25rem;
-  --name: 1.375rem;
-  --subtitle: 0.9375rem;
 
   --font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
