@@ -1,7 +1,7 @@
 import { EMPTY } from '../model/reducer';
 import type { BubbleTarget, Shape, Size, Stop, Track, World } from '../model/types';
 
-/** Bump the version in the key when the shape of World changes; an old world then opens as empty. */
+/** Bump the version in the key when the shape of World changes; an old world opens as empty unless it is read on purpose, as v2 is. */
 export const STORAGE_KEY = 'chronologic.v3';
 /** A v2 world is a v3 world with no day track and no shared stops, so it is read once and kept. */
 export const V2_KEY = 'chronologic.v2';

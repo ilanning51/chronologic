@@ -65,7 +65,7 @@ test('a track whose last stop is not a square loads as EMPTY', () => {
   expect(loadOf(w)).toEqual(EMPTY);
 });
 
-test('a square anywhere but last loads as EMPTY', () => {
+test('a square that is last on no track loads as EMPTY', () => {
   const w = sample();
   w.stops[0].shape = 'square';
   expect(loadOf(w)).toEqual(EMPTY);
