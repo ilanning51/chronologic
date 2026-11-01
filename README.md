@@ -11,10 +11,12 @@ Everything lives on one infinite plane. The look is borrowed from Mini Metro and
 ## Using it
 
 - Pan with one finger on empty paper. Zoom with two fingers, or with the mouse wheel.
+- The squares on the paper are time. The legend, bottom left, says what one square is right now, and the unit changes as you zoom: 1 hour, 6 hours, 1 day, 1 week.
 - Tap the plus, bottom right, to open or close the tray.
 - Drag a step or a sub-goal out of the tray onto a line. It snaps to the line ahead of the train, and where you let go is where it splits the leg. Type a name and press Return.
 - Tap New line in the tray, type the goal's name and press Return. Then drag the square to where the goal really is.
 - Drag a stop anywhere to re-route the line through it. Only the two legs beside it change.
+- While you drag a stop or the goal, a chip beneath it shows how long the leg into it is, so you can set the length to your estimate. It goes when you let go. A tile carried onto a line shows the same for the leg it would end.
 - Drag the goal to stretch or squeeze everything ahead of the train. The line behind the train does not move.
 - Tap the next stop to complete it, whether the train has arrived or not. Other stops ignore a tap.
 - Long press a stop to edit its name, shape and size, or to delete it. Long press the most recent dot to bring it back with Not done.

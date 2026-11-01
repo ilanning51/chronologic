@@ -7,6 +7,54 @@
   isolation: isolate;
 }
 
+/* The time grid: hairlines every square, under every track. Positions come from the camera. */
+.grid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+}
+
+/* The legend: one square and its unit, bottom left, in the muted ink. */
+.legend {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: var(--label);
+  pointer-events: none;
+}
+
+.legend .square {
+  display: block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 1px solid var(--muted);
+}
+
+/* The leg's planned time, a paper-on-ink chip beneath the stop a finger is setting. */
+.leg-time {
+  position: absolute;
+  transform: translateX(-50%);
+  height: var(--chip);
+  padding: 0 0.875rem;
+  border-radius: calc(var(--chip) / 2);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.9375rem;
+  line-height: var(--chip);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* A track lives in the world layer under the stops and draws outside its own box. */
 .track {
   position: absolute;

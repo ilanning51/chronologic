@@ -4,7 +4,7 @@ import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { newId } from '../model/ids';
 import { DEFAULT_GOAL_SECONDS, type GoalDragStart } from '../model/reducer';
-import { nextIndex, targetIndex, trainState } from '../model/train';
+import { legSeconds, nextIndex, targetIndex, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
@@ -29,6 +29,9 @@ import { SNAP_PX } from '../plane/world';
 import { type Store, useWorld } from '../store/store';
 import { Bubble } from './Bubble';
 import { Ghost } from './Ghost';
+import { Grid } from './Grid';
+import { Legend } from './Legend';
+import { LegTime } from './LegTime';
 import { NameField } from './NameField';
 import { Plane } from './Plane';
 import { Stop } from './Stop';
@@ -112,6 +115,8 @@ export function App({ store, now = Date.now }: AppProps) {
   const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; x: number; y: number; snapped: boolean } | null>(null);
   /** The shape and snap of the tile drag in flight; a ref so the drop reads the latest move. */
   const dragTile = useRef<{ shape: 'circle' | 'triangle'; snap: ReturnType<typeof snapToTracks> } | null>(null);
+  /** The leg being set by a drag: where its stop is on screen and its planned seconds. */
+  const [legTime, setLegTime] = useState<{ x: number; y: number; seconds: number } | null>(null);
   /** The stop or goal whose name field is open. */
   const [naming, setNaming] = useState<{ id: string; kind: 'stop' | 'goal'; trackId: string } | null>(null);
   const namingRef = useRef(naming);
@@ -211,6 +216,18 @@ export function App({ store, now = Date.now }: AppProps) {
     const y = under.y + d.grip.y;
     if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
+    showLegInto(d.track, d.id);
+  };
+
+  /** Writes the planned time of the leg arriving at a stop beneath it, read back from the world. */
+  const showLegInto = (trackId: string, stopId: string) => {
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
+    const stop = state.stops.find((s) => s.id === stopId);
+    if (!track || !stop) return;
+    const route = trackRoute(track, new Map(state.stops.map((s) => [s.id, s])));
+    const at = worldToScreen(cameraRef.current, stop);
+    setLegTime({ x: at.x, y: at.y, seconds: legSeconds(route, track.stops.indexOf(stopId)) });
   };
 
   /** Carries a tile: the ghost follows the finger, or sits on the line it would join. */
@@ -221,6 +238,8 @@ export function App({ store, now = Date.now }: AppProps) {
     d.snap = snapToTracks(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale);
     const shown = d.snap ? worldToScreen(cam, d.snap.at) : at;
     setGhost({ shape: d.shape, x: shown.x, y: shown.y, snapped: d.snap !== null });
+    // On a line the ghost would end a new leg as long as its way along the leg it splits.
+    setLegTime(d.snap ? { x: shown.x, y: shown.y, seconds: d.snap.offset } : null);
   };
 
   /** Dropping on a line adds a stop exactly there, so the track's total never changes. */
@@ -228,6 +247,7 @@ export function App({ store, now = Date.now }: AppProps) {
     const d = dragTile.current;
     dragTile.current = null;
     setGhost(null);
+    setLegTime(null);
     if (!d?.snap) return;
     const id = newId();
     store.dispatch({
@@ -322,6 +342,7 @@ export function App({ store, now = Date.now }: AppProps) {
         }
         dragTo(g.at);
         dragging.current = null;
+        setLegTime(null);
         return;
       default:
         return; // the other gestures arrive with the tasks that use them
@@ -422,7 +443,9 @@ export function App({ store, now = Date.now }: AppProps) {
   const hud = (
     <>
       {bubbles}
+      {legTime && <LegTime {...legTime} />}
       {editor}
+      <Legend camera={camera} />
       <Tray open={trayOpen} onToggle={() => setTrayOpen((o) => !o)} />
       {nameField}
     </>
@@ -430,6 +453,7 @@ export function App({ store, now = Date.now }: AppProps) {
 
   return (
     <Plane onGesture={onGesture} onZoom={onZoom} hud={hud}>
+      <Grid camera={camera} />
       {views.map((v) => (
         <Track key={v.id} view={v} />
       ))}

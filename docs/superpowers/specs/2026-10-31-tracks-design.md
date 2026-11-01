@@ -46,7 +46,9 @@ These would make the build a failure even if it worked:
 
 - Any state that reads as "behind", "late" or "overdue". No red, no exclamation, no count of
   waiting days.
-- A number for time anywhere on the plane. Not hours, not days, not percentages.
+- A number for time on the plane while nothing is being set. The only two places a time is
+  written are the grid legend and the chip under a stop a finger is dragging; see the time
+  grid below. (Softened 2026-11-01: without a reference a length had no meaning.)
 - A settings screen. Every per-track choice is set on the thing itself.
 - A train that passes a stop on its own. The train stops and waits, always.
 - The goal moving further away because a step was added.
@@ -108,6 +110,20 @@ stop was moved. Two consequences:
   merged leg and rolling toward the next stop.
 
 ## Time, the camera and scale
+
+**The time grid.** Squares on the paper, in a grey a shade off it, under every track. One
+square stands for one unit from a fixed ladder: 1 s, 5 s, 15 s, 1 min, 5 min, 15 min, 1 hour,
+6 hours, 1 day, 1 week, 30 days. The grid uses the smallest unit that draws at 20 px or more, so
+as the camera zooms in a square grows until the next unit down fits, then the grid steps to it
+and the squares drop back; zooming out does the reverse. The largest a square gets is about
+140 px, at the day-to-week step. A legend in the bottom left names the unit, as "1 hour". The
+grid never draws a number on a square and never moves a stop; it is paper, not a snap.
+
+**The leg chip.** While a finger drags a stop or the goal, a paper-on-ink chip beneath it reads
+the planned time of the leg arriving at it, as its two largest whole units: "2 h 15 min". While
+a tile from the tray sits on a line, the chip reads the leg the new stop would end. The chip is
+gone the moment the finger lifts. It reads the leg into the stop, not the whole track, because
+that is the length the hand is setting.
 
 The plane is the v1 plane: world space where stops live, and a camera that is a translation
 and a scale. World units are seconds, so a day of track is a long way and a month is a very

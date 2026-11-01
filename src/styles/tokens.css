@@ -3,6 +3,8 @@
   --paper: #EEEBE5;
   --ink: #2B2420;
   --muted: #6B635C;
+  /* The grid's hairlines: a shade off the paper, so a square is seen and never read. */
+  --grid: #E0DCD5;
   --track-blue: #2440A4;
   --track-ochre: #A67C00;
   --track-green: #1F7A3A;

@@ -6,6 +6,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
 import { legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
+import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
 import { running } from '../test/fixtures';
 import { App } from './App';
@@ -638,4 +639,98 @@ test('after the wheel zooms, the next tap on the train follows it again instead 
 test('no v1 leftovers remain in the stylesheets', () => {
   expect(uiCss).not.toMatch(/\.hud-capture|\.chip\b|bullets/);
   expect(tokensCss).not.toMatch(/--train-[lw]/);
+});
+
+// The time grid and the leg label: the two places a time is written on the plane.
+
+test('the grid draws behind the world in squares of the unit the legend names', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  const grid = gridFor(scaleOnScreen());
+  const legend = screen.getByText(grid.label);
+  expect(legend.closest('.legend')).toBeInTheDocument();
+  const squares = document.querySelector<HTMLElement>('.grid')!;
+  expect(squares).toBeInTheDocument();
+  const [w, h] = squares.style.backgroundSize.split(' ').map(parseFloat);
+  expect(w).toBeCloseTo(grid.px, 6);
+  expect(h).toBeCloseTo(grid.px, 6);
+  // The grid is the first thing in the world layer, so every track lies over it.
+  expect(document.querySelector('.world')!.firstElementChild).toBe(squares);
+});
+
+/** The unit the legend names right now, as its place on the ladder. */
+const legendUnit = () => UNITS.findIndex((u) => u.label === document.querySelector('.legend')!.textContent);
+
+test('the grid steps to a smaller unit as the wheel zooms in, and back out again', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  const before = legendUnit();
+  expect(before).toBeGreaterThan(0);
+  act(() => {
+    fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: -1000 });
+  });
+  expect(legendUnit()).toBeLessThan(before);
+  act(() => {
+    fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 1000 });
+  });
+  expect(legendUnit()).toBe(before);
+});
+
+/** The planned seconds of the leg that ends at a stop, read from the store. */
+function legInto(store: ReturnType<typeof createStore>, stopId: string): number {
+  const state = store.getState();
+  const track = state.tracks[0];
+  return legSeconds(trackRoute(track, new Map(state.stops.map((s) => [s.id, s]))), track.stops.indexOf(stopId));
+}
+
+test('while a stop is dragged the leg arriving at it shows its time, and it goes when let go', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+  const el = screen.getByRole('button', { name: /^Dentist/ });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  act(() => {
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: x + 50, clientY: y + 30 });
+  });
+  const label = document.querySelector<HTMLElement>('.leg-time')!;
+  expect(label).toBeInTheDocument();
+  expect(label.textContent).toBe(formatSeconds(legInto(store, 'dentist')));
+  // It hangs beneath the stop, which has moved with the finger.
+  const moved = screen.getByRole('button', { name: /^Dentist/ });
+  expect(parseFloat(label.style.left)).toBeCloseTo(parseFloat(moved.style.left), 3);
+  expect(parseFloat(label.style.top)).toBeGreaterThan(parseFloat(moved.style.top));
+  act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + 50, clientY: y + 30 }));
+  expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+});
+
+test('while the goal is dragged the label reads the leg into the goal', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const el = screen.getByRole('button', { name: /^Wristband/ });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  act(() => {
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: x + 100, clientY: y });
+  });
+  expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(legInto(store, 'wristband')));
+  act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + 100, clientY: y }));
+});
+
+test('a tile carried onto a line shows the time of the leg it would end, and nothing off the line', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const tile = screen.getByRole('button', { name: 'Step' });
+  act(() => {
+    fireEvent.pointerDown(tile, { pointerId: 1, clientX: 900, clientY: 740 });
+    fireEvent.pointerMove(tile, { pointerId: 1, clientX: 500, clientY: 300 });
+  });
+  expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+  const target = midLeg();
+  act(() => fireEvent.pointerMove(tile, { pointerId: 1, clientX: target.x, clientY: target.y }));
+  // Halfway along the 2000 s leg from Dentist: the new leg into the stop would be 1000 s.
+  expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(1000));
+  act(() => fireEvent.pointerUp(tile, { pointerId: 1, clientX: target.x, clientY: target.y }));
+  expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
 });

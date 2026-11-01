@@ -9,9 +9,9 @@ test('snaps to the nearest path ahead of the train, never behind it or past the 
   // Behind the train on the first leg.
   expect(snapToTracks(world, { x: 200, y: 6 }, NOW, 50)).toBeNull();
   // Ahead of the train on its own leg.
-  expect(snapToTracks(world, { x: 700, y: 6 }, NOW, 50)).toEqual({ trackId: 't1', leg: 0, at: { x: 700, y: 0 } });
+  expect(snapToTracks(world, { x: 700, y: 6 }, NOW, 50)).toEqual({ trackId: 't1', leg: 0, offset: 700, at: { x: 700, y: 0 } });
   // On the leg from Dentist to Wristband.
-  expect(snapToTracks(world, { x: 1500, y: 30 }, NOW, 50)).toEqual({ trackId: 't1', leg: 1, at: { x: 1500, y: 0 } });
+  expect(snapToTracks(world, { x: 1500, y: 30 }, NOW, 50)).toEqual({ trackId: 't1', leg: 1, offset: 500, at: { x: 1500, y: 0 } });
   // Just past the goal, well inside the radius.
   expect(snapToTracks(world, { x: 3010, y: 0 }, NOW, 50)).toBeNull();
   // A parked track takes nothing.
@@ -29,5 +29,5 @@ test('a drop on top of a stop, or close enough to hide under it, snaps nowhere',
   expect(snapToTracks(world, { x: 1030, y: 5 }, NOW, 50)).toBeNull();
   expect(snapToTracks(world, { x: 2970, y: 5 }, NOW, 50)).toBeNull();
   // Clear of both stops it snaps as usual.
-  expect(snapToTracks(world, { x: 1060, y: 5 }, NOW, 50)).toEqual({ trackId: 't1', leg: 1, at: { x: 1060, y: 0 } });
+  expect(snapToTracks(world, { x: 1060, y: 5 }, NOW, 50)).toEqual({ trackId: 't1', leg: 1, offset: 60, at: { x: 1060, y: 0 } });
 });
