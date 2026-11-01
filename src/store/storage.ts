@@ -2,7 +2,9 @@ import { EMPTY } from '../model/reducer';
 import type { BubbleTarget, Shape, Size, Stop, Track, World } from '../model/types';
 
 /** Bump the version in the key when the shape of World changes; an old world then opens as empty. */
-export const STORAGE_KEY = 'chronologic.v2';
+export const STORAGE_KEY = 'chronologic.v3';
+/** A v2 world is a v3 world with no day track and no shared stops, so it is read once and kept. */
+export const V2_KEY = 'chronologic.v2';
 
 const SHAPES: readonly Shape[] = ['circle', 'triangle', 'square'];
 const SIZES: readonly Size[] = ['small', 'medium', 'large'];
@@ -29,7 +31,18 @@ function isStop(v: unknown): v is Stop {
   );
 }
 
-/** A track is trusted when it names real stops once each, ends in a square and has no other, and its train is on the line. */
+/** A day track's date is a string and it has one finite budget per stop. */
+function isDay(v: unknown, stopCount: number): boolean {
+  return (
+    isRecord(v) &&
+    typeof v.date === 'string' &&
+    Array.isArray(v.budgets) &&
+    v.budgets.length === stopCount &&
+    v.budgets.every(isNumber)
+  );
+}
+
+/** A track is trusted when it names real stops once each, ends in a square, and its train is on the line. */
 function isTrack(v: unknown, shapes: ReadonlyMap<string, Shape>): v is Track {
   if (!isRecord(v) || typeof v.id !== 'string') return false;
   if (!Number.isInteger(v.color) || (v.color as number) < 0) return false;
@@ -39,8 +52,8 @@ function isTrack(v: unknown, shapes: ReadonlyMap<string, Shape>): v is Track {
   if (!Array.isArray(stops) || stops.length === 0) return false;
   if (!stops.every((id) => typeof id === 'string' && shapes.has(id))) return false;
   if (new Set(stops).size !== stops.length) return false;
-  const last = stops.length - 1;
-  if (!stops.every((id, i) => (shapes.get(id) === 'square') === (i === last))) return false;
+  if (shapes.get(stops[stops.length - 1]) !== 'square') return false;
+  if (v.day !== undefined && !isDay(v.day, stops.length)) return false;
   return (
     isRecord(train) &&
     Number.isInteger(train.leg) &&
@@ -50,17 +63,46 @@ function isTrack(v: unknown, shapes: ReadonlyMap<string, Shape>): v is Track {
   );
 }
 
+/**
+ * Across tracks: every square a track lists is last on exactly one track, its home, since a goal
+ * may sit mid-line on another track. At most one day track, and its end square is on no other.
+ */
+function tracksAgree(tracks: readonly Track[], shapes: ReadonlyMap<string, Shape>): boolean {
+  const homes = new Map<string, number>();
+  for (const t of tracks) {
+    const last = t.stops[t.stops.length - 1];
+    homes.set(last, (homes.get(last) ?? 0) + 1);
+  }
+  for (const t of tracks) {
+    for (const id of t.stops) {
+      if (shapes.get(id) === 'square' && homes.get(id) !== 1) return false;
+    }
+  }
+  const days = tracks.filter((t) => t.day !== undefined);
+  if (days.length > 1) return false;
+  if (days.length === 1) {
+    const day = days[0];
+    const end = day.stops[day.stops.length - 1];
+    if (tracks.some((t) => t !== day && t.stops.includes(end))) return false;
+  }
+  return true;
+}
+
 function isWorld(v: unknown): v is World {
   if (!isRecord(v) || !Array.isArray(v.tracks) || !Array.isArray(v.stops)) return false;
   if (!(v.lastTouched === null || typeof v.lastTouched === 'string')) return false;
   if (!v.stops.every(isStop)) return false;
   const shapes = new Map<string, Shape>(v.stops.map((s: Stop) => [s.id, s.shape]));
-  return v.tracks.every((t) => isTrack(t, shapes));
+  return v.tracks.every((t) => isTrack(t, shapes)) && tracksAgree(v.tracks as Track[], shapes);
 }
-/** The saved world, or an empty one when nothing is saved or what is saved cannot be trusted. */
+
+/**
+ * The saved world, or an empty one when nothing is saved or what is saved cannot be trusted. With
+ * no v3 world, a v2 one is read instead; the next save writes v3, and the v2 key is never touched.
+ */
 export function load(storage: Pick<Storage, 'getItem'>): World {
   try {
-    const raw = storage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(STORAGE_KEY) ?? storage.getItem(V2_KEY);
     if (!raw) return EMPTY;
     const parsed: unknown = JSON.parse(raw);
     return isWorld(parsed) ? parsed : EMPTY;
