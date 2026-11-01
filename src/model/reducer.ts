@@ -220,7 +220,8 @@ export function reduce(world: World, action: Action): World {
       const { id, now } = action;
       const found = tracksOf(world, id);
       if (found.length === 0) return world;
-      const home = found.find(({ track, index }) => index === track.stops.length - 1)?.track;
+      // A goal's home is a project: a stop last on the day line is only the day's last errand.
+      const home = found.find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
       if (home) {
         const rest: World = {
           ...world,

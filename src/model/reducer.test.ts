@@ -514,7 +514,7 @@ describe('join and leave', () => {
       reduce(world, { type: 'join', trackId, stopId, leg, x: 1500, y: 600, now });
     // Already on the line.
     expect(join(w, 't1', 'dentist', 0)).toBe(w);
-    // Past the end: at the goal's index it would go last.
+    // Past the end: leg 1 would put it after Goal 2, last on the line.
     expect(join(w, 't2', 'dentist', 1)).toBe(w);
     // A square never goes last; before another line's goal it may be a step.
     expect(join(w, 't2', 'wristband', 1)).toBe(w);
@@ -577,6 +577,16 @@ describe('join and leave', () => {
     expect(stopOf(offDay, 'dentist')).toBeDefined();
     // Off t1, its only project: the day does not keep it.
     const gone = reduce(w, { type: 'leave', trackId: 't1', stopId: 'dentist', now });
+    expect(trackOf(gone, 't1').stops).toEqual(['wristband']);
+    expect(trackOf(gone, 'day').stops).toEqual(['wristband']);
+    expect(gone.stops.map((s) => s.id)).toEqual(['wristband']);
+  });
+
+  test('a stop last on the day line leaving its project takes only itself off the day', () => {
+    const w = withDay();
+    trackOf(w, 'day').stops = ['wristband', 'dentist'];
+    const gone = reduce(w, { type: 'leave', trackId: 't1', stopId: 'dentist', now });
+    expect(gone.tracks.map((t) => t.id)).toEqual(['t1', 'day']);
     expect(trackOf(gone, 't1').stops).toEqual(['wristband']);
     expect(trackOf(gone, 'day').stops).toEqual(['wristband']);
     expect(gone.stops.map((s) => s.id)).toEqual(['wristband']);
