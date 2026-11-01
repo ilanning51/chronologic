@@ -29,6 +29,8 @@ export type Action =
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
   | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size }
   | { type: 'delete'; id: string; now: number } // deleting the goal deletes the track
+  | { type: 'join'; trackId: string; stopId: string; leg: number; x: number; y: number; now: number }
+  | { type: 'leave'; trackId: string; stopId: string; now: number }
   | { type: 'complete'; trackId: string; now: number }
   | { type: 'undo'; trackId: string; now: number }
   | { type: 'cycleTarget'; trackId: string };
@@ -75,16 +77,17 @@ function keepTrain(before: World, after: World, trackId: string, now: number, ke
 }
 
 /**
- * Takes a stop off every track that lists it and out of the world. On each track the legs either
- * side of it merge, read from the derived train: the dot just behind the train joins its leg to
- * the train's, and the train has covered it, so no train ever goes back.
+ * Takes a stop off every track that lists it and out of the world, or, given `only`, off that one
+ * track and nowhere else. On each track the legs either side of it merge, read from the derived
+ * train: the dot just behind the train joins its leg to the train's, and the train has covered
+ * it, so no train ever goes back.
  */
-function withoutStop(world: World, id: string, now: number): World {
+function withoutStop(world: World, id: string, now: number, only?: string): World {
   const byId = stopsById(world);
   const kept = new Map<string, { leg: number; seconds: number }>();
   const tracks = world.tracks.map((track) => {
     const index = track.stops.indexOf(id);
-    if (index < 0) return track;
+    if (index < 0 || (only !== undefined && track.id !== only)) return track;
     const state = trainState(track, byId, now);
     const leg = index < state.leg ? state.leg - 1 : state.leg;
     if (!state.parked) {
@@ -93,7 +96,7 @@ function withoutStop(world: World, id: string, now: number): World {
     }
     return { ...track, stops: track.stops.filter((s) => s !== id), train: { ...track.train, leg } };
   });
-  const after: World = { ...world, tracks, stops: world.stops.filter((s) => s.id !== id) };
+  const after: World = { ...world, tracks, stops: only !== undefined ? world.stops : world.stops.filter((s) => s.id !== id) };
   const afterById = stopsById(after);
   return {
     ...after,
@@ -231,6 +234,37 @@ export function reduce(world: World, action: Action): World {
       const byId = stopsById(world);
       if (found.some(({ track }) => trainState(track, byId, now).parked)) return world;
       return withoutStop(world, id, now);
+    }
+
+    case 'join': {
+      const { trackId, stopId, leg, x, y, now } = action;
+      const track = world.tracks.find((t) => t.id === trackId);
+      const stop = world.stops.find((s) => s.id === stopId);
+      // Only projects take a join: the day is filled by the sun drag and the day's-end drag.
+      if (!track || track.day || !stop || stop.done || track.stops.includes(stopId)) return world;
+      // Ahead of the derived train and before the goal, so a square never lands last.
+      const state = trainState(track, stopsById(world), now);
+      if (leg < state.leg || leg > track.stops.length - 1) return world;
+      const stops = [...track.stops.slice(0, leg), stopId, ...track.stops.slice(leg)];
+      const after: World = {
+        tracks: withTrack(world, { ...track, stops }),
+        stops: world.stops.map((s) => (s.id === stopId ? { ...s, x, y } : s)),
+        lastTouched: trackId,
+      };
+      // The joined line gained a stop; every other line through it re-routes to where it moved.
+      return tracksOf(after, stopId).reduce((w, { track: t }) => keepTrain(world, w, t.id, now), after);
+    }
+
+    case 'leave': {
+      const { trackId, stopId, now } = action;
+      const track = world.tracks.find((t) => t.id === trackId);
+      const index = track ? track.stops.indexOf(stopId) : -1;
+      // A track's last stop is its goal, a square's home: that one stays.
+      if (!track || index < 0 || index === track.stops.length - 1) return world;
+      // Only projects keep a stop alive, so leaving its last project is delete, day and all.
+      const kept = world.tracks.some((t) => t.id !== trackId && !t.day && t.stops.includes(stopId));
+      if (!kept) return reduce(world, { type: 'delete', id: stopId, now });
+      return { ...withoutStop(world, stopId, now, trackId), lastTouched: trackId };
     }
 
     case 'complete': {

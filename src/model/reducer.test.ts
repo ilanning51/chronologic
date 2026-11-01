@@ -463,3 +463,122 @@ describe('shared stops', () => {
     expect(at(next, 't1').seconds).toBeCloseTo(keep.t1);
   });
 });
+
+describe('join and leave', () => {
+  const at = (world: World, id: string) => trainState(world.tracks.find((t) => t.id === id)!, byId(world), now);
+  const trackOf = (world: World, id: string) => world.tracks.find((t) => t.id === id)!;
+
+  /** fixtureRunning() and a second line t2 below it, straight from the origin to Goal 2. */
+  function withT2(): World {
+    const w = fixtureRunning();
+    w.tracks.push({ id: 't2', color: 1, origin: { x: 0, y: 600 }, stops: ['goal2'], train: { leg: 0, departedAt: 0 }, target: 'goal' });
+    w.stops.push(stop('goal2', 'square', 3000, 600));
+    return w;
+  }
+
+  /** fixtureRunning() and the day line through Dentist and Wristband. */
+  function withDay(): World {
+    const w = fixtureRunning();
+    w.tracks.push({
+      id: 'day',
+      color: 2,
+      origin: { x: 0, y: -600 },
+      stops: ['dentist', 'wristband'],
+      train: { leg: 0, departedAt: 0 },
+      target: 'next',
+      day: { date: '2026-11-01', budgets: [3600, 3600] },
+    });
+    return w;
+  }
+
+  test('join puts a stop on a second line at the snap point', () => {
+    const w = withT2();
+    const s1 = at(w, 't1').seconds;
+    const s2 = at(w, 't2').seconds;
+    const next = reduce(w, { type: 'join', trackId: 't2', stopId: 'dentist', leg: 0, x: 1500, y: 600, now });
+    expect(trackOf(next, 't2').stops).toEqual(['dentist', 'goal2']);
+    expect(trackOf(next, 't1').stops).toEqual(['dentist', 'wristband']);
+    expect(stopOf(next, 'dentist')).toMatchObject({ x: 1500, y: 600 });
+    expect(next.stops.filter((s) => s.id === 'dentist')).toHaveLength(1);
+    // t1's leg to Dentist grew with the move; both trains keep the seconds they had covered.
+    expect(at(next, 't1')).toMatchObject({ leg: 0 });
+    expect(at(next, 't1').seconds).toBeCloseTo(s1);
+    expect(at(next, 't2')).toMatchObject({ leg: 0 });
+    expect(at(next, 't2').seconds).toBeCloseTo(s2);
+    expect(next.lastTouched).toBe('t2');
+  });
+
+  test('join is refused on the same line, behind the train or for a done stop', () => {
+    const w = withT2();
+    const join = (world: World, trackId: string, stopId: string, leg: number) =>
+      reduce(world, { type: 'join', trackId, stopId, leg, x: 1500, y: 600, now });
+    // Already on the line.
+    expect(join(w, 't1', 'dentist', 0)).toBe(w);
+    // Past the end: at the goal's index it would go last.
+    expect(join(w, 't2', 'dentist', 1)).toBe(w);
+    // A square never goes last; before another line's goal it may be a step.
+    expect(join(w, 't2', 'wristband', 1)).toBe(w);
+    expect(join(w, 't2', 'wristband', 0)).not.toBe(w);
+    // Done.
+    const done: World = { ...w, stops: w.stops.map((s) => (s.id === 'dentist' ? { ...s, done: true } : s)) };
+    expect(join(done, 't2', 'dentist', 0)).toBe(done);
+    // Behind the derived train: t2 has passed through Shared, done elsewhere, onto leg 1.
+    const two = twoLines();
+    two.stops = two.stops.map((s) => (s.id === 'shared' ? { ...s, done: true } : s));
+    const late = 2_000_000;
+    expect(trainState(trackOf(two, 't2'), byId(two), late).leg).toBe(1);
+    expect(reduce(two, { type: 'join', trackId: 't2', stopId: 'dentist', leg: 0, x: 500, y: 600, now: late })).toBe(two);
+    // Never the day line, and never an unknown track or stop.
+    const day = withDay();
+    trackOf(day, 'day').stops = ['wristband'];
+    expect(reduce(day, { type: 'join', trackId: 'day', stopId: 'dentist', leg: 0, x: 500, y: -600, now })).toBe(day);
+    expect(join(w, 'nope', 'dentist', 0)).toBe(w);
+    expect(join(w, 't2', 'nope', 0)).toBe(w);
+  });
+
+  test('leave takes a stop off one line and off the world when it was its last', () => {
+    const w = twoLines();
+    const s2 = at(w, 't2').seconds;
+    const off = reduce(w, { type: 'leave', trackId: 't2', stopId: 'shared', now });
+    expect(trackOf(off, 't2').stops).toEqual(['goal2']);
+    expect(trackOf(off, 't1').stops).toEqual(['dentist', 'shared', 'wristband']);
+    expect(stopOf(off, 'shared')).toBeDefined();
+    // The leg to Shared merges into the leg to Goal 2: same leg, same seconds.
+    expect(at(off, 't2')).toMatchObject({ leg: 0 });
+    expect(at(off, 't2').seconds).toBeCloseTo(s2);
+    expect(off.lastTouched).toBe('t2');
+    // Its last line: it leaves the world.
+    const gone = reduce(off, { type: 'leave', trackId: 't1', stopId: 'shared', now });
+    expect(trackOf(gone, 't1').stops).toEqual(['dentist', 'wristband']);
+    expect(gone.stops.map((s) => s.id)).toEqual(['dentist', 'wristband', 'goal2']);
+    // Not on the line, or an unknown line: nothing.
+    expect(reduce(off, { type: 'leave', trackId: 't2', stopId: 'shared', now })).toBe(off);
+    expect(reduce(off, { type: 'leave', trackId: 'nope', stopId: 'shared', now })).toBe(off);
+  });
+
+  test('leave is refused for a square on its home line', () => {
+    const w = twoLines();
+    trackOf(w, 't2').stops = ['wristband', 'shared', 'goal2'];
+    // Wristband's home is t1, where it is last: no leaving that.
+    expect(reduce(w, { type: 'leave', trackId: 't1', stopId: 'wristband', now })).toBe(w);
+    expect(reduce(w, { type: 'leave', trackId: 't2', stopId: 'goal2', now })).toBe(w);
+    // On t2 it is only a step, and leaves.
+    const next = reduce(w, { type: 'leave', trackId: 't2', stopId: 'wristband', now });
+    expect(trackOf(next, 't2').stops).toEqual(['shared', 'goal2']);
+    expect(trackOf(next, 't1').stops).toEqual(['dentist', 'shared', 'wristband']);
+  });
+
+  test('leaving the last project line deletes the stop, off the day too', () => {
+    const w = withDay();
+    // Off the day only: t1 still keeps Dentist.
+    const offDay = reduce(w, { type: 'leave', trackId: 'day', stopId: 'dentist', now });
+    expect(trackOf(offDay, 'day').stops).toEqual(['wristband']);
+    expect(trackOf(offDay, 't1').stops).toEqual(['dentist', 'wristband']);
+    expect(stopOf(offDay, 'dentist')).toBeDefined();
+    // Off t1, its only project: the day does not keep it.
+    const gone = reduce(w, { type: 'leave', trackId: 't1', stopId: 'dentist', now });
+    expect(trackOf(gone, 't1').stops).toEqual(['wristband']);
+    expect(trackOf(gone, 'day').stops).toEqual(['wristband']);
+    expect(gone.stops.map((s) => s.id)).toEqual(['wristband']);
+  });
+});
