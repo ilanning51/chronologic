@@ -441,3 +441,12 @@ button:focus-visible {
 .bubble .title {
   white-space: nowrap;
 }
+
+/* The day being drawn with the sun: like a track, a one-pixel svg drawing outside its box. */
+.day-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}

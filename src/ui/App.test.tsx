@@ -3,6 +3,7 @@ import tokensCss from '../styles/tokens.css?raw';
 import { StrictMode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { dayOf } from '../model/days';
 import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
 import { legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
@@ -792,8 +793,15 @@ test('a line with only its goal is a sketch at half width in the muted ink', () 
   expect(cssRule('.stop.sketch .shape')).toMatch(/background:\s*var\(--muted\)/);
 });
 
+/** withDay(), dated the day `now` falls in, so the tick on open keeps it. */
+function dayOn(now: number) {
+  const world = withDay();
+  world.tracks.find((t) => t.day)!.day!.date = dayOf(now);
+  return world;
+}
+
 test('the day line is ink', () => {
-  render(<App store={createStore(withDay())} now={() => WAITING} />);
+  render(<App store={createStore(dayOn(WAITING))} now={() => WAITING} />);
   const svg = trackSvg(2);
   expect(strokes(svg).length).toBeGreaterThan(0);
   for (const s of strokes(svg)) expect(s).toEqual(['var(--ink)', TRACK_WIDTH]);
@@ -804,7 +812,7 @@ test('the day line is ink', () => {
 });
 
 test("the day's-end square is a small ink square, not a ring", () => {
-  render(<App store={createStore(withDay())} now={() => WAITING} />);
+  render(<App store={createStore(dayOn(WAITING))} now={() => WAITING} />);
   const end = document.querySelector('[data-id="dayEnd"]') as HTMLElement;
   expect(end.querySelector('.shape')!.className).toBe('shape square small');
   // Press and focus fill it with ink, not the day track's palette colour.
@@ -812,7 +820,7 @@ test("the day's-end square is a small ink square, not a ring", () => {
 });
 
 test('the soonest line fills its bubble', () => {
-  const world = withDay();
+  const world = dayOn(500_000);
   // Every target off screen, so each line shows a bubble; the day line points at its end.
   for (const id of ['wristband', 'goal2', 'dayEnd']) world.stops.find((s) => s.id === id)!.x = 1e6;
   world.tracks[2].target = 'goal';
@@ -826,4 +834,176 @@ test('the soonest line fills its bubble', () => {
   expect(filled).toMatch(/background:\s*var\(--track-color\)/);
   expect(filled).toMatch(/color:\s*var\(--paper\)/);
   expect(cssRule('.bubble.soonest .shape')).toMatch(/background:\s*var\(--paper\)/);
+});
+
+/** Where a stop is drawn on screen. */
+const at = (name: RegExp) => {
+  const el = screen.getByRole('button', { name });
+  return { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+};
+/** The day's-end square's button. */
+const dayEndButton = () => document.querySelector('[data-id="dayEnd"]') as HTMLElement | null;
+/** The points of the ghost ink line, if one is drawn. */
+const ghostPoints = () =>
+  document
+    .querySelector('svg.day-ghost polyline')
+    ?.getAttribute('points')
+    ?.split(' ')
+    .map((p) => p.split(',').map(Number));
+const dayIn = (store: ReturnType<typeof createStore>) => store.getState().tracks.find((t) => t.day);
+const point = (x: number, y: number) => ({ pointerId: 1, clientX: x, clientY: y });
+/** Goal 2 brought in to x 2000, so it is on screen at the opening. */
+function nearGoal2<W extends ReturnType<typeof twoLines>>(world: W): W {
+  world.stops.find((s) => s.id === 'goal2')!.x = 2000;
+  return world;
+}
+/** Screen pixels per world second, read from Dentist and Shared, 500 s apart. */
+const scaleNow = () => (at(/^Shared/).x - at(/^Dentist/).x) / 500;
+
+test('dragging the sun through two stops on two lines draws the day through them in that order', () => {
+  const store = createStore(nearGoal2(twoLines()));
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const goal2 = at(/^Goal 2/);
+  const dentist = at(/^Dentist/);
+  const scale = scaleNow();
+  const release = { x: dentist.x + 40, y: dentist.y + 80 };
+  const sun = screen.getByRole('button', { name: 'Today' });
+  act(() => {
+    fireEvent.pointerDown(sun, point(900, 740));
+    fireEvent.pointerMove(sun, point(goal2.x + 5, goal2.y));
+    fireEvent.pointerMove(sun, point(dentist.x, dentist.y + 5));
+    fireEvent.pointerMove(sun, point(release.x, release.y));
+  });
+  // The ghost runs from the pick-up through each stop, in the order reached, to the finger.
+  const ghost = ghostPoints()!;
+  const want = [[900, 740], [goal2.x, goal2.y], [dentist.x, dentist.y], [release.x, release.y]];
+  expect(ghost).toHaveLength(want.length);
+  ghost.forEach(([x, y], i) => {
+    expect(x).toBeCloseTo(want[i][0], 3);
+    expect(y).toBeCloseTo(want[i][1], 3);
+  });
+  expect(dayIn(store)).toBeUndefined();
+
+  act(() => {
+    fireEvent.pointerUp(sun, point(release.x, release.y));
+  });
+  expect(ghostPoints()).toBeUndefined();
+  const day = dayIn(store)!;
+  expect(day.stops.slice(0, -1)).toEqual(['goal2', 'dentist']);
+  expect(day.day!.date).toBe(dayOf(WAITING));
+  // The day's-end square sits under the finger; the origin hangs above the first stop.
+  const end = stopNamed(store, day.stops[2]);
+  expect(end.x).toBeCloseTo(1000 + 40 / scale, 3);
+  expect(end.y).toBeCloseTo(80 / scale, 3);
+  expect(day.origin.x).toBeCloseTo(2000, 6);
+  expect(day.origin.y).toBeCloseTo(600 - 120 / scale, 3);
+  for (const s of strokes(trackSvg(2))) expect(s[0]).toBe('var(--ink)');
+});
+
+test('lifting the sun with no stops draws nothing', () => {
+  const store = createStore(twoLines());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const before = store.getState();
+  act(() => dragTile('Today', { x: 20, y: 20 }));
+  expect(store.getState()).toBe(before);
+  expect(ghostPoints()).toBeUndefined();
+  expect(document.querySelectorAll('svg.track')).toHaveLength(2);
+});
+
+test('drawing a new day replaces the old', () => {
+  const store = createStore(nearGoal2(dayOn(WAITING)));
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  act(() => dragTile('Today', at(/^Goal 2/)));
+  const days = store.getState().tracks.filter((t) => t.day);
+  expect(days).toHaveLength(1);
+  expect(days[0].id).not.toBe('day');
+  expect(days[0].stops.slice(0, -1)).toEqual(['goal2']);
+  expect(store.getState().stops.some((s) => s.id === 'dayEnd')).toBe(false);
+  expect(dayEndButton()).toBeNull();
+});
+
+test('dragging the day end through a stop adds it and the end returns', () => {
+  const store = createStore(nearGoal2(dayOn(WAITING)));
+  render(<App store={store} now={() => WAITING} />);
+  const end = dayEndButton()!;
+  const from = { x: parseFloat(end.style.left) + 4, y: parseFloat(end.style.top) };
+  const goal2 = at(/^Goal 2/);
+  act(() => {
+    fireEvent.pointerDown(end, point(from.x, from.y));
+    fireEvent.pointerMove(end, point(goal2.x + 4, goal2.y));
+  });
+  // Its legs are not time, so no leg chip shows.
+  expect(document.querySelector('.leg-time')).toBeNull();
+  act(() => {
+    fireEvent.pointerMove(end, point(goal2.x + 200, goal2.y + 100));
+    fireEvent.pointerUp(end, point(goal2.x + 200, goal2.y + 100));
+  });
+  expect(dayIn(store)!.stops).toEqual(['dentist', 'shared', 'goal2', 'dayEnd']);
+  expect(stopNamed(store, 'dayEnd')).toMatchObject({ x: 1500, y: 900 });
+  // The stop passed through stays where it was, on its own line.
+  expect(stopNamed(store, 'goal2')).toMatchObject({ x: 2000, y: 600 });
+  expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['shared', 'goal2']);
+});
+
+test('dragging the day end elsewhere moves it alone and scales nothing', () => {
+  const store = createStore(dayOn(WAITING));
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleNow();
+  const others = store.getState().stops.filter((s) => s.id !== 'dayEnd');
+  const end = dayEndButton()!;
+  const from = { x: parseFloat(end.style.left) + 4, y: parseFloat(end.style.top) };
+  act(() => {
+    fireEvent.pointerDown(end, point(from.x, from.y));
+    fireEvent.pointerMove(end, point(from.x + 30, from.y + 60));
+  });
+  expect(document.querySelector('.leg-time')).toBeNull();
+  act(() => {
+    fireEvent.pointerUp(end, point(from.x + 30, from.y + 60));
+  });
+  const moved = stopNamed(store, 'dayEnd');
+  expect(moved.x).toBeCloseTo(1500 + 30 / scale, 3);
+  expect(moved.y).toBeCloseTo(900 + 60 / scale, 3);
+  expect(store.getState().stops.filter((s) => s.id !== 'dayEnd')).toEqual(others);
+  expect(dayIn(store)!.stops).toEqual(['dentist', 'shared', 'dayEnd']);
+});
+
+test('a day from yesterday is cleared on open', () => {
+  const NOW = new Date(2026, 10, 2, 5).getTime();
+  const store = createStore(withDay());
+  render(<App store={store} now={() => NOW} />);
+  expect(dayIn(store)).toBeUndefined();
+  // The projects are untouched.
+  expect(store.getState().tracks).toEqual(twoLines().tracks);
+  expect(store.getState().stops).toEqual(twoLines().stops);
+  expect(dayEndButton()).toBeNull();
+  for (const svg of document.querySelectorAll('svg.track')) {
+    for (const s of strokes(svg as SVGSVGElement)) expect(s[0]).not.toBe('var(--ink)');
+  }
+});
+
+test('tapping the next stop on the day completes it on its project too', () => {
+  const store = createStore(dayOn(WAITING));
+  render(<App store={store} now={() => WAITING} />);
+  act(() => tapOn(screen.getByRole('button', { name: /^Dentist/ })));
+  expect(stopNamed(store, 'dentist').done).toBe(true);
+  const track = (id: string) => store.getState().tracks.find((t) => t.id === id)!;
+  expect(track('t1').train).toEqual({ leg: 1, departedAt: WAITING });
+  expect(track('day').train).toEqual({ leg: 1, departedAt: WAITING });
+});
+
+test('a day still open as the clock passes 4 am is cleared on the next tick', () => {
+  vi.useFakeTimers();
+  let t = WAITING;
+  const store = createStore(dayOn(WAITING));
+  render(<App store={store} now={() => t} />);
+  expect(dayIn(store)).toBeDefined();
+  t = WAITING + 2 * 86_400_000;
+  act(() => {
+    vi.advanceTimersByTime(60_000);
+  });
+  expect(dayIn(store)).toBeUndefined();
+  expect(dayEndButton()).toBeNull();
 });

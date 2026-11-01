@@ -6,7 +6,7 @@ export type Target =
   | { kind: 'stop'; id: string; track: string; goal: boolean }
   | { kind: 'train'; track: string }
   | { kind: 'bubble'; track: string }
-  | { kind: 'tile'; tile: 'circle' | 'triangle' | 'line' }
+  | { kind: 'tile'; tile: 'circle' | 'triangle' | 'line' | 'sun' }
   | { kind: 'hold'; id: string }
   | { kind: 'hud' };
 

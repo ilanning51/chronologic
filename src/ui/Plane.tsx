@@ -33,7 +33,7 @@ function targetOf(el: EventTarget | null): Target {
       return { kind: 'bubble', track: hit.dataset.track ?? '' };
     case 'tile': {
       const tile = hit.dataset.tile;
-      return { kind: 'tile', tile: tile === 'triangle' || tile === 'line' ? tile : 'circle' };
+      return { kind: 'tile', tile: tile === 'triangle' || tile === 'line' || tile === 'sun' ? tile : 'circle' };
     }
     case 'hold':
       return { kind: 'hold', id: hit.dataset.id ?? '' };

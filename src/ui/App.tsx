@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
+import { dayTrack, isDayEnd } from '../model/day';
+import { dayOf } from '../model/days';
 import { newId } from '../model/ids';
 import { DEFAULT_GOAL_SECONDS, tracksOf, type GoalDragStart } from '../model/reducer';
 import { legSeconds, nextIndex, targetIndex, trackRoute, trainState } from '../model/train';
@@ -23,12 +25,13 @@ import { bubbleFor } from '../plane/bubbles';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
 import { placeClear } from '../plane/placement';
-import { snapToTracks } from '../plane/snap';
+import { nearestStop, snapToTracks } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
 import { tickMsFor } from '../plane/tick';
 import { SNAP_PX } from '../plane/world';
 import { type Store, useWorld } from '../store/store';
 import { Bubble } from './Bubble';
+import { DayGhost } from './DayGhost';
 import { Ghost } from './Ghost';
 import { Grid } from './Grid';
 import { Legend } from './Legend';
@@ -118,6 +121,12 @@ export function App({ store, now = Date.now }: AppProps) {
   const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; x: number; y: number; snapped: boolean } | null>(null);
   /** The shape and snap of the tile drag in flight; a ref so the drop reads the latest move. */
   const dragTile = useRef<{ shape: 'circle' | 'triangle'; snap: ReturnType<typeof snapToTracks> } | null>(null);
+  /** The sun drag in flight: where it was picked up on screen and the stops gathered, in order. */
+  const drawing = useRef<{ from: Point; ids: string[] } | null>(null);
+  /** The ghost ink line of the day being drawn, in screen points. */
+  const [dayGhost, setDayGhost] = useState<Point[] | null>(null);
+  /** The day's-end drag in flight: where the square started, the grip, and whether it added a stop. */
+  const endDrag = useRef<{ start: Point; grip: Point; added: boolean } | null>(null);
   /** The leg being set by a drag: where its stop is on screen and its planned seconds. */
   const [legTime, setLegTime] = useState<{ x: number; y: number; seconds: number } | null>(null);
   /** The stop or goal whose name field is open. */
@@ -131,8 +140,10 @@ export function App({ store, now = Date.now }: AppProps) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // The camera starts on the soonest train, once; after that the hand moves it.
+  // The camera starts on the soonest train, once; after that the hand moves it. Yesterday's day
+  // goes first, so the camera never opens on it.
   useEffect(() => {
+    store.dispatch({ type: 'tick', now: now() });
     setCamera(openingCamera(store.getState(), now(), { w: window.innerWidth, h: window.innerHeight }));
   }, []);
 
@@ -180,9 +191,16 @@ export function App({ store, now = Date.now }: AppProps) {
   const startDrag = (g: Extract<Gesture, { type: 'dragStart' }>) => {
     dragging.current = null;
     dragTile.current = null;
+    drawing.current = null;
+    endDrag.current = null;
     const target = g.target;
     if (target.kind === 'tile') {
       if (target.tile === 'line') return;
+      if (target.tile === 'sun') {
+        drawing.current = { from: g.at, ids: [] };
+        drawSun(g.at);
+        return;
+      }
       dragTile.current = { shape: target.tile, snap: null };
       carryTile(g.at);
       return;
@@ -192,9 +210,14 @@ export function App({ store, now = Date.now }: AppProps) {
     const stop = state.stops.find((s) => s.id === target.id);
     const track = state.tracks.find((t) => t.id === target.track);
     if (!stop || stop.done || !track) return;
+    const under = screenToWorld(cameraRef.current, g.at);
+    if (isDayEnd(state, stop.id)) {
+      const grip = { x: stop.x - under.x, y: stop.y - under.y };
+      endDrag.current = { start: { x: stop.x, y: stop.y }, grip, added: false };
+      return;
+    }
     const byId = new Map(state.stops.map((s) => [s.id, s]));
     const train = trainState(track, byId, now());
-    const under = screenToWorld(cameraRef.current, g.at);
     const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
     const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
     // A shared stop re-routes every line through it; each keeps its own train. A goal drag also
@@ -272,6 +295,76 @@ export function App({ store, now = Date.now }: AppProps) {
     setNaming({ id, kind: 'stop', trackId: d.snap.trackId });
   };
 
+  /** Stops a day can take: pending, listed by some project, and not among `skip`. */
+  const dayCandidates = (skip: string[]) => {
+    const state = store.getState();
+    return state.stops.filter(
+      (s) => !s.done && !skip.includes(s.id) && state.tracks.some((t) => !t.day && t.stops.includes(s.id)),
+    );
+  };
+
+  /** Carries the sun: each pending stop the finger passes joins the drawing, in the order reached. */
+  const drawSun = (at: Point) => {
+    const d = drawing.current;
+    if (!d) return;
+    const cam = cameraRef.current;
+    const hit = nearestStop(dayCandidates(d.ids), screenToWorld(cam, at), SNAP_PX / cam.scale);
+    if (hit) d.ids = [...d.ids, hit.id];
+    const byId = new Map(store.getState().stops.map((s) => [s.id, s]));
+    setDayGhost([d.from, ...d.ids.map((id) => worldToScreen(cam, byId.get(id)!)), at]);
+  };
+
+  /**
+   * Lifting the sun draws the day through what it gathered, its end square under the finger and
+   * its start just above the first stop. Gathering nothing draws nothing.
+   */
+  const dropSun = (at: Point) => {
+    drawSun(at);
+    const d = drawing.current;
+    drawing.current = null;
+    setDayGhost(null);
+    if (!d || d.ids.length === 0) return;
+    const cam = cameraRef.current;
+    const first = store.getState().stops.find((s) => s.id === d.ids[0])!;
+    const t = now();
+    store.dispatch({
+      type: 'newDay',
+      id: newId(),
+      endId: newId(),
+      origin: { x: first.x, y: first.y - 120 / cam.scale },
+      stops: d.ids,
+      end: screenToWorld(cam, at),
+      now: t,
+      date: dayOf(t),
+    });
+  };
+
+  /**
+   * Moves the day's-end square alone, grip and all, scaling nothing; passing it over a pending
+   * stop not yet on the day adds that stop. No leg time shows: the day's legs are not time.
+   */
+  const dragDayEnd = (at: Point) => {
+    const d = endDrag.current;
+    if (!d) return;
+    const cam = cameraRef.current;
+    const under = screenToWorld(cam, at);
+    const p = { x: under.x + d.grip.x, y: under.y + d.grip.y };
+    store.dispatch({ type: 'moveDayEnd', x: p.x, y: p.y, now: now() });
+    const day = dayTrack(store.getState());
+    const hit = day ? nearestStop(dayCandidates(day.stops), p, SNAP_PX / cam.scale) : null;
+    if (!hit) return;
+    store.dispatch({ type: 'addToDay', stopId: hit.id, now: now() });
+    if (dayTrack(store.getState())?.stops.includes(hit.id)) d.added = true;
+  };
+
+  /** A square that added a stop goes back where it was; otherwise it stays where it was let go. */
+  const dropDayEnd = (at: Point) => {
+    dragDayEnd(at);
+    const d = endDrag.current;
+    endDrag.current = null;
+    if (d?.added) store.dispatch({ type: 'moveDayEnd', x: d.start.x, y: d.start.y, now: now() });
+  };
+
   /** A new line starts clear of everything at the centre of the view, its goal thirty days out. */
   const newLine = () => {
     const cam = cameraRef.current;
@@ -340,10 +433,20 @@ export function App({ store, now = Date.now }: AppProps) {
         startDrag(g);
         return;
       case 'dragMove':
-        if (g.target.kind === 'tile') carryTile(g.at);
+        if (drawing.current) drawSun(g.at);
+        else if (endDrag.current) dragDayEnd(g.at);
+        else if (g.target.kind === 'tile') carryTile(g.at);
         else dragTo(g.at);
         return;
       case 'dragEnd':
+        if (drawing.current) {
+          dropSun(g.at);
+          return;
+        }
+        if (endDrag.current) {
+          dropDayEnd(g.at);
+          return;
+        }
         if (g.target.kind === 'tile') {
           carryTile(g.at);
           dropTile();
@@ -393,9 +496,13 @@ export function App({ store, now = Date.now }: AppProps) {
 
   useEffect(() => {
     if (!rolling) return;
-    const id = window.setInterval(() => setTime(now()), tickMsFor(camera.scale));
+    // Each tick also asks the world whether the day has turned over.
+    const id = window.setInterval(() => {
+      store.dispatch({ type: 'tick', now: now() });
+      setTime(now());
+    }, tickMsFor(camera.scale));
     return () => window.clearInterval(id);
-  }, [rolling, camera.scale, now]);
+  }, [rolling, camera.scale, now, store]);
 
   const editedTrack = editing ? world.tracks.find((t) => t.stops.includes(editing)) : undefined;
   const editedStop = editing ? byId.get(editing) : undefined;
@@ -484,6 +591,7 @@ export function App({ store, now = Date.now }: AppProps) {
         <Stop key={p.stop.id} {...p} />
       ))}
       {ghost && <Ghost {...ghost} />}
+      {dayGhost && <DayGhost points={dayGhost} />}
     </Plane>
   );
 }
