@@ -20,3 +20,25 @@ export function running(): World {
     lastTouched: null,
   };
 }
+
+/**
+ * running() and a second line t2 below it, through Shared (a medium circle) to Goal 2. Shared is
+ * also t1's second stop, so it is one point on two lines: t1 is dentist, shared, wristband.
+ */
+export function twoLines(): World {
+  const world = running();
+  world.tracks[0].stops = ['dentist', 'shared', 'wristband'];
+  world.tracks.push({
+    id: 't2',
+    color: 1,
+    origin: { x: 0, y: 600 },
+    stops: ['shared', 'goal2'],
+    train: { leg: 0, departedAt: 0 },
+    target: 'goal',
+  });
+  world.stops.push(
+    { id: 'shared', title: 'Shared', shape: 'circle', size: 'medium', x: 1500, y: 600, done: false },
+    { id: 'goal2', title: 'Goal 2', shape: 'square', size: 'large', x: 3000, y: 600, done: false },
+  );
+  return world;
+}

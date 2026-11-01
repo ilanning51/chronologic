@@ -106,6 +106,8 @@ export function App({ store, now = Date.now }: AppProps) {
     goal: boolean;
     grip: Point;
     keep: number;
+    /** For the goal: the seconds of every train through a stop the drag scales, by track id. */
+    keeps?: Record<string, number>;
     from?: GoalDragStart;
   } | null>(null);
 
@@ -192,8 +194,14 @@ export function App({ store, now = Date.now }: AppProps) {
     const byId = new Map(state.stops.map((s) => [s.id, s]));
     const train = trainState(track, byId, now());
     const under = screenToWorld(cameraRef.current, g.at);
-    const ahead = Object.fromEntries(
-      track.stops.slice(track.train.leg, -1).map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]),
+    const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
+    const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
+    // A shared stop the goal drag scales re-routes its other lines too; each keeps its own train.
+    const scaled = new Set([stop.id, ...pending]);
+    const keeps = Object.fromEntries(
+      state.tracks
+        .filter((t) => t.stops.some((id) => scaled.has(id)))
+        .map((t) => [t.id, trainState(t, byId, now()).seconds]),
     );
     dragging.current = {
       id: stop.id,
@@ -201,6 +209,7 @@ export function App({ store, now = Date.now }: AppProps) {
       goal: target.goal,
       grip: { x: stop.x - under.x, y: stop.y - under.y },
       keep: train.seconds,
+      keeps: target.goal ? keeps : undefined,
       from: target.goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
     };
   };
@@ -215,7 +224,7 @@ export function App({ store, now = Date.now }: AppProps) {
     const under = screenToWorld(cameraRef.current, at);
     const x = under.x + d.grip.x;
     const y = under.y + d.grip.y;
-    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
+    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keeps, from: d.from });
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
     showLegInto(d.track, d.id);
   };

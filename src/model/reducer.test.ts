@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_GOAL_SECONDS, EMPTY, reduce } from './reducer';
 import { legSeconds, trackRoute, trainState } from './train';
+import { running as fixtureRunning, twoLines } from '../test/fixtures';
 import type { Stop, World } from './types';
 
 function stop(id: string, shape: Stop['shape'], x: number, y: number, done = false): Stop {
@@ -174,9 +175,9 @@ describe('moveGoal', () => {
     const keep = stateOf(world).seconds;
     const from = { train: { x: 500, y: 0 }, goal: { x: 3000, y: 1000 }, ahead: { a: { x: 1000, y: 0 }, b: { x: 1000, y: 1000 } } };
     // Exactly over the train, k = 0 for this move only.
-    const over = reduce(world, { type: 'moveGoal', trackId, x: 500, y: 0, now, keep, from });
+    const over = reduce(world, { type: 'moveGoal', trackId, x: 500, y: 0, now, keep: { [trackId]: keep }, from });
     expect(stopOf(over, 'b')).toMatchObject({ x: 500, y: 0 });
-    const beyond = reduce(over, { type: 'moveGoal', trackId, x: 5500, y: 2000, now, keep, from });
+    const beyond = reduce(over, { type: 'moveGoal', trackId, x: 5500, y: 2000, now, keep: { [trackId]: keep }, from });
     expect(stopOf(beyond, 'a').x).toBeCloseTo(1500);
     expect(stopOf(beyond, 'a').y).toBeCloseTo(0);
     expect(stopOf(beyond, 'b').x).toBeCloseTo(1500);
@@ -317,5 +318,127 @@ describe('cycleTarget', () => {
     }
     expect(seen).toEqual(['subgoal', 'goal', 'next', 'subgoal']);
     expect(w.lastTouched).toBe(trackId);
+  });
+});
+
+describe('shared stops', () => {
+  const at = (world: World, id: string) => trainState(world.tracks.find((t) => t.id === id)!, byId(world), now);
+  const trackOf = (world: World, id: string) => world.tracks.find((t) => t.id === id)!;
+  /** Marks stops done in place. */
+  const done = (world: World, ...ids: string[]) => {
+    world.stops = world.stops.map((s) => (ids.includes(s.id) ? { ...s, done: true } : s));
+    return world;
+  };
+
+  test('moving a shared stop re-routes every line through it and keeps every train', () => {
+    const w = twoLines();
+    const s1 = at(w, 't1').seconds;
+    const s2 = at(w, 't2').seconds;
+    const next = reduce(w, { type: 'move', id: 'shared', x: 1500, y: 1500, now });
+    expect(stopOf(next, 'shared')).toMatchObject({ x: 1500, y: 1500 });
+    expect(legSeconds(trackRoute(trackOf(next, 't2'), byId(next)), 0)).toBeGreaterThan(
+      legSeconds(trackRoute(trackOf(w, 't2'), byId(w)), 0),
+    );
+    expect(at(next, 't1').seconds).toBeCloseTo(s1);
+    expect(at(next, 't2').seconds).toBeCloseTo(s2);
+  });
+
+  test('completing a shared stop that is next on both lines sends both trains on', () => {
+    const w = done(twoLines(), 'dentist');
+    trackOf(w, 't1').train = { leg: 1, departedAt: 0 };
+    const next = reduce(w, { type: 'complete', trackId: 't1', now });
+    expect(stopOf(next, 'shared').done).toBe(true);
+    expect(trackOf(next, 't1').train).toEqual({ leg: 2, departedAt: now });
+    expect(trackOf(next, 't2').train).toEqual({ leg: 1, departedAt: now });
+  });
+
+  test('completing a shared stop that is further ahead on the other line leaves that train be', () => {
+    const w = twoLines();
+    const next = reduce(w, { type: 'complete', trackId: 't2', now });
+    expect(stopOf(next, 'shared').done).toBe(true);
+    expect(trackOf(next, 't1').train).toEqual({ leg: 0, departedAt: 0 });
+    expect(trackOf(next, 't2').train).toEqual({ leg: 1, departedAt: now });
+  });
+
+  test('complete skips a done stop ahead of the train and completes the first undone one', () => {
+    const w = done(twoLines(), 'dentist', 'shared');
+    trackOf(w, 't1').train = { leg: 1, departedAt: now };
+    const next = reduce(w, { type: 'complete', trackId: 't1', now });
+    expect(stopOf(next, 'wristband').done).toBe(true);
+    expect(trackOf(next, 't1').train).toEqual({ leg: 3, departedAt: now });
+  });
+
+  test('deleting a line keeps its shared stops on the other line', () => {
+    const next = reduce(twoLines(), { type: 'delete', id: 'goal2', now });
+    expect(next.tracks.map((t) => t.id)).toEqual(['t1']);
+    expect(next.tracks[0].stops).toEqual(['dentist', 'shared', 'wristband']);
+    expect(next.stops.map((s) => s.id)).toEqual(['dentist', 'wristband', 'shared']);
+  });
+
+  test('deleting a shared stop removes it from every line', () => {
+    const w = twoLines();
+    const s2 = at(w, 't2').seconds;
+    const next = reduce(w, { type: 'delete', id: 'shared', now });
+    expect(trackOf(next, 't1').stops).toEqual(['dentist', 'wristband']);
+    expect(trackOf(next, 't2').stops).toEqual(['goal2']);
+    expect(next.stops.map((s) => s.id)).toEqual(['dentist', 'wristband', 'goal2']);
+    expect(at(next, 't2')).toMatchObject({ leg: 0 });
+    expect(at(next, 't2').seconds).toBeCloseTo(s2);
+  });
+
+  test('deleting a stop a train passed through merges from the derived leg', () => {
+    // t1 passed through shared, done from t2, and is 100 s into the leg to wristband.
+    const w = done(twoLines(), 'dentist', 'shared');
+    trackOf(w, 't2').train = { leg: 1, departedAt: 0 };
+    const leg1 = legSeconds(trackRoute(trackOf(w, 't1'), byId(w)), 1);
+    trackOf(w, 't1').train = { leg: 1, departedAt: now - (leg1 + 100) * 1000 };
+    const before = at(w, 't1');
+    expect(before.leg).toBe(2);
+    const next = reduce(w, { type: 'delete', id: 'shared', now });
+    expect(trackOf(next, 't1').stops).toEqual(['dentist', 'wristband']);
+    expect(at(next, 't1').leg).toBe(1);
+    expect(at(next, 't1').seconds).toBeCloseTo(before.seconds + leg1);
+  });
+
+  test('undo on a shared stop is refused unless every line can take it back', () => {
+    const late = 100_000_000;
+    // t1 passed through shared and is waiting at wristband.
+    const passed = done(twoLines(), 'dentist', 'shared');
+    trackOf(passed, 't1').train = { leg: 1, departedAt: 0 };
+    trackOf(passed, 't2').train = { leg: 1, departedAt: 0 };
+    expect(trainState(trackOf(passed, 't1'), byId(passed), late)).toMatchObject({ leg: 2, waiting: true });
+    expect(reduce(passed, { type: 'undo', trackId: 't2', now: late })).toBe(passed);
+    // t1 just past shared: both trains go back to waiting at it.
+    const just = done(twoLines(), 'dentist', 'shared');
+    trackOf(just, 't1').train = { leg: 2, departedAt: now };
+    trackOf(just, 't2').train = { leg: 1, departedAt: now };
+    const back = reduce(just, { type: 'undo', trackId: 't2', now });
+    expect(stopOf(back, 'shared').done).toBe(false);
+    expect(at(back, 't1')).toMatchObject({ leg: 1, waiting: true });
+    expect(at(back, 't2')).toMatchObject({ leg: 0, waiting: true });
+  });
+
+  test('keepTrain rebases from the derived leg', () => {
+    // Dentist was done from elsewhere; the stored train lags on leg 0, but 1500 s have passed.
+    const w = done(fixtureRunning(), 'dentist');
+    const later = 1_500_000;
+    const before = trainState(w.tracks[0], byId(w), later);
+    expect(before.leg).toBe(1);
+    const next = reduce(w, { type: 'moveGoal', trackId: 't1', x: 4000, y: 0, now: later });
+    expect(next.tracks[0].train.leg).toBe(1);
+    expect(trainState(next.tracks[0], byId(next), later).seconds).toBeCloseTo(before.seconds);
+    expect(stopOf(next, 'dentist')).toMatchObject({ x: 1000, y: 0 });
+  });
+
+  test('dragging a goal scales a shared stop and keeps the other line its train', () => {
+    const w = twoLines();
+    const T = at(w, 't1').at;
+    const s2 = at(w, 't2').seconds;
+    const keep = { t1: at(w, 't1').seconds, t2: s2 };
+    const next = reduce(w, { type: 'moveGoal', trackId: 't1', x: T.x + 2 * (3000 - T.x), y: 0, now, keep });
+    expect(stopOf(next, 'shared').x).toBeCloseTo(T.x + 2 * (1500 - T.x));
+    expect(stopOf(next, 'shared').y).toBeCloseTo(1200);
+    expect(at(next, 't2').seconds).toBeCloseTo(s2);
+    expect(at(next, 't1').seconds).toBeCloseTo(keep.t1);
   });
 });
