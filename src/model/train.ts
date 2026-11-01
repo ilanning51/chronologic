@@ -25,6 +25,8 @@ export interface TrainState {
   fraction: number;
   at: Point;
   angle: number;
+  /** When the train left for this leg (ms epoch), after any pass-through; the crowd counts from it. */
+  departedAt: number;
 }
 
 /**
@@ -43,22 +45,22 @@ export function trainState(track: Track, byId: Map<string, Stop>, now: number): 
     departedAt += ms;
     leg++;
   }
-  if (leg >= track.stops.length) return parkedState(track, route, leg);
+  if (leg >= track.stops.length) return parkedState(track, route, leg, departedAt);
   const { from, to } = legSpan(route, leg);
   const length = pathLength(vertices, from, to);
   const tau = length === 0 ? 1 : (now - departedAt) / 1000 / length;
   if (tau >= 1) {
-    return { leg, parked: false, waiting: true, seconds: length, fraction: 1, ...pointAlong(vertices, from, to, 1) };
+    return { leg, parked: false, waiting: true, seconds: length, fraction: 1, departedAt, ...pointAlong(vertices, from, to, 1) };
   }
   const fraction = progress(tau);
-  return { leg, parked: false, waiting: false, seconds: fraction * length, fraction, ...pointAlong(vertices, from, to, fraction) };
+  return { leg, parked: false, waiting: false, seconds: fraction * length, fraction, departedAt, ...pointAlong(vertices, from, to, fraction) };
 }
 
 /** A train past its goal, parked at the last stop (or the origin of a track with none). */
-function parkedState(track: Track, route: Route, leg: number): TrainState {
+function parkedState(track: Track, route: Route, leg: number, departedAt: number): TrainState {
   const { from, to } = legSpan(route, Math.max(0, leg - 1));
   const end = track.stops.length > 0 ? pointAlong(route.vertices, from, to, 1) : { at: route.vertices[0], angle: 0 };
-  return { leg, parked: true, waiting: false, seconds: 0, fraction: 1, ...end };
+  return { leg, parked: true, waiting: false, seconds: 0, fraction: 1, departedAt, ...end };
 }
 
 /**
@@ -101,8 +103,8 @@ export function timeLeftAny(world: World, stopId: string, now: number): number {
 export function dayState(day: Track, world: World, now: number): TrainState {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const route = trackRoute(day, byId);
-  const { leg } = day.train;
-  if (leg >= day.stops.length) return parkedState(day, route, leg);
+  const { leg, departedAt } = day.train;
+  if (leg >= day.stops.length) return parkedState(day, route, leg, departedAt);
   const budget = day.day?.budgets[leg] ?? 0;
   const left = timeLeftAny(world, day.stops[leg], now);
   const fraction = budget === 0 ? 1 : Math.min(1, Math.max(0, 1 - left / budget));
@@ -114,6 +116,7 @@ export function dayState(day: Track, world: World, now: number): TrainState {
     waiting: fraction === 1,
     seconds: fraction * length,
     fraction,
+    departedAt,
     ...pointAlong(route.vertices, from, to, fraction),
   };
 }

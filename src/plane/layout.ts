@@ -1,5 +1,7 @@
-import { nextIndex, trainState, trackRoute } from '../model/train';
-import type { Shape, Size, Stop, Track } from '../model/types';
+import { crowdAt } from '../model/crowd';
+import { tracksOf } from '../model/reducer';
+import { dayState, nextIndex, trainState, trackRoute } from '../model/train';
+import type { Shape, Size, Track, World } from '../model/types';
 import { type Camera, worldToScreen } from './camera';
 import { CLIP_MARGIN_PX, clipSegment } from './clip';
 import type { Point } from './geometry';
@@ -16,6 +18,10 @@ export interface StopView {
   label: boolean;
   next: boolean;
   goal: boolean;
+  /** On two or more lines and not done: an interchange, drawn as a ring. */
+  ring: boolean;
+  /** Dots of crowd, only on the stop the train waits at. */
+  crowd: number;
 }
 
 export interface TrainView {
@@ -30,6 +36,10 @@ export interface TrackView {
   id: string;
   color: number;
   finished: boolean;
+  /** The day line, drawn in ink. */
+  day: boolean;
+  /** A project line with only its goal, drawn muted and thin. A look, not a state. */
+  sketch: boolean;
   segments: [Point, Point][];
   stops: StopView[];
   train: TrainView;
@@ -43,11 +53,12 @@ export interface TrackView {
  */
 export function layoutTrack(
   track: Track,
-  byId: Map<string, Stop>,
+  world: World,
   camera: Camera,
   now: number,
   viewport: { w: number; h: number },
 ): TrackView {
+  const byId = new Map(world.stops.map((s) => [s.id, s]));
   const grown = {
     x: -CLIP_MARGIN_PX,
     y: -CLIP_MARGIN_PX,
@@ -62,6 +73,10 @@ export function layoutTrack(
     const clipped = clipSegment(vertices[i - 1], vertices[i], grown);
     if (clipped) segments.push(clipped);
   }
+
+  // The day train shadows the projects; every other train keeps its own clock.
+  const state = track.day ? dayState(track, world, now) : trainState(track, byId, now);
+  const crowd = state.waiting ? crowdAt(track, byId, now) : 0;
 
   const next = nextIndex(track, byId);
   const goalIndex = track.stops.length - 1;
@@ -86,9 +101,10 @@ export function layoutTrack(
     label: labeled.has(stop.id),
     next: index === next,
     goal: index === goalIndex,
+    ring: !stop.done && tracksOf(world, stop.id).length >= 2,
+    crowd: index === state.leg ? crowd : 0,
   }));
 
-  const state = trainState(track, byId, now);
   const trainAt = worldToScreen(camera, state.at);
   const train: TrainView = { x: trainAt.x, y: trainAt.y, angle: state.angle, waiting: state.waiting, parked: state.parked };
 
@@ -96,6 +112,8 @@ export function layoutTrack(
     id: track.id,
     color: track.color,
     finished: state.parked,
+    day: track.day !== undefined,
+    sketch: !track.day && track.stops.length === 1,
     segments,
     stops,
     train,

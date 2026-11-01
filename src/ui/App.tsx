@@ -386,7 +386,7 @@ export function App({ store, now = Date.now }: AppProps) {
   };
 
   const byId = new Map(world.stops.map((s) => [s.id, s]));
-  const views = world.tracks.map((t) => layoutTrack(t, byId, camera, time, viewport));
+  const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport));
   const rolling = views.some((v) => !v.train.parked);
 
   useEffect(() => {
