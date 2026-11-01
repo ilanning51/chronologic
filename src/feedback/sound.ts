@@ -1,7 +1,6 @@
-import { KINDS } from '../model/kinds';
-import type { Kind } from '../model/types';
+import { PALETTE } from '../model/palette';
 
-/** One short tone per completion, in the stretch's pitch. */
+/** One short tone per completion, in its track's pitch. */
 const TONE_SECONDS = 0.12;
 const TONE_GAIN = 0.2;
 const RAMP_SECONDS = 0.02;
@@ -11,8 +10,8 @@ const CHORD_HZ = [262, 330, 392];
 const CHORD_SECONDS = 0.6;
 const CHORD_GAIN = 0.15;
 
-export function pitchFor(kind: Kind): number {
-  return KINDS[kind].pitchHz;
+export function pitchFor(color: number): number {
+  return PALETTE[color % PALETTE.length].pitchHz;
 }
 
 function sine(ctx: AudioContext, hz: number, seconds: number, level: number): void {

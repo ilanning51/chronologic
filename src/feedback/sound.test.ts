@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { KIND_ORDER } from '../model/kinds';
+import { PALETTE } from '../model/palette';
 import { pitchFor, playChord, playTone } from './sound';
 
 interface FakeOscillator {
@@ -28,9 +28,10 @@ function fakeContext() {
   return { ctx: ctx as unknown as AudioContext, oscillators };
 }
 
-test('each kind has its own pitch', () => {
-  expect(new Set(KIND_ORDER.map(pitchFor)).size).toBe(4);
-  expect(pitchFor('deep')).toBe(262);
+test('each track colour has its own pitch', () => {
+  expect(new Set(PALETTE.map((_, i) => pitchFor(i))).size).toBe(8);
+  expect(pitchFor(0)).toBe(262);
+  expect(pitchFor(8)).toBe(262); // wraps
 });
 
 test('a tone is one short sine at the pitch', () => {

@@ -3,33 +3,38 @@
   --paper: #EEEBE5;
   --ink: #2B2420;
   --muted: #6B635C;
-  --deep: #2440A4;
-  --shallow: #A67C00;
-  --body: #1F7A3A;
-  --out: #C4251F;
+  --track-blue: #2440A4;
+  --track-ochre: #A67C00;
+  --track-green: #1F7A3A;
+  --track-red: #C4251F;
+  --track-plum: #6B2D8B;
+  --track-teal: #0F6E7A;
+  --track-rust: #B5500F;
+  --track-slate: #3D4F63;
 
-  /* World sizes, in world units (CSS px at scale 1). */
-  --line: 10px;
-  --circle: 22px;
-  --triangle-w: 24px;
-  --triangle-h: 22px;
-  --square: 20px;
+  /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
+  --track: 10px;
   --dot: 10px;
-  --train-l: 30px;
-  --train-w: 20px;
-  --terminus-w: 10px;
-  --terminus-l: 26px;
   --label: 13px;
-  --label-zoomed: 17px;
+  /* The least hit target for anything pressable, in CSS px. */
+  --tap: 44px;
+  --circle-small: 14px;
+  --circle-medium: 22px;
+  --circle-large: 30px;
+  --triangle-small-w: 16px;
+  --triangle-small-h: 14px;
+  --triangle-medium-w: 24px;
+  --triangle-medium-h: 22px;
+  --triangle-large-w: 32px;
+  --triangle-large-h: 30px;
+  --square-small: 13px;
+  --square-medium: 20px;
+  --square-large: 28px;
 
   /* HUD sizes, in rem so the browser text size scales them. */
-  --bullet: 1.75rem;
   --hit: 2.75rem;
-  --clock: 2.25rem;
   --add: 3.5rem;
   --chip: 2.25rem;
-  --name: 1.375rem;
-  --subtitle: 0.9375rem;
 
   --font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }

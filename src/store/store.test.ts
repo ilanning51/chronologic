@@ -1,8 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
-import { EMPTY } from '../model/reducer';
+import { EMPTY, type Action } from '../model/reducer';
 import { STORAGE_KEY } from './storage';
 import { createStore, persist, useWorld } from './store';
+
+const newTrack: Action = { type: 'newTrack', id: 't', goalId: 'g', title: 'Ship', origin: { x: 1, y: 2 }, now: 5 };
 
 test('the store reduces and notifies, and persist writes every change', () => {
   const store = createStore(EMPTY);
@@ -11,20 +13,20 @@ test('the store reduces and notifies, and persist writes every change', () => {
   const setItem = vi.fn();
   persist(store, { setItem });
 
-  store.dispatch({ type: 'add', id: 'a', title: 'Dentist', shape: 'circle', x: 1, y: 2 });
+  store.dispatch(newTrack);
 
-  expect(store.getState().stations).toHaveLength(1);
+  expect(store.getState().tracks).toHaveLength(1);
   expect(seen).toHaveBeenCalledTimes(1);
   expect(setItem).toHaveBeenCalledTimes(1);
   expect(setItem.mock.calls[0][0]).toBe(STORAGE_KEY);
-  expect(JSON.parse(setItem.mock.calls[0][1] as string).stations).toHaveLength(1);
+  expect(JSON.parse(setItem.mock.calls[0][1] as string).tracks).toHaveLength(1);
 });
 
 test('an action that changes nothing does not notify', () => {
   const store = createStore(EMPTY);
   const seen = vi.fn();
   store.subscribe(seen);
-  store.dispatch({ type: 'move', id: 'missing', x: 0, y: 0 });
+  store.dispatch({ type: 'move', id: 'missing', x: 0, y: 0, now: 0 });
   expect(seen).not.toHaveBeenCalled();
 });
 
@@ -33,16 +35,16 @@ test('unsubscribing stops the notifications', () => {
   const seen = vi.fn();
   const stop = store.subscribe(seen);
   stop();
-  store.dispatch({ type: 'add', id: 'a', title: 'x', shape: 'circle', x: 0, y: 0 });
+  store.dispatch(newTrack);
   expect(seen).not.toHaveBeenCalled();
 });
 
 test('useWorld reads the store and re-renders on change', () => {
   const store = createStore(EMPTY);
   const { result } = renderHook(() => useWorld(store));
-  expect(result.current.stations).toEqual([]);
+  expect(result.current.tracks).toEqual([]);
   act(() => {
-    store.dispatch({ type: 'add', id: 'a', title: 'Dentist', shape: 'circle', x: 1, y: 2 });
+    store.dispatch(newTrack);
   });
-  expect(result.current.stations.map((s) => s.title)).toEqual(['Dentist']);
+  expect(result.current.stops.map((s) => s.title)).toEqual(['Ship']);
 });

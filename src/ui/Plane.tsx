@@ -1,15 +1,8 @@
-import { type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef } from 'react';
-import type { Kind } from '../model/types';
-import { type Camera, cssTransform } from '../plane/camera';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef } from 'react';
 import type { Point } from '../plane/geometry';
 import { type Gesture, Recognizer, type Sample, type Target } from '../plane/gestures';
 
 interface PlaneProps {
-  camera: Camera;
-  /** The running line's color as the theme writes it; press and focus fill with it. */
-  lineColor: string;
-  /** Whether the camera is flying somewhere, which eases the transform instead of snapping. */
-  flying: boolean;
   onGesture: (gesture: Gesture) => void;
   onZoom: (at: Point, factor: number) => void;
   hud: ReactNode;
@@ -19,17 +12,31 @@ interface PlaneProps {
 /** How often the recognizer is told that time passed while a pointer is down. */
 const TICK_MS = 50;
 
+/** PointerEvent.button for the secondary (usually right) mouse button. */
+const RIGHT_BUTTON = 2;
+
 /** Reads what a pointer went down on from the nearest data-target. */
 function targetOf(el: EventTarget | null): Target {
   const hit = el instanceof Element ? el.closest<HTMLElement>('[data-target]') : null;
   if (!hit) return { kind: 'paper' };
   switch (hit.dataset.target) {
-    case 'station':
-      return { kind: 'station', id: hit.dataset.id ?? '' };
-    case 'bullet':
-      return { kind: 'bullet', line: hit.dataset.line as Kind };
-    case 'clock':
-      return { kind: 'clock' };
+    case 'stop':
+      return {
+        kind: 'stop',
+        id: hit.dataset.id ?? '',
+        track: hit.dataset.track ?? '',
+        goal: hit.dataset.goal !== undefined,
+      };
+    case 'train':
+      return { kind: 'train', track: hit.dataset.track ?? '' };
+    case 'bubble':
+      return { kind: 'bubble', track: hit.dataset.track ?? '' };
+    case 'tile': {
+      const tile = hit.dataset.tile;
+      return { kind: 'tile', tile: tile === 'triangle' || tile === 'line' ? tile : 'circle' };
+    }
+    case 'hold':
+      return { kind: 'hold', id: hit.dataset.id ?? '' };
     default:
       return { kind: 'hud' };
   }
@@ -39,9 +46,10 @@ const sample = (e: ReactPointerEvent): Sample => ({ id: e.pointerId, x: e.client
 
 /**
  * The full-screen paper. It turns pointer events into samples for the recognizer and
- * draws the world layer under the camera transform, with the HUD on top in screen space.
+ * draws the world layer in screen space (no transform), with the HUD on top in screen space.
+ * A right click is a long press at once, straight to the app; the recognizer never sees it.
  */
-export function Plane({ camera, lineColor, flying, onGesture, onZoom, hud, children }: PlaneProps) {
+export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
   const latest = useRef(onGesture);
   latest.current = onGesture;
   const recognizer = useMemo(() => new Recognizer((g) => latest.current(g)), []);
@@ -84,17 +92,25 @@ export function Plane({ camera, lineColor, flying, onGesture, onZoom, hud, child
       ref={main}
       className="plane"
       aria-label="The plane"
-      style={{ ['--line-color' as string]: lineColor } as CSSProperties}
       onPointerDown={(e) => {
+        if (e.button === RIGHT_BUTTON) {
+          onGesture({ type: 'longPress', target: targetOf(e.target), at: { x: e.clientX, y: e.clientY } });
+          return;
+        }
         pointersDown.current += 1;
         recognizer.down(sample(e), targetOf(e.target));
         startTicking();
       }}
       onPointerMove={(e) => recognizer.move(sample(e))}
       onPointerUp={(e) => {
+        if (e.button === RIGHT_BUTTON) return;
         pointersDown.current = Math.max(0, pointersDown.current - 1);
         recognizer.up(sample(e));
         stopTickingWhenIdle();
+      }}
+      onContextMenu={(e) => {
+        // The browser's menu is kept only in a text field, where it is how you paste.
+        if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
       }}
       onPointerCancel={(e) => {
         pointersDown.current = Math.max(0, pointersDown.current - 1);
@@ -102,7 +118,7 @@ export function Plane({ camera, lineColor, flying, onGesture, onZoom, hud, child
         stopTickingWhenIdle();
       }}
     >
-      <div className={flying ? 'world flying' : 'world'} data-testid="world" style={{ transform: cssTransform(camera) }}>
+      <div className="world">
         {children}
       </div>
       {hud}

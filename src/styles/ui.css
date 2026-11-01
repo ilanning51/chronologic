@@ -1,60 +1,63 @@
-/* The world layer: one transform carries the whole camera. */
+/* The world layer is screen space: positions are already in pixels, so nothing here transforms.
+   It is its own stacking layer, so a raised stop never rises above the HUD drawn after it. */
 .world {
   position: absolute;
   left: 0;
   top: 0;
-  transform-origin: 0 0;
+  isolation: isolate;
 }
 
-/* Only a flight eases; a pan or a pinch follows the finger with no lag. */
-.world.flying {
-  transition: transform 400ms ease-out;
-}
-
-/* The line lives in the world layer under the stations and draws outside its own box. */
-.line {
+/* A track lives in the world layer under the stops and draws outside its own box. */
+.track {
   position: absolute;
   left: 0;
   top: 0;
   overflow: visible;
 }
 
-.line .train,
-.line .terminus {
+.track .train,
+.track .train-hit {
   transform-box: fill-box;
   transform-origin: center;
-  transition: transform 150ms ease-out;
 }
 
-/* Only a completion slides the train; a dragged station moves its line with no lag. */
-.line.dragging .train,
-.line.dragging .terminus {
-  transition: none;
-}
-
-/* Stations. The shape's center sits on the station's world point. */
-.station {
+/* Stops. The shape's center sits on the stop's screen point. */
+.stop {
   position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  display: block;
+  width: 0;
+  height: 0;
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
   color: var(--ink);
-  transform: translate(-50%, calc(var(--circle) / -2));
   cursor: pointer;
 }
 
-.station.done {
-  transform: translate(-50%, calc(var(--dot) / -2));
+/* The 44 px rule: every stop has a centered 44 px hit target, however small its shape. It paints nothing. */
+.stop::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--tap);
+  height: var(--tap);
+  transform: translate(-50%, -50%);
 }
 
-.station .shape {
+/* Where hit targets overlap, the next stop, the only one a tap completes, is on top. */
+.stop.next {
+  z-index: 1;
+}
+
+.stop .shape {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: block;
   background: var(--ink);
+  transform: translate(-50%, -50%);
   transition:
     width 150ms ease-out,
     height 150ms ease-out,
@@ -62,21 +65,24 @@
 }
 
 .shape.circle {
-  width: var(--circle);
-  height: var(--circle);
   border-radius: 50%;
 }
 
+.shape.circle.small { width: var(--circle-small); height: var(--circle-small); }
+.shape.circle.medium { width: var(--circle-medium); height: var(--circle-medium); }
+.shape.circle.large { width: var(--circle-large); height: var(--circle-large); }
+
 .shape.triangle {
-  width: var(--triangle-w);
-  height: var(--triangle-h);
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
-.shape.square {
-  width: var(--square);
-  height: var(--square);
-}
+.shape.triangle.small { width: var(--triangle-small-w); height: var(--triangle-small-h); }
+.shape.triangle.medium { width: var(--triangle-medium-w); height: var(--triangle-medium-h); }
+.shape.triangle.large { width: var(--triangle-large-w); height: var(--triangle-large-h); }
+
+.shape.square.small { width: var(--square-small); height: var(--square-small); }
+.shape.square.medium { width: var(--square-medium); height: var(--square-medium); }
+.shape.square.large { width: var(--square-large); height: var(--square-large); }
 
 .shape.dot {
   width: var(--dot);
@@ -84,26 +90,37 @@
   border-radius: 50%;
 }
 
-.station .label {
+/* A finished track dims whole, its dots with its line. */
+.stop.finished .shape.dot {
+  background: var(--muted);
+}
+
+/* The label hangs beneath the shape, centered on the stop's point. */
+.stop .label {
+  position: absolute;
+  left: 0;
+  top: 22px;
+  transform: translateX(-50%);
+  font-size: var(--label);
   white-space: nowrap;
   line-height: 1.25;
 }
 
-.station.done .label {
+.stop.done .label {
   color: var(--muted);
 }
 
-/* Focus and press are the shape filling with the line color, never a ring. */
+/* Focus and press are the shape filling with the track color, never a ring. */
 button:focus-visible {
   outline: none;
 }
 
-.station:focus-visible .shape,
-.station:active .shape {
-  background: var(--line-color);
+.stop:focus-visible .shape,
+.stop:active .shape {
+  background: var(--track-color);
 }
 
-/* The HUD: four stickers on the glass, in screen space. */
+/* The HUD: stickers on the glass, in screen space. */
 .hud {
   position: absolute;
   inset: 0;
@@ -112,174 +129,6 @@ button:focus-visible {
 
 .hud > * {
   pointer-events: auto;
-}
-
-.hud-name {
-  position: absolute;
-  left: 2.75rem;
-  top: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.hud-name h1 {
-  margin: 0;
-  font-size: var(--name);
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.hud-name p {
-  margin: 0;
-  font-size: var(--subtitle);
-  line-height: 1.33;
-  color: var(--muted);
-}
-
-.hud-clock {
-  position: absolute;
-  right: 2.5rem;
-  top: 1rem;
-  width: var(--hit);
-  height: var(--hit);
-  padding: 0;
-  border: 0;
-  background: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.hud-clock .pie {
-  display: block;
-  width: var(--clock);
-  height: var(--clock);
-  border-radius: 50%;
-  background: var(--pie);
-  transition: transform 150ms ease-out;
-}
-
-.hud-clock:focus-visible .pie {
-  transform: scale(0.85);
-}
-
-/* Holding the clock: the pie shrinks over the hold, so letting go early reads as a cancel. */
-.hud-clock.holding .pie {
-  transform: scale(0.15);
-  transition: transform 600ms linear;
-}
-
-.hud-bullets {
-  position: absolute;
-  left: 2.25rem;
-  bottom: 0.75rem;
-  display: flex;
-  gap: 0.25rem;
-}
-
-.bullet {
-  width: var(--hit);
-  height: var(--hit);
-  padding: 0;
-  border: 0;
-  background: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font: inherit;
-  cursor: pointer;
-}
-
-.bullet .disc {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--bullet);
-  height: var(--bullet);
-  border-radius: 50%;
-  color: var(--paper);
-  font-size: 0.9375rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.bullet:focus-visible .disc,
-.bullet:active .disc {
-  background: var(--ink) !important;
-}
-
-.bullet[aria-pressed='true'] .disc {
-  transform: scale(1.15);
-}
-
-/* The length chips, beside the bullets once one is tapped. The chosen one fills with the kind color. */
-.hud-bullets {
-  align-items: center;
-}
-
-.hud-chips {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  margin-left: 0.5rem;
-}
-
-.chip {
-  height: var(--chip);
-  padding: 0 0.875rem;
-  border: 0;
-  border-radius: calc(var(--chip) / 2);
-  background: none;
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.9375rem;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.chip[aria-pressed='true'] {
-  color: var(--paper);
-  font-weight: 700;
-}
-
-.chip:focus-visible,
-.chip:active {
-  background: var(--line-color);
-  color: var(--paper);
-}
-
-/* The stretch name is a button until tapped, then a field in the same type. */
-.name-button {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.name-button:focus-visible,
-.name-button:active {
-  color: var(--line-color);
-}
-
-.hud-name input {
-  width: 12rem;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  caret-color: var(--line-color);
-  outline: none;
-  user-select: text;
-  -webkit-user-select: text;
 }
 
 .hud-add {
@@ -300,24 +149,10 @@ button:focus-visible {
 
 .hud-add:focus-visible,
 .hud-add:active {
-  background: var(--line-color);
+  background: var(--track-color);
 }
 
-/* The capture pill: the add button grown into a field, paper on ink, no outline. */
-.hud-capture {
-  position: absolute;
-  right: 2.5rem;
-  bottom: 1rem;
-  height: var(--add);
-  padding: 0 0.375rem 0 1.375rem;
-  border-radius: calc(var(--add) / 2);
-  background: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 0.125rem;
-}
-
-.hud-capture input,
+/* The editor's title field: paper on ink, no outline. */
 .hud-editor input {
   width: 11rem;
   margin: 0 0.5rem 0 0;
@@ -346,7 +181,6 @@ button:focus-visible {
   cursor: pointer;
 }
 
-.hud-capture .shape,
 .hud-editor .shape {
   display: block;
   background: var(--paper);
@@ -355,10 +189,10 @@ button:focus-visible {
 .shape-button:focus-visible .shape,
 .shape-button:active .shape,
 .shape-button[aria-pressed='true'] .shape {
-  background: var(--line-color);
+  background: var(--track-color);
 }
 
-/* The editor: the same pill, centered above the bullets, opened by a long press. */
+/* The editor: a pill of paper on ink, centered above the plus, opened by a long press. */
 .hud-editor {
   position: absolute;
   left: 50%;
@@ -378,10 +212,10 @@ button:focus-visible {
 }
 
 .pill-text {
-  height: var(--chip);
+  height: var(--tap);
   padding: 0 0.875rem;
   border: 0;
-  border-radius: calc(var(--chip) / 2);
+  border-radius: calc(var(--tap) / 2);
   background: none;
   color: var(--paper);
   font: inherit;
@@ -392,5 +226,139 @@ button:focus-visible {
 
 .pill-text:focus-visible,
 .pill-text:active {
-  background: var(--line-color);
+  background: var(--track-color);
+}
+
+/* Hold to delete: the button fills with the track's color, then drains over HOLD_MS, so
+   letting go early reads as a cancel. Opaque, no outline. */
+.pill-text.hold {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.pill-text.hold::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--track-color);
+  transform: scale(1);
+  transition: none;
+}
+
+.pill-text.hold.holding::before {
+  transform: scale(0.15);
+  transition: transform 600ms linear;
+}
+
+/* The tray: three paper-on-ink tiles beside the plus, dragged onto a line or tapped. */
+.hud-tray {
+  position: absolute;
+  right: calc(2.5rem + var(--add) + 0.75rem);
+  bottom: 1rem;
+  height: var(--add);
+  padding: 0 0.375rem;
+  border-radius: calc(var(--add) / 2);
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.tile {
+  width: var(--hit);
+  height: var(--hit);
+  padding: 0;
+  border: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.tile .shape {
+  display: block;
+  background: var(--paper);
+}
+
+.tile:focus-visible .shape,
+.tile:active .shape {
+  background: var(--track-color);
+}
+
+/* The shape carried from the tray, centered on its screen point. Muted until it sits on a line. */
+.ghost {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.ghost .shape {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  background: var(--muted);
+  transform: translate(-50%, -50%);
+}
+
+.ghost.snapped .shape {
+  background: var(--ink);
+}
+
+/* The name field: the pill, set beside the shape it names. */
+.name-field {
+  position: absolute;
+  height: var(--chip);
+  padding: 0 0.875rem;
+  border-radius: calc(var(--chip) / 2);
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+}
+
+.name-field input {
+  width: 9rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--paper);
+  caret-color: var(--paper);
+  font: inherit;
+  font-size: 1.0625rem;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* The edge bubble: a paper pill on the window edge, the target's shape in the track color. */
+.bubble {
+  position: absolute;
+  min-height: var(--tap);
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: calc(var(--tap) / 2);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.bubble .shape {
+  display: block;
+  flex: none;
+  background: var(--track-color);
+}
+
+.bubble .title {
+  white-space: nowrap;
 }
