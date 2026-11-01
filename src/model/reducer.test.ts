@@ -772,6 +772,9 @@ describe('the day line', () => {
     expect(stopOf(undone, 'shared').done).toBe(false);
     expect(day(undone).train).toEqual({ leg: 1, departedAt: later });
     expect(day(undone).day!.budgets[1]).toBe(0);
+    // The end square goes back to pending: only tapping it parks the day again.
+    expect(stopOf(undone, 'dayEnd').done).toBe(false);
+    expect(day(reduce(undone, { type: 'complete', trackId: 't2', now: later })).train.leg).toBe(2);
   });
 
   test('deleting a project goal takes its stops off the day unless another project has them', () => {

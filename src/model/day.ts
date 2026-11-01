@@ -6,8 +6,10 @@ export function dayTrack(world: World): Track | undefined {
   return world.tracks.find((t) => t.day);
 }
 
-function withDayTrack(world: World, day: Track): World {
-  return { ...world, tracks: world.tracks.map((t) => (t.id === day.id ? day : t)) };
+/** The day train sets off now toward `leg`, on these budgets. */
+function departDay(world: World, day: Track, leg: number, budgets: number[], now: number): World {
+  const moved: Track = { ...day, train: { leg, departedAt: now }, day: day.day && { ...day.day, budgets } };
+  return { ...world, tracks: world.tracks.map((t) => (t.id === day.id ? moved : t)) };
 }
 
 /**
@@ -27,6 +29,7 @@ export function clearDay(world: World): World {
   const end = day.stops[day.stops.length - 1];
   const dropEnd = end !== undefined && isDayEnd(world, end);
   return {
+    ...world,
     tracks: world.tracks.filter((t) => t !== day),
     stops: dropEnd ? world.stops.filter((s) => s.id !== end) : world.stops,
     lastTouched: world.lastTouched === day.id ? null : world.lastTouched,
@@ -49,7 +52,7 @@ export function settleDay(world: World, now: number): World {
     leg++;
     if (leg < day.stops.length) budgets[leg] = timeLeftAny(world, day.stops[leg], now);
   }
-  return withDayTrack(world, { ...day, train: { leg, departedAt: now }, day: { ...day.day, budgets } });
+  return departDay(world, day, leg, budgets, now);
 }
 
 /**
@@ -79,15 +82,22 @@ export function freshDayBudget(world: World, now: number): World {
   if (leg >= day.stops.length) return world;
   const budgets = [...day.day.budgets];
   budgets[leg] = timeLeftAny(world, day.stops[leg], now);
-  return withDayTrack(world, { ...day, train: { leg, departedAt: now }, day: { ...day.day, budgets } });
+  return departDay(world, day, leg, budgets, now);
 }
 
-/** Undo of a stop the day train is past: it goes back to wait at that stop, budget 0. */
+/**
+ * Undo of a stop the day train is past: it goes back to wait at that stop, budget 0. A finished
+ * day is open again, so its end square is pending: only tapping it parks the day train.
+ */
 export function dayBackTo(world: World, stopId: string, now: number): World {
   const day = dayTrack(world);
   const index = day ? day.stops.indexOf(stopId) : -1;
   if (!day?.day || index < 0 || index >= day.train.leg) return world;
   const budgets = [...day.day.budgets];
   budgets[index] = 0;
-  return withDayTrack(world, { ...day, train: { leg: index, departedAt: now }, day: { ...day.day, budgets } });
+  const end = day.stops[day.stops.length - 1];
+  const reopened = isDayEnd(world, end)
+    ? { ...world, stops: world.stops.map((s) => (s.id === end ? { ...s, done: false } : s)) }
+    : world;
+  return departDay(reopened, day, index, budgets, now);
 }
