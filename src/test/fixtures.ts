@@ -42,3 +42,22 @@ export function twoLines(): World {
   );
   return world;
 }
+
+/**
+ * twoLines() and today's day line: Dentist, then Shared, then the day's-end square. The first
+ * budget is Dentist's time left at 0 s; the later ones are written as the day train gets there.
+ */
+export function withDay(): World {
+  const world = twoLines();
+  world.tracks.push({
+    id: 'day',
+    color: 2,
+    origin: { x: 1000, y: -400 },
+    stops: ['dentist', 'shared', 'dayEnd'],
+    train: { leg: 0, departedAt: 0 },
+    target: 'next',
+    day: { date: '2026-11-01', budgets: [1000, 0, 0] },
+  });
+  world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
+  return world;
+}
