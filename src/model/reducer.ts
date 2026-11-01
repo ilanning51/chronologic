@@ -18,14 +18,14 @@ export interface GoalDragStart {
 
 /**
  * keep, where given, is the seconds the train had covered on its leg when a drag began. The drag
- * holds the train to it, so pulling a stop behind the train and back again loses nothing. A goal
- * drag can re-route several lines through shared stops, so its keep is per track id; a track it
- * does not name keeps what it has now. A plain move's keep is for the stop's first track.
+ * holds the train to it, so pulling a stop behind the train and back again loses nothing. A drag
+ * can re-route several lines through a shared stop, so move and moveGoal keep per track id; a
+ * track the record does not name keeps what it has now.
  */
 export type Action =
   | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; now: number }
   | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; leg: number; x: number; y: number; now: number; keep?: number }
-  | { type: 'move'; id: string; x: number; y: number; now: number; keep?: number } // a pending stop that is not the goal
+  | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
   | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size }
   | { type: 'delete'; id: string; now: number } // deleting the goal deletes the track
@@ -160,7 +160,7 @@ export function reduce(world: World, action: Action): World {
         stops: world.stops.map((s) => (s.id === id ? { ...s, x, y } : s)),
         lastTouched: found[0].track.id,
       };
-      return found.reduce((w, { track }, i) => keepTrain(world, w, track.id, now, i === 0 ? keep : undefined), after);
+      return found.reduce((w, { track }) => keepTrain(world, w, track.id, now, keep?.[track.id]), after);
     }
 
     case 'moveGoal': {
@@ -259,20 +259,22 @@ export function reduce(world: World, action: Action): World {
       const track = world.tracks.find((t) => t.id === trackId);
       if (!track) return world;
       const byId = stopsById(world);
-      const id = track.stops[track.train.leg - 1];
+      // Legs are the derived trains': a train that rolled through a stop done elsewhere has it
+      // just behind, the same as one sent on from it.
+      const legOf = (t: Track) => trainState(t, byId, now).leg;
+      const id = track.stops[legOf(track) - 1];
       if (id === undefined || !byId.get(id)?.done) return world;
-      // Every project line must take the stop back: it is ahead of that train, or the dot that
-      // train was sent on from. A line that passed through it and went on cannot. The day line
-      // follows its projects.
+      // Every project line must take the stop back: it is ahead of that train or the dot just
+      // behind it. Two or more behind on any line, it cannot. The day line follows its projects.
       const lines = tracksOf(world, id).filter(({ track: t }) => !t.day || t.id === trackId);
-      const behind = new Set(lines.filter(({ track: t, index }) => index === t.train.leg - 1).map(({ track: t }) => t.id));
-      if (lines.some(({ track: t, index }) => !behind.has(t.id) && index < trainState(t, byId, now).leg)) return world;
+      const behind = new Set(lines.filter(({ track: t, index }) => index === legOf(t) - 1).map(({ track: t }) => t.id));
+      if (lines.some(({ track: t, index }) => !behind.has(t.id) && index < legOf(t))) return world;
       const stops = world.stops.map((s) => (s.id === id ? { ...s, done: false } : s));
       const after = stopsById({ ...world, stops });
       return {
         tracks: world.tracks.map((t) => {
           if (!behind.has(t.id)) return t;
-          const i = t.train.leg - 1;
+          const i = t.stops.indexOf(id);
           const length = legSeconds(trackRoute(t, after), i);
           return { ...t, train: rebase(i, length, length, now) };
         }),

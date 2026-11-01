@@ -3,7 +3,7 @@ import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { newId } from '../model/ids';
-import { DEFAULT_GOAL_SECONDS, type GoalDragStart } from '../model/reducer';
+import { DEFAULT_GOAL_SECONDS, tracksOf, type GoalDragStart } from '../model/reducer';
 import { legSeconds, nextIndex, targetIndex, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
@@ -98,16 +98,15 @@ export function App({ store, now = Date.now }: AppProps) {
   const audio = useRef<AudioContext | null>(null);
   /**
    * The pending stop under a finger, how far its centre sits from where the finger landed, and
-   * the drag's start: the train's seconds then and, for the goal, the points it scales from.
+   * the drag's start: the seconds then of every train the drag re-routes, by track id, and, for
+   * the goal, the points it scales from.
    */
   const dragging = useRef<{
     id: string;
     track: string;
     goal: boolean;
     grip: Point;
-    keep: number;
-    /** For the goal: the seconds of every train through a stop the drag scales, by track id. */
-    keeps?: Record<string, number>;
+    keep: Record<string, number>;
     from?: GoalDragStart;
   } | null>(null);
 
@@ -196,20 +195,18 @@ export function App({ store, now = Date.now }: AppProps) {
     const under = screenToWorld(cameraRef.current, g.at);
     const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
     const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
-    // A shared stop the goal drag scales re-routes its other lines too; each keeps its own train.
-    const scaled = new Set([stop.id, ...pending]);
-    const keeps = Object.fromEntries(
-      state.tracks
-        .filter((t) => t.stops.some((id) => scaled.has(id)))
-        .map((t) => [t.id, trainState(t, byId, now()).seconds]),
-    );
+    // A shared stop re-routes every line through it; each keeps its own train. A goal drag also
+    // moves every pending stop ahead of its train.
+    const lines = target.goal
+      ? state.tracks.filter((t) => t.stops.some((id) => id === stop.id || pending.includes(id)))
+      : tracksOf(state, stop.id).map((f) => f.track);
+    const keep = Object.fromEntries(lines.map((t) => [t.id, trainState(t, byId, now()).seconds]));
     dragging.current = {
       id: stop.id,
       track: target.track,
       goal: target.goal,
       grip: { x: stop.x - under.x, y: stop.y - under.y },
-      keep: train.seconds,
-      keeps: target.goal ? keeps : undefined,
+      keep,
       from: target.goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
     };
   };
@@ -224,7 +221,7 @@ export function App({ store, now = Date.now }: AppProps) {
     const under = screenToWorld(cameraRef.current, at);
     const x = under.x + d.grip.x;
     const y = under.y + d.grip.y;
-    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keeps, from: d.from });
+    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
     showLegInto(d.track, d.id);
   };

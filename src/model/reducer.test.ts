@@ -133,10 +133,10 @@ describe('move', () => {
     const world = running();
     const keep = stateOf(world).seconds;
     // Pulled behind the train, the leg is shorter than the train's offset and the train waits.
-    const pulled = reduce(world, { type: 'move', id: 'a', x: 200, y: 0, now, keep });
+    const pulled = reduce(world, { type: 'move', id: 'a', x: 200, y: 0, now, keep: { [trackId]: keep } });
     expect(stateOf(pulled)).toMatchObject({ waiting: true });
     // Put back where it was, the train has its seconds again.
-    const back = reduce(pulled, { type: 'move', id: 'a', x: 1000, y: 0, now, keep });
+    const back = reduce(pulled, { type: 'move', id: 'a', x: 1000, y: 0, now, keep: { [trackId]: keep } });
     expect(stateOf(back).seconds).toBeCloseTo(keep);
     expect(back.tracks[0].train).toEqual(world.tracks[0].train);
   });
@@ -343,6 +343,18 @@ describe('shared stops', () => {
     expect(at(next, 't2').seconds).toBeCloseTo(s2);
   });
 
+  test('dragging a shared stop behind one line\'s train and back keeps both trains', () => {
+    const w = twoLines();
+    const keep = { t1: at(w, 't1').seconds, t2: at(w, 't2').seconds };
+    // Pulled behind t2's train, t2's leg is shorter than its offset and it waits.
+    const pulled = reduce(w, { type: 'move', id: 'shared', x: 200, y: 600, now, keep });
+    expect(at(pulled, 't2')).toMatchObject({ waiting: true });
+    const back = reduce(pulled, { type: 'move', id: 'shared', x: 1500, y: 600, now, keep });
+    expect(at(back, 't1').seconds).toBeCloseTo(keep.t1);
+    expect(at(back, 't2').seconds).toBeCloseTo(keep.t2);
+    expect(trackOf(back, 't2').train).toEqual(trackOf(w, 't2').train);
+  });
+
   test('completing a shared stop that is next on both lines sends both trains on', () => {
     const w = done(twoLines(), 'dentist');
     trackOf(w, 't1').train = { leg: 1, departedAt: 0 };
@@ -402,12 +414,21 @@ describe('shared stops', () => {
 
   test('undo on a shared stop is refused unless every line can take it back', () => {
     const late = 100_000_000;
-    // t1 passed through shared and is waiting at wristband.
+    // t1 rolled through shared and is waiting at wristband: shared is the dot just behind its
+    // derived train, so undo takes both trains back to waiting at shared.
     const passed = done(twoLines(), 'dentist', 'shared');
     trackOf(passed, 't1').train = { leg: 1, departedAt: 0 };
     trackOf(passed, 't2').train = { leg: 1, departedAt: 0 };
     expect(trainState(trackOf(passed, 't1'), byId(passed), late)).toMatchObject({ leg: 2, waiting: true });
-    expect(reduce(passed, { type: 'undo', trackId: 't2', now: late })).toBe(passed);
+    const rolled = reduce(passed, { type: 'undo', trackId: 't2', now: late });
+    expect(stopOf(rolled, 'shared').done).toBe(false);
+    expect(trainState(trackOf(rolled, 't1'), byId(rolled), late)).toMatchObject({ leg: 1, waiting: true });
+    expect(trainState(trackOf(rolled, 't2'), byId(rolled), late)).toMatchObject({ leg: 0, waiting: true });
+    // t1 parked past wristband: shared is two behind its train, so undo is refused.
+    const far = done(twoLines(), 'dentist', 'shared', 'wristband');
+    trackOf(far, 't1').train = { leg: 3, departedAt: 0 };
+    trackOf(far, 't2').train = { leg: 1, departedAt: 0 };
+    expect(reduce(far, { type: 'undo', trackId: 't2', now })).toBe(far);
     // t1 just past shared: both trains go back to waiting at it.
     const just = done(twoLines(), 'dentist', 'shared');
     trackOf(just, 't1').train = { leg: 2, departedAt: now };
