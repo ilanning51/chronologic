@@ -3,3 +3,4 @@ dist/
 .claude/*.local.md
 .playwright-mcp/
 .vite/
+.worktrees/
