@@ -8,7 +8,8 @@ import { legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
-import { running } from '../test/fixtures';
+import { TRACK_WIDTH } from '../plane/world';
+import { running, twoLines, withDay } from '../test/fixtures';
 import { App } from './App';
 
 window.innerWidth = 1000;
@@ -733,4 +734,96 @@ test('a tile carried onto a line shows the time of the leg it would end, and not
   expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(1000));
   act(() => fireEvent.pointerUp(tile, { pointerId: 1, clientX: target.x, clientY: target.y }));
   expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+});
+
+/** The track svgs come in the order of the world's tracks. */
+const trackSvg = (i: number) => document.querySelectorAll('svg.track')[i] as SVGSVGElement;
+const strokes = (svg: SVGSVGElement) =>
+  [...svg.querySelectorAll('line')].map((l) => [l.style.stroke, parseFloat(l.style.strokeWidth)]);
+const trainFill = (svg: SVGSVGElement) => (svg.querySelector('[data-train]') as SVGElement).style.fill;
+/** The body of the first rule whose selector is exactly this one. */
+const cssRule = (selector: string) =>
+  new RegExp(String.raw`^${selector.replace(/[.()[\]]/g, '\\$&')}\s*\{([^}]*)\}`, 'm').exec(uiCss)?.[1] ?? '';
+
+test('a stop on two lines is one button', () => {
+  render(<App store={createStore(twoLines())} now={() => WAITING} />);
+  expect(screen.getAllByRole('button', { name: /^Shared/ })).toHaveLength(1);
+});
+
+test('a stop on two lines is drawn as a ring', () => {
+  render(<App store={createStore(twoLines())} now={() => WAITING} />);
+  const shape = screen.getByRole('button', { name: /^Shared/ }).querySelector('.shape')!;
+  expect(shape).toHaveClass('shape', 'ring', 'circle', 'medium');
+  // A stop on one line stays solid.
+  expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('.shape')).not.toHaveClass('ring');
+  // The paper centre is the same shape again, 4 px in, so the ink border is as thick as a line.
+  const centre = cssRule('.shape.ring::after');
+  expect(centre).toMatch(/inset:\s*4px/);
+  expect(centre).toMatch(/background:\s*var\(--paper\)/);
+  expect(cssRule('.shape.ring.circle::after')).toMatch(/border-radius:\s*50%/);
+  expect(cssRule('.shape.ring.triangle::after')).toMatch(/clip-path:\s*polygon\(50% 0, 100% 100%, 0 100%\)/);
+});
+
+test('a done interchange is a plain dot', () => {
+  const world = twoLines();
+  world.stops.find((s) => s.id === 'shared')!.done = true;
+  render(<App store={createStore(world)} now={() => WAITING} />);
+  const shape = screen.getByRole('button', { name: /^Shared/ }).querySelector('.shape')!;
+  expect(shape).toHaveClass('dot');
+  expect(shape).not.toHaveClass('ring');
+});
+
+/** One line with only its goal: a sketch of a project, its train rolling toward the goal. */
+function sketchOnly() {
+  const world = running();
+  world.tracks[0].stops = ['wristband'];
+  world.stops = world.stops.filter((s) => s.id === 'wristband');
+  return world;
+}
+
+test('a line with only its goal is a sketch at half width in the muted ink', () => {
+  render(<App store={createStore(sketchOnly())} now={() => 500_000} />);
+  const svg = trackSvg(0);
+  expect(strokes(svg).length).toBeGreaterThan(0);
+  for (const s of strokes(svg)) expect(s).toEqual(['var(--muted)', TRACK_WIDTH / 2]);
+  expect(trainFill(svg)).toBe('var(--muted)');
+  const goal = screen.getByRole('button', { name: /^Wristband/ });
+  expect(goal).toHaveClass('sketch');
+  expect(cssRule('.stop.sketch .shape')).toMatch(/background:\s*var\(--muted\)/);
+});
+
+test('the day line is ink', () => {
+  render(<App store={createStore(withDay())} now={() => WAITING} />);
+  const svg = trackSvg(2);
+  expect(strokes(svg).length).toBeGreaterThan(0);
+  for (const s of strokes(svg)) expect(s).toEqual(['var(--ink)', TRACK_WIDTH]);
+  expect(trainFill(svg)).toBe('var(--ink)');
+  // Its stops are rings; a project line keeps its colour.
+  expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('.shape')).toHaveClass('ring');
+  expect(strokes(trackSvg(0))[0][0]).not.toBe('var(--ink)');
+});
+
+test("the day's-end square is a small ink square, not a ring", () => {
+  render(<App store={createStore(withDay())} now={() => WAITING} />);
+  const end = document.querySelector('[data-id="dayEnd"]') as HTMLElement;
+  expect(end.querySelector('.shape')!.className).toBe('shape square small');
+  // Press and focus fill it with ink, not the day track's palette colour.
+  expect(end.style.getPropertyValue('--track-color')).toBe('var(--ink)');
+});
+
+test('the soonest line fills its bubble', () => {
+  const world = withDay();
+  // Every target off screen, so each line shows a bubble; the day line points at its end.
+  for (const id of ['wristband', 'goal2', 'dayEnd']) world.stops.find((s) => s.id === id)!.x = 1e6;
+  world.tracks[2].target = 'goal';
+  render(<App store={createStore(world)} now={() => 500_000} />);
+  const bubble = (track: string) => document.querySelector(`[data-target="bubble"][data-track="${track}"]`) as HTMLElement;
+  // t1 is 500 s from Dentist, t2 1000 s from Shared.
+  expect(bubble('t1')).toHaveClass('bubble', 'soonest');
+  expect(bubble('day')).not.toHaveClass('soonest');
+  expect(bubble('day').style.getPropertyValue('--track-color')).toBe('var(--ink)');
+  const filled = cssRule('.bubble.soonest');
+  expect(filled).toMatch(/background:\s*var\(--track-color\)/);
+  expect(filled).toMatch(/color:\s*var\(--paper\)/);
+  expect(cssRule('.bubble.soonest .shape')).toMatch(/background:\s*var\(--paper\)/);
 });

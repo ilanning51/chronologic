@@ -11,6 +11,10 @@ interface StopProps {
   color: number;
   /** Whether the whole track is done, which dims its dots to the muted ink. */
   finished?: boolean;
+  /** On the day line, whose colour is the ink. */
+  day?: boolean;
+  /** The goal of a sketch, muted with its line. */
+  sketch?: boolean;
 }
 
 const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal', square: 'goal' };
@@ -19,9 +23,10 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
 /**
  * One task on the plane: a solid shape for its kind and size, a dot once done, a label
  * beneath when there is room. The shape's centre sits on the stop's screen point. The next
- * stop is raised above the rest, so where hit targets crowd it is the one a tap finds.
+ * stop is raised above the rest, so where hit targets crowd it is the one a tap finds. A stop
+ * on two or more lines is a ring: its own shape in ink around a paper centre.
  */
-export function Stop({ stop, track, color, finished = false }: StopProps) {
+export function Stop({ stop, track, color, finished = false, day = false, sketch = false }: StopProps) {
   const name = [
     stop.title || 'Unnamed',
     SHAPE_WORDS[stop.shape],
@@ -33,15 +38,15 @@ export function Stop({ stop, track, color, finished = false }: StopProps) {
   return (
     <button
       type="button"
-      className={['stop', stop.done && 'done', stop.next && !stop.done && 'next', finished && 'finished'].filter(Boolean).join(' ')}
+      className={['stop', stop.done && 'done', stop.next && !stop.done && 'next', finished && 'finished', sketch && 'sketch'].filter(Boolean).join(' ')}
       data-target="stop"
       data-id={stop.id}
       data-track={track}
       data-goal={stop.goal ? '' : undefined}
       aria-label={name}
-      style={{ left: stop.x, top: stop.y, ['--track-color' as string]: colorVar(color) } as CSSProperties}
+      style={{ left: stop.x, top: stop.y, ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
     >
-      <span aria-hidden="true" className={stop.done ? 'shape dot' : `shape ${stop.shape} ${stop.size}`} />
+      <span aria-hidden="true" className={stop.done ? 'shape dot' : ['shape', stop.ring && 'ring', stop.shape, stop.size].filter(Boolean).join(' ')} />
       {stop.label && stop.title && (
         <span aria-hidden="true" className="label">
           {stop.title}

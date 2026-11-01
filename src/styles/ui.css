@@ -143,6 +143,27 @@
   background: var(--muted);
 }
 
+/* An interchange is a ring: the shape in ink, the same shape again in paper 4 px inside it. */
+.shape.ring::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: var(--paper);
+}
+
+.shape.ring.circle::after {
+  border-radius: 50%;
+}
+
+.shape.ring.triangle::after {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+/* A sketch's goal is muted with its line. */
+.stop.sketch .shape {
+  background: var(--muted);
+}
+
 /* The label hangs beneath the shape, centered on the stop's point. */
 .stop .label {
   position: absolute;
@@ -405,6 +426,16 @@ button:focus-visible {
   display: block;
   flex: none;
   background: var(--track-color);
+}
+
+/* The soonest line's bubble is filled with its colour, its words and shape in paper. */
+.bubble.soonest {
+  background: var(--track-color);
+  color: var(--paper);
+}
+
+.bubble.soonest .shape {
+  background: var(--paper);
 }
 
 .bubble .title {

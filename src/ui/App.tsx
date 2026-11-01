@@ -24,6 +24,7 @@ import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
 import { placeClear } from '../plane/placement';
 import { snapToTracks } from '../plane/snap';
+import { soonestTrack } from '../plane/soonest';
 import { tickMsFor } from '../plane/tick';
 import { SNAP_PX } from '../plane/world';
 import { type Store, useWorld } from '../store/store';
@@ -36,6 +37,7 @@ import { NameField } from './NameField';
 import { Plane } from './Plane';
 import { Stop } from './Stop';
 import { StopEditor } from './StopEditor';
+import { stopsOnce } from './stopsOnce';
 import { Track } from './Track';
 import { Tray } from './Tray';
 
@@ -437,6 +439,7 @@ export function App({ store, now = Date.now }: AppProps) {
       onCancel={cancelNaming}
     />
   );
+  const soonest = soonestTrack(world, time);
   const bubbles = views.flatMap((v) => {
     if (!v.anyInView) return [];
     const track = world.tracks.find((t) => t.id === v.id);
@@ -445,7 +448,20 @@ export function App({ store, now = Date.now }: AppProps) {
     if (!track || !target) return [];
     // The stop may be off the grown viewport and so missing from the view: use its world point.
     const at = bubbleFor(worldToScreen(camera, target), viewport);
-    return at ? [<Bubble key={v.id} track={v.id} color={v.color} shape={target.shape} title={target.title} {...at} />] : [];
+    return at
+      ? [
+          <Bubble
+            key={v.id}
+            track={v.id}
+            color={v.color}
+            day={v.day}
+            soonest={v.id === soonest?.id}
+            shape={target.shape}
+            title={target.title}
+            {...at}
+          />,
+        ]
+      : [];
   });
   const hud = (
     <>
@@ -464,7 +480,9 @@ export function App({ store, now = Date.now }: AppProps) {
       {views.map((v) => (
         <Track key={v.id} view={v} />
       ))}
-      {views.flatMap((v) => v.stops.map((s) => <Stop key={s.id} stop={s} track={v.id} color={v.color} finished={v.finished} />))}
+      {stopsOnce(views).map((p) => (
+        <Stop key={p.stop.id} {...p} />
+      ))}
       {ghost && <Ghost {...ghost} />}
     </Plane>
   );
