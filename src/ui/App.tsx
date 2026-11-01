@@ -6,6 +6,7 @@ import { dayTrack, isDayEnd } from '../model/day';
 import { dayOf } from '../model/days';
 import { newId } from '../model/ids';
 import { DEFAULT_GOAL_SECONDS, tracksOf, type GoalDragStart } from '../model/reducer';
+import type { World } from '../model/types';
 import { legSeconds, nextIndex, targetIndex, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
@@ -48,6 +49,14 @@ export interface AppProps {
   store: Store;
   /** The clock the app reads, injectable for tests. */
   now?: () => number;
+}
+
+/**
+ * The project a stop is the goal of, if any. Read from the world, not from whichever listing is
+ * at hand: a goal also on the day is still a goal, whichever line comes first.
+ */
+function homeOf(world: World, stopId: string) {
+  return tracksOf(world, stopId).find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
 }
 
 /** How long the camera takes to fly between two views. */
@@ -299,8 +308,9 @@ export function App({ store, now = Date.now }: AppProps) {
    * drag scales its line instead, and never joins.
    */
   const joinOnRelease = (d: NonNullable<typeof dragging.current>) => {
-    if (d.goal) return;
     const state = store.getState();
+    // A square never joins: a goal drawn speaking for the day is still its line's goal.
+    if (d.goal || homeOf(state, d.id)) return;
     const stop = state.stops.find((s) => s.id === d.id);
     if (!stop) return;
     const cam = cameraRef.current;
@@ -434,8 +444,7 @@ export function App({ store, now = Date.now }: AppProps) {
         setHolding(false);
         const open = editingRef.current;
         if (g.completed && open) {
-          const track = store.getState().tracks.find((t) => t.stops.includes(open));
-          if (track && open === track.stops[track.stops.length - 1]) {
+          if (homeOf(store.getState(), open)) {
             store.dispatch({ type: 'delete', id: open, now: now() });
             setEditing(null);
           }
@@ -518,7 +527,9 @@ export function App({ store, now = Date.now }: AppProps) {
     return () => window.clearInterval(id);
   }, [rolling, camera.scale, now, store]);
 
-  const editedTrack = editing ? world.tracks.find((t) => t.stops.includes(editing)) : undefined;
+  // A goal's editor acts on its home line, so delete, undo and the hold reach the right track.
+  const editedHome = editing ? homeOf(world, editing) : undefined;
+  const editedTrack = editing ? (editedHome ?? world.tracks.find((t) => t.stops.includes(editing))) : undefined;
   const editedStop = editing ? byId.get(editing) : undefined;
   // A chip per line the stop can leave, once it is on two or more; a square's home is not one.
   const onTracks = editing ? tracksOf(world, editing) : [];
@@ -533,7 +544,7 @@ export function App({ store, now = Date.now }: AppProps) {
       <StopEditor
         key={editedStop.id}
         stop={editedStop}
-        goal={editedTrack.stops[editedTrack.stops.length - 1] === editedStop.id}
+        goal={editedHome !== undefined}
         done={editedStop.done}
         holding={holding}
         lines={lines}
@@ -548,7 +559,8 @@ export function App({ store, now = Date.now }: AppProps) {
         }}
         onLeave={(trackId) => {
           store.dispatch({ type: 'leave', trackId, stopId: editedStop.id, now: now() });
-          // Leaving its last project deletes the stop, and the editor with it.
+          // Leaving its last project deletes the stop. The editor is gone with it; clearing
+          // `editing` is bookkeeping, so it never points at a deleted id.
           if (!store.getState().stops.some((s) => s.id === editedStop.id)) setEditing(null);
         }}
         onClose={() => setEditing(null)}

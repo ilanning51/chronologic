@@ -1087,7 +1087,8 @@ test('a tile dropped where two lines meet is added to both', () => {
   const scale = scaleOnScreen();
   expect(40 * scale).toBeLessThan(24); // both lines within SNAP_PX of the drop
   openTray();
-  act(() => dragTile('Step', midLeg(20 * scale)));
+  // 12 s under t1, so t1 is the nearest line and t2 is 28 s away.
+  act(() => dragTile('Step', midLeg(12 * scale)));
   const t1 = trackStops(store, 't1');
   const t2 = trackStops(store, 't2');
   expect(t1).toHaveLength(3);
@@ -1096,6 +1097,9 @@ test('a tile dropped where two lines meet is added to both', () => {
   expect(t2[1]).toBe(id);
   // One stop, on both lines, so a ring.
   expect(store.getState().stops.filter((s) => s.id === id)).toHaveLength(1);
+  // At the nearest line's snap point, on t1's path.
+  expect(stopNamed(store, id).x).toBeCloseTo(2000, 3);
+  expect(stopNamed(store, id).y).toBeCloseTo(0, 3);
   expect(document.querySelector(`[data-id="${id}"] .shape`)).toHaveClass('ring');
 });
 
@@ -1141,4 +1145,51 @@ test('leaving the last project a stop is on deletes it and closes the editor', (
   act(() => (document.querySelector('.line-chip[data-track="t1"]') as HTMLElement).click());
   expect(store.getState().stops.some((s) => s.id === 'dentist')).toBe(false);
   expect(screen.queryByRole('group', { name: 'Edit stop' })).not.toBeInTheDocument();
+});
+
+test('a goal on a day that comes before its home still opens as a goal', () => {
+  vi.useFakeTimers();
+  const world = nearGoal2(dayOn(WAITING));
+  const day = world.tracks.find((t) => t.day)!;
+  day.stops = ['dentist', 'goal2', 'dayEnd'];
+  // The day drawn before line t2 was made: it comes first in the world.
+  world.tracks = [world.tracks[0], day, world.tracks[1]];
+  const store = createStore(world);
+  render(<App store={store} now={() => WAITING} />);
+  openEditorOn(/^Goal 2/);
+  const hold = screen.getByRole('button', { name: 'Hold to delete the line' });
+  expect(screen.queryByRole('button', { name: 'Step' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  // The hold deletes its home line, t2.
+  fireEvent.pointerDown(hold, point(500, 700));
+  act(() => {
+    vi.advanceTimersByTime(700);
+  });
+  expect(store.getState().tracks.some((t) => t.id === 't2')).toBe(false);
+  expect(store.getState().tracks.some((t) => t.id === 't1')).toBe(true);
+});
+
+test('a goal drawn for the day and let go on another line is not joined', () => {
+  // t2's goal sits just under t1's second leg, and is the day's next stop, so it speaks for the day.
+  const world = underneath(600);
+  const goal2 = world.stops.find((s) => s.id === 'goal2')!;
+  goal2.x = 2000;
+  goal2.y = 20;
+  world.tracks.push({
+    id: 'day',
+    color: 2,
+    origin: { x: 1500, y: -400 },
+    stops: ['goal2', 'near', 'dayEnd'],
+    train: { leg: 0, departedAt: 0 },
+    target: 'next',
+    day: { date: dayOf(WAITING), budgets: [1000, 0, 0] },
+  });
+  world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
+  const store = createStore(world);
+  render(<App store={store} now={() => WAITING} />);
+  expect(document.querySelector('[data-id="goal2"]')).toHaveAttribute('data-track', 'day');
+  // A goal moves only by its own line's drag, so it stays put; the release must not join it.
+  act(() => dragStop(/^Goal 2/, 30, 0));
+  expect(stopNamed(store, 'goal2')).toMatchObject({ x: 2000, y: 20 });
+  expect(trackStops(store, 't1')).toEqual(['dentist', 'wristband']);
 });
