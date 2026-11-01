@@ -298,6 +298,40 @@ button:focus-visible {
   background: var(--track-color);
 }
 
+/* Leave a line: one chip per line the stop is on, a swatch of its colour ringed in paper so the
+   day's ink still shows on the ink pill. */
+.line-chips {
+  display: flex;
+  gap: 0.125rem;
+}
+
+.line-chip {
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.line-chip::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--track-color);
+  box-shadow: 0 0 0 2px var(--paper);
+}
+
+.line-chip:focus-visible,
+.line-chip:active {
+  background: var(--paper);
+}
+
 /* Hold to delete: the button fills with the track's color, then drains over HOLD_MS, so
    letting go early reads as a cancel. Opaque, no outline. */
 .pill-text.hold {

@@ -1,4 +1,5 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { colorVar } from '../model/palette';
 import type { Size, Stop } from '../model/types';
 
 interface StopEditorProps {
@@ -8,10 +9,13 @@ interface StopEditorProps {
   done: boolean;
   /** True while a finger is holding the delete button; the fill shrinks while it does. */
   holding: boolean;
+  /** The lines the stop can leave, `color` null for the day; empty when it is on only one. */
+  lines: { trackId: string; color: number | null }[];
   onEdit: (change: { title?: string; shape?: 'circle' | 'triangle'; size?: Size }) => void;
   onDelete: () => void;
   onUndo: () => void;
   onClose: () => void;
+  onLeave: (trackId: string) => void;
 }
 
 const SIZES: { size: Size; label: string }[] = [
@@ -41,9 +45,10 @@ function HoldToDelete({ holding }: { holding: boolean }) {
 /**
  * Opens on a long press, as an ink pill in the HUD. On a done dot it offers "Not done" and,
  * on the goal, a hold-to-delete that removes the line. A pending stop gets its title field,
- * its shape (not the goal's) and size, and Delete: at once for a stop, held for the goal.
+ * its shape (not the goal's) and size, a chip per line it can leave, and Delete: at once for a
+ * stop, held for the goal.
  */
-export function StopEditor({ stop, goal, done, holding, onEdit, onDelete, onUndo, onClose }: StopEditorProps) {
+export function StopEditor({ stop, goal, done, holding, lines, onEdit, onDelete, onUndo, onClose, onLeave }: StopEditorProps) {
   const [title, setTitle] = useState(stop.title);
   const input = useRef<HTMLInputElement>(null);
 
@@ -109,6 +114,21 @@ export function StopEditor({ stop, goal, done, holding, onEdit, onDelete, onUndo
           {label}
         </button>
       ))}
+      {lines.length > 0 && (
+        <div className="line-chips">
+          {lines.map(({ trackId, color }) => (
+            <button
+              key={trackId}
+              type="button"
+              className="line-chip"
+              aria-label="Leave line"
+              data-track={trackId}
+              style={{ '--track-color': color === null ? 'var(--ink)' : colorVar(color) } as CSSProperties}
+              onClick={() => onLeave(trackId)}
+            />
+          ))}
+        </div>
+      )}
       {goal ? (
         <HoldToDelete holding={holding} />
       ) : (

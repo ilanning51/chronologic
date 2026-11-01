@@ -1007,3 +1007,138 @@ test('a day still open as the clock passes 4 am is cleared on the next tick', ()
   expect(dayIn(store)).toBeUndefined();
   expect(dayEndButton()).toBeNull();
 });
+
+test('tapping a shared stop completes it on the line where it is next', () => {
+  const store = createStore(twoLines());
+  render(<App store={store} now={() => WAITING} />);
+  // Shared is t2's next stop; t1 is still waiting at Dentist.
+  act(() => tapOn(screen.getByRole('button', { name: /^Shared/ })));
+  expect(stopNamed(store, 'shared').done).toBe(true);
+  const track = (id: string) => store.getState().tracks.find((t) => t.id === id)!;
+  expect(track('t2').train).toEqual({ leg: 1, departedAt: WAITING });
+  expect(track('t1').train).toEqual({ leg: 0, departedAt: 0 });
+});
+
+const trackStops = (store: ReturnType<typeof createStore>, id: string) =>
+  store.getState().tracks.find((t) => t.id === id)!.stops;
+
+test('releasing a dragged stop on another line joins it there as a ring', () => {
+  const store = createStore(twoLines());
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleNow();
+  // Down onto t2's second leg, Shared to Goal 2, a few pixels off its path.
+  act(() => dragStop(/^Dentist/, 1250 * scale, 600 * scale + 6));
+  expect(trackStops(store, 't2')).toEqual(['shared', 'dentist', 'goal2']);
+  expect(trackStops(store, 't1')).toEqual(['dentist', 'shared', 'wristband']);
+  // It sits at the snap point, on t2's path.
+  expect(stopNamed(store, 'dentist').x).toBeCloseTo(2250, 3);
+  expect(stopNamed(store, 'dentist').y).toBeCloseTo(600, 3);
+  expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('.shape')).toHaveClass('ring');
+});
+
+test('dragging through a line without releasing on it does not join', () => {
+  const store = createStore(twoLines());
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleNow();
+  const el = screen.getByRole('button', { name: /^Dentist/ });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  act(() => {
+    fireEvent.pointerDown(el, point(x, y));
+    fireEvent.pointerMove(el, point(x + 1250 * scale, y + 600 * scale));
+    fireEvent.pointerMove(el, point(x + 1250 * scale, y + 1200 * scale));
+    fireEvent.pointerUp(el, point(x + 1250 * scale, y + 1200 * scale));
+  });
+  expect(trackStops(store, 't2')).toEqual(['shared', 'goal2']);
+  expect(stopNamed(store, 'dentist').y).toBeCloseTo(1200, 3);
+});
+
+/** running() and a line t2 `gap` s under it the whole way, its train waiting at its first stop as t1's is. */
+function underneath(gap: number) {
+  const world = running();
+  world.tracks.push({
+    id: 't2',
+    color: 1,
+    origin: { x: 0, y: gap },
+    stops: ['near', 'goal2'],
+    train: { leg: 0, departedAt: 0 },
+    target: 'goal',
+  });
+  world.stops.push(
+    { id: 'near', title: 'Near', shape: 'circle', size: 'medium', x: 1000, y: gap, done: false },
+    { id: 'goal2', title: 'Goal 2', shape: 'square', size: 'large', x: 3000, y: gap, done: false },
+  );
+  return world;
+}
+
+test('dragging a goal onto another line does not join it', () => {
+  const store = createStore(underneath(600));
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleOnScreen();
+  // Wristband, t1's goal, down onto t2's second leg.
+  act(() => dragStop(/^Wristband/, -750 * scale, 600 * scale + 6));
+  expect(stopNamed(store, 'wristband').y).toBeCloseTo(600 + 6 / scale, 3);
+  expect(trackStops(store, 't2')).toEqual(['near', 'goal2']);
+});
+
+test('a tile dropped where two lines meet is added to both', () => {
+  const store = createStore(underneath(40));
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleOnScreen();
+  expect(40 * scale).toBeLessThan(24); // both lines within SNAP_PX of the drop
+  openTray();
+  act(() => dragTile('Step', midLeg(20 * scale)));
+  const t1 = trackStops(store, 't1');
+  const t2 = trackStops(store, 't2');
+  expect(t1).toHaveLength(3);
+  expect(t2).toHaveLength(3);
+  const id = t1[1];
+  expect(t2[1]).toBe(id);
+  // One stop, on both lines, so a ring.
+  expect(store.getState().stops.filter((s) => s.id === id)).toHaveLength(1);
+  expect(document.querySelector(`[data-id="${id}"] .shape`)).toHaveClass('ring');
+});
+
+test('the editor shows a chip per line and leaving one removes the stop from it', () => {
+  vi.useFakeTimers();
+  const store = createStore(twoLines());
+  render(<App store={store} now={() => WAITING} />);
+  openEditorOn(/^Shared/);
+  const chips = screen.getAllByRole('button', { name: 'Leave line' });
+  expect(chips.map((c) => c.dataset.track)).toEqual(['t1', 't2']);
+  act(() => chips[0].click());
+  expect(trackStops(store, 't1')).toEqual(['dentist', 'wristband']);
+  expect(trackStops(store, 't2')).toEqual(['shared', 'goal2']);
+  // Still a stop, now on one line: the editor stays open, its chips gone.
+  expect(screen.getByRole('group', { name: 'Edit stop' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Leave line' })).not.toBeInTheDocument();
+});
+
+test('a stop on one line shows no chips', () => {
+  vi.useFakeTimers();
+  render(<App store={createStore(twoLines())} now={() => WAITING} />);
+  openEditorOn(/^Dentist/);
+  expect(screen.getByRole('group', { name: 'Edit stop' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Leave line' })).not.toBeInTheDocument();
+});
+
+test("a goal on the day shows only the day's chip, in ink", () => {
+  vi.useFakeTimers();
+  const world = nearGoal2(dayOn(WAITING));
+  world.tracks.find((t) => t.day)!.stops = ['dentist', 'goal2', 'dayEnd'];
+  render(<App store={createStore(world)} now={() => WAITING} />);
+  openEditorOn(/^Goal 2/);
+  const chips = screen.getAllByRole('button', { name: 'Leave line' });
+  expect(chips.map((c) => c.dataset.track)).toEqual(['day']);
+  expect(chips[0].style.getPropertyValue('--track-color')).toBe('var(--ink)');
+});
+
+test('leaving the last project a stop is on deletes it and closes the editor', () => {
+  vi.useFakeTimers();
+  const store = createStore(dayOn(WAITING));
+  render(<App store={store} now={() => WAITING} />);
+  openEditorOn(/^Dentist/);
+  act(() => (document.querySelector('.line-chip[data-track="t1"]') as HTMLElement).click());
+  expect(store.getState().stops.some((s) => s.id === 'dentist')).toBe(false);
+  expect(screen.queryByRole('group', { name: 'Edit stop' })).not.toBeInTheDocument();
+});

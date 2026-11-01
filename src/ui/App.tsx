@@ -25,7 +25,7 @@ import { bubbleFor } from '../plane/bubbles';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
 import { placeClear } from '../plane/placement';
-import { nearestStop, snapToTracks } from '../plane/snap';
+import { nearestStop, snapToAll } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
 import { tickMsFor } from '../plane/tick';
 import { SNAP_PX } from '../plane/world';
@@ -119,8 +119,8 @@ export function App({ store, now = Date.now }: AppProps) {
   const [trayOpen, setTrayOpen] = useState(false);
   /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
   const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; x: number; y: number; snapped: boolean } | null>(null);
-  /** The shape and snap of the tile drag in flight; a ref so the drop reads the latest move. */
-  const dragTile = useRef<{ shape: 'circle' | 'triangle'; snap: ReturnType<typeof snapToTracks> } | null>(null);
+  /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
+  const dragTile = useRef<{ shape: 'circle' | 'triangle'; hits: ReturnType<typeof snapToAll> } | null>(null);
   /** The sun drag in flight: where it was picked up on screen and the stops gathered, in order. */
   const drawing = useRef<{ from: Point; ids: string[] } | null>(null);
   /** The ghost ink line of the day being drawn, in screen points. */
@@ -201,7 +201,7 @@ export function App({ store, now = Date.now }: AppProps) {
         drawSun(g.at);
         return;
       }
-      dragTile.current = { shape: target.tile, snap: null };
+      dragTile.current = { shape: target.tile, hits: [] };
       carryTile(g.at);
       return;
     }
@@ -262,37 +262,50 @@ export function App({ store, now = Date.now }: AppProps) {
     setLegTime({ x: at.x, y: at.y, seconds: legSeconds(route, track.stops.indexOf(stopId)) });
   };
 
-  /** Carries a tile: the ghost follows the finger, or sits on the line it would join. */
+  /** Carries a tile: the ghost follows the finger, or sits on the nearest line it would join. */
   const carryTile = (at: Point) => {
     const d = dragTile.current;
     if (!d) return;
     const cam = cameraRef.current;
-    d.snap = snapToTracks(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale);
-    const shown = d.snap ? worldToScreen(cam, d.snap.at) : at;
-    setGhost({ shape: d.shape, x: shown.x, y: shown.y, snapped: d.snap !== null });
+    d.hits = snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale);
+    const snap = d.hits[0];
+    const shown = snap ? worldToScreen(cam, snap.at) : at;
+    setGhost({ shape: d.shape, x: shown.x, y: shown.y, snapped: snap !== undefined });
     // On a line the ghost would end a new leg as long as its way along the leg it splits.
-    setLegTime(d.snap ? { x: shown.x, y: shown.y, seconds: d.snap.offset } : null);
+    setLegTime(snap ? { x: shown.x, y: shown.y, seconds: snap.offset } : null);
   };
 
-  /** Dropping on a line adds a stop exactly there, so the track's total never changes. */
+  /**
+   * Dropping on a line adds a stop exactly there, so the track's total never changes. Where
+   * other lines are in reach too, the same stop joins each, staying at the nearest's point.
+   */
   const dropTile = () => {
     const d = dragTile.current;
     dragTile.current = null;
     setGhost(null);
     setLegTime(null);
-    if (!d?.snap) return;
+    const [first, ...rest] = d?.hits ?? [];
+    if (!d || !first) return;
     const id = newId();
-    store.dispatch({
-      type: 'addStop',
-      trackId: d.snap.trackId,
-      id,
-      shape: d.shape,
-      leg: d.snap.leg,
-      x: d.snap.at.x,
-      y: d.snap.at.y,
-      now: now(),
-    });
-    setNaming({ id, kind: 'stop', trackId: d.snap.trackId });
+    const { x, y } = first.at;
+    store.dispatch({ type: 'addStop', trackId: first.trackId, id, shape: d.shape, leg: first.leg, x, y, now: now() });
+    for (const hit of rest) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: id, leg: hit.leg, x, y, now: now() });
+    setNaming({ id, kind: 'stop', trackId: first.trackId });
+  };
+
+  /**
+   * Letting go of a stop near another line's path joins it there, at the snap point; the line it
+   * came from keeps it. Only the release joins, so dragging through a line never does. A goal
+   * drag scales its line instead, and never joins.
+   */
+  const joinOnRelease = (d: NonNullable<typeof dragging.current>) => {
+    if (d.goal) return;
+    const state = store.getState();
+    const stop = state.stops.find((s) => s.id === d.id);
+    if (!stop) return;
+    const cam = cameraRef.current;
+    const hit = snapToAll(state, stop, now(), SNAP_PX / cam.scale, stop.id)[0];
+    if (hit) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: stop.id, leg: hit.leg, x: hit.at.x, y: hit.at.y, now: now() });
   };
 
   /** Stops a day can take: pending, listed by some project, and not among `skip`. */
@@ -453,6 +466,7 @@ export function App({ store, now = Date.now }: AppProps) {
           return;
         }
         dragTo(g.at);
+        if (dragging.current) joinOnRelease(dragging.current);
         dragging.current = null;
         setLegTime(null);
         return;
@@ -506,6 +520,14 @@ export function App({ store, now = Date.now }: AppProps) {
 
   const editedTrack = editing ? world.tracks.find((t) => t.stops.includes(editing)) : undefined;
   const editedStop = editing ? byId.get(editing) : undefined;
+  // A chip per line the stop can leave, once it is on two or more; a square's home is not one.
+  const onTracks = editing ? tracksOf(world, editing) : [];
+  const lines =
+    onTracks.length >= 2
+      ? onTracks
+          .filter(({ track, index }) => index !== track.stops.length - 1)
+          .map(({ track }) => ({ trackId: track.id, color: track.day ? null : track.color }))
+      : [];
   const editor =
     editedTrack && editedStop ? (
       <StopEditor
@@ -514,6 +536,7 @@ export function App({ store, now = Date.now }: AppProps) {
         goal={editedTrack.stops[editedTrack.stops.length - 1] === editedStop.id}
         done={editedStop.done}
         holding={holding}
+        lines={lines}
         onEdit={(change) => store.dispatch({ type: 'edit', id: editedStop.id, ...change })}
         onDelete={() => {
           store.dispatch({ type: 'delete', id: editedStop.id, now: now() });
@@ -522,6 +545,11 @@ export function App({ store, now = Date.now }: AppProps) {
         onUndo={() => {
           store.dispatch({ type: 'undo', trackId: editedTrack.id, now: now() });
           setEditing(null);
+        }}
+        onLeave={(trackId) => {
+          store.dispatch({ type: 'leave', trackId, stopId: editedStop.id, now: now() });
+          // Leaving its last project deletes the stop, and the editor with it.
+          if (!store.getState().stops.some((s) => s.id === editedStop.id)) setEditing(null);
         }}
         onClose={() => setEditing(null)}
       />

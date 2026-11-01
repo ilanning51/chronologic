@@ -5,9 +5,22 @@ import { StopEditor } from './StopEditor';
 
 const stop: Stop = { id: 's', title: 'Dentist', shape: 'circle', size: 'medium', x: 0, y: 0, done: true };
 
-function setup(props: { goal: boolean; done: boolean; holding?: boolean }) {
-  const handlers = { onEdit: vi.fn(), onDelete: vi.fn(), onUndo: vi.fn(), onClose: vi.fn() };
-  render(<StopEditor stop={{ ...stop, done: props.done }} holding={props.holding ?? false} {...props} {...handlers} />);
+function setup(props: {
+  goal: boolean;
+  done: boolean;
+  holding?: boolean;
+  lines?: { trackId: string; color: number | null }[];
+}) {
+  const handlers = { onEdit: vi.fn(), onDelete: vi.fn(), onUndo: vi.fn(), onClose: vi.fn(), onLeave: vi.fn() };
+  render(
+    <StopEditor
+      stop={{ ...stop, done: props.done }}
+      holding={props.holding ?? false}
+      lines={props.lines ?? []}
+      {...props}
+      {...handlers}
+    />,
+  );
   return handlers;
 }
 
@@ -60,4 +73,29 @@ test('the pending goal has no shape buttons and deletes only by a hold', () => {
   expect(hold).toHaveAttribute('data-id', 'delete');
   fireEvent.click(hold);
   expect(onDelete).not.toHaveBeenCalled();
+});
+
+test('the editor shows a chip per line and leaving one removes the stop from it', () => {
+  const { onLeave } = setup({
+    goal: false,
+    done: false,
+    lines: [
+      { trackId: 't1', color: 0 },
+      { trackId: 'day', color: null },
+    ],
+  });
+  const chips = screen.getAllByRole('button', { name: 'Leave line' });
+  expect(chips.map((c) => c.dataset.track)).toEqual(['t1', 'day']);
+  expect(chips[0].style.getPropertyValue('--track-color')).toBe('var(--track-blue)');
+  // The day line is ink.
+  expect(chips[1].style.getPropertyValue('--track-color')).toBe('var(--ink)');
+  expect(chips[0]).toHaveTextContent('');
+  fireEvent.click(chips[1]);
+  expect(onLeave).toHaveBeenCalledWith('day');
+});
+
+test('a stop on one line shows no chips', () => {
+  setup({ goal: false, done: false, lines: [] });
+  expect(screen.queryByRole('button', { name: 'Leave line' })).not.toBeInTheDocument();
+  expect(document.querySelector('.line-chips')).toBeNull();
 });
