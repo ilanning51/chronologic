@@ -1,6 +1,6 @@
 import { distance, type Point } from '../plane/geometry';
 import { PALETTE } from './palette';
-import { legSeconds, rebase, trackRoute, trainState } from './train';
+import { legSeconds, nextIndex, rebase, trackRoute, trainState } from './train';
 import type { BubbleTarget, Size, Stop, Track, World } from './types';
 
 /** A new goal starts thirty days out along the x axis: one world unit is one second. */
@@ -200,10 +200,11 @@ export function reduce(world: World, action: Action): World {
     case 'complete': {
       const { trackId, now } = action;
       const track = world.tracks.find((t) => t.id === trackId);
-      if (!track || track.train.leg >= track.stops.length) return world;
-      const doneId = track.stops[track.train.leg];
+      const next = track && nextIndex(track, stopsById(world));
+      if (!track || next == null) return world;
+      const doneId = track.stops[next];
       return {
-        tracks: withTrack(world, { ...track, train: { leg: track.train.leg + 1, departedAt: now } }),
+        tracks: withTrack(world, { ...track, train: { leg: next + 1, departedAt: now } }),
         stops: world.stops.map((s) => (s.id === doneId ? { ...s, done: true } : s)),
         lastTouched: trackId,
       };

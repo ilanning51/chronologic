@@ -63,7 +63,7 @@ export function layoutTrack(
     if (clipped) segments.push(clipped);
   }
 
-  const next = nextIndex(track);
+  const next = nextIndex(track, byId);
   const goalIndex = track.stops.length - 1;
   const placed = track.stops.flatMap((id, index) => {
     const stop = byId.get(id)!;

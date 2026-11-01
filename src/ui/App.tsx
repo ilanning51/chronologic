@@ -152,7 +152,8 @@ export function App({ store, now = Date.now }: AppProps) {
     const state = store.getState();
     const track = state.tracks.find((t) => t.id === trackId);
     const stop = state.stops.find((s) => s.id === stopId);
-    if (!track || !stop || stop.done || nextIndex(track) !== track.stops.indexOf(stopId)) return;
+    if (!track || !stop || stop.done) return;
+    if (nextIndex(track, new Map(state.stops.map((s) => [s.id, s]))) !== track.stops.indexOf(stopId)) return;
     const goal = stopId === track.stops[track.stops.length - 1];
     store.dispatch({ type: 'complete', trackId, now: now() });
     const ctx = sound();
