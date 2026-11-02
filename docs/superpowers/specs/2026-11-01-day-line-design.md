@@ -352,3 +352,18 @@ Settled after the builder check, 2026-11-01:
 15. The day track never keeps a stop alive, and nothing snaps to it but the sun and the day's end.
 16. A goal drag scales shared stops too, and every line through them keeps its train.
 17. An edit on a waiting line restarts its wait, so its crowd clears.
+
+Settled during the build, 2026-11-01:
+
+18. A stop dragged from any line keeps every train through it (`move.keep` is per track, like `moveGoal`'s).
+19. `undo` is judged against the derived train, so a stop a train rolled through and now waits past can still be put back.
+20. A running line with no undone stop left (rolling home to a done goal) is never the soonest.
+21. One validator serves both storage keys; a v2 world passes the v3 rules.
+22. A shared stop is one button. It speaks for the line on which it is next (so a tap completes it there), else the first line listing it; it is dimmed only when every line through it is finished.
+23. The day's-end square is not a ring; a done interchange is a plain dot.
+24. A sketch's goal is muted with its line; pressing it still fills with the line's colour.
+25. The tick runs on open and with the clock while any train rolls; a plane with every train parked re-ticks on its next open.
+26. The sun collects only pending stops on project lines, in the order the finger reaches them; the day's own stops and its end square are never collected.
+27. Join on release is for a plain stop only: a goal drag and the day's-end drag never join a line.
+28. The day's-end drag measures from the square; the sun measures from the finger.
+29. A goal is a goal on every line it sits on: its editor, its hold-to-delete and its drag act on its home line whichever line's button was pressed, and a square never joins a line on release.
