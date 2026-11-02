@@ -1,6 +1,6 @@
 import { crowdAt } from '../model/crowd';
 import { tracksOf } from '../model/reducer';
-import { dayState, nextIndex, trainState, trackRoute } from '../model/train';
+import { nextIndex, stateOf, trackRoute } from '../model/train';
 import type { Shape, Size, Track, World } from '../model/types';
 import { type Camera, worldToScreen } from './camera';
 import { CLIP_MARGIN_PX, clipSegment } from './clip';
@@ -74,8 +74,7 @@ export function layoutTrack(
     if (clipped) segments.push(clipped);
   }
 
-  // The day train shadows the projects; every other train keeps its own clock.
-  const state = track.day ? dayState(track, world, now) : trainState(track, byId, now);
+  const state = stateOf(track, world, now);
   const crowd = state.waiting ? crowdAt(track, byId, now) : 0;
 
   const next = nextIndex(track, byId);

@@ -7,7 +7,7 @@ import { dayOf } from '../model/days';
 import { newId } from '../model/ids';
 import { DEFAULT_GOAL_SECONDS, tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { World } from '../model/types';
-import { legSeconds, nextIndex, targetIndex, trackRoute, trainState } from '../model/train';
+import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
@@ -512,9 +512,11 @@ export function App({ store, now = Date.now }: AppProps) {
       fly(c, back);
       return;
     }
-    const track = store.getState().tracks.find((t) => t.id === trackId);
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
-    const at = trainState(track, new Map(store.getState().stops.map((s) => [s.id, s])), now()).at;
+    // The day train is a shadow: it is where dayState says, not where its legs' own clock would be.
+    const at = stateOf(track, state, now()).at;
     stash.current = c;
     fly(c, centerOn(c, at, viewport, MOTION_SCALE));
   };

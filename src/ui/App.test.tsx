@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { dayOf } from '../model/days';
 import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
-import { legSeconds, trackRoute, trainState } from '../model/train';
+import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
@@ -1293,4 +1293,21 @@ test('a day stop done ahead of its project train opens Not done and comes back',
   openEditorOn(/^Shared/);
   act(() => screen.getByRole('button', { name: 'Not done' }).click());
   expect(stopNamed(store, 'shared').done).toBe(false);
+});
+
+test('tapping the day train follows the day train, not the project motion on its legs', () => {
+  reduceMotion();
+  const NOW = 500_000;
+  const world = dayOn(NOW);
+  render(<App store={createStore(world)} now={() => NOW} />);
+  const dayTrain = () => trackSvg(2).querySelector('[data-train]') as SVGElement;
+  act(() => {
+    fireEvent.pointerDown(dayTrain(), point(500, 400));
+    fireEvent.pointerUp(dayTrain(), point(500, 400));
+  });
+  // The shadow is half way down its first leg, at (1000, -200); the camera centres there.
+  expect(dayState(world.tracks[2], world, NOW).at).toEqual({ x: 1000, y: -200 });
+  const [x, y] = /translate\(([-\d.e]+)px,\s*([-\d.e]+)px/.exec(dayTrain().style.transform)!.slice(1).map(Number);
+  expect(x).toBeCloseTo(window.innerWidth / 2, 3);
+  expect(y).toBeCloseTo(window.innerHeight / 2, 3);
 });

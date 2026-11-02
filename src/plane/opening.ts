@@ -1,4 +1,4 @@
-import { dayState, legSeconds, trackRoute, trainState, type TrainState } from '../model/train';
+import { legSeconds, stateOf, trackRoute, type TrainState } from '../model/train';
 import type { Track, World } from '../model/types';
 import { type Camera, centerOn, fitLeg, HOME } from './camera';
 import { soonestTrack } from './soonest';
@@ -13,12 +13,12 @@ export function openingCamera(world: World, now: number, viewport: { w: number; 
 
   const day = world.tracks.find((t) => t.day);
   if (day) {
-    const state = dayState(day, world, now);
+    const state = stateOf(day, world, now);
     if (!state.parked) return frame(day, state);
   }
 
   const track = soonestTrack(world, now);
-  return track ? frame(track, trainState(track, byId, now)) : HOME;
+  return track ? frame(track, stateOf(track, world, now)) : HOME;
 
   function frame(track: Track, state: TrainState): Camera {
     // A waiting train is about to set off on the next leg; at the last stop there is none.

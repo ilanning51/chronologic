@@ -121,6 +121,14 @@ export function dayState(day: Track, world: World, now: number): TrainState {
   };
 }
 
+/**
+ * Where any track's train is: the day train is the shadow of the projects, every other train
+ * keeps its own clock. Every reader that does not care which kind goes through here.
+ */
+export function stateOf(track: Track, world: World, now: number): TrainState {
+  return track.day ? dayState(track, world, now) : trainState(track, new Map(world.stops.map((s) => [s.id, s])), now);
+}
+
 /** A train on `leg` that has covered `seconds` of a leg `legLength` long, as of now. */
 export function rebase(leg: number, seconds: number, legLength: number, now: number): Train {
   if (legLength === 0 || seconds >= legLength) return { leg, departedAt: now - legLength * 1000 };

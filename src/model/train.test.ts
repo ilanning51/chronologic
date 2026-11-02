@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { running, twoLines, withDay } from '../test/fixtures';
 import type { Stop, Track, World } from './types';
 import { legSpan, pointAlong } from '../plane/routing';
-import { dayState, legSeconds, nextIndex, rebase, targetIndex, timeLeft, timeLeftAny, trackRoute, trainState } from './train';
+import { dayState, legSeconds, nextIndex, rebase, stateOf, targetIndex, timeLeft, timeLeftAny, trackRoute, trainState } from './train';
 
 function stop(id: string, shape: Stop['shape'], x: number, y: number): Stop {
   return { id, title: id, shape, size: 'medium', x, y, done: false };
@@ -223,4 +223,13 @@ describe('the shadow rule', () => {
     expect(s.at.x).toBeCloseTo(1500, 6);
     expect(s.at.y).toBeCloseTo(900, 6);
   });
+});
+
+test('stateOf is the shadow for the day train and the own clock for every other', () => {
+  const w = withDay();
+  const byId = new Map(w.stops.map((s) => [s.id, s]));
+  const [t1, , day] = w.tracks;
+  expect(stateOf(day, w, 500_000)).toEqual(dayState(day, w, 500_000));
+  expect(stateOf(day, w, 500_000).at).toEqual({ x: 1000, y: -200 });
+  expect(stateOf(t1, w, 500_000)).toEqual(trainState(t1, byId, 500_000));
 });
