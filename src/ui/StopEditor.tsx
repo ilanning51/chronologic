@@ -11,8 +11,11 @@ interface StopEditorProps {
   done: boolean;
   /** True while a finger is holding the delete button; the fill shrinks while it does. */
   holding: boolean;
-  /** The lines the stop can leave, `color` null for the day; empty when it is on only one. */
-  lines: { trackId: string; color: number | null }[];
+  /**
+   * The lines the stop can leave, `color` null for the day; empty when it is on only one. `name`
+   * is the line's: its goal's title, or "today" for the day.
+   */
+  lines: { trackId: string; color: number | null; name: string }[];
   onEdit: (change: { title?: string; shape?: 'circle' | 'triangle'; size?: Size }) => void;
   onDelete: () => void;
   onUndo: () => void;
@@ -140,12 +143,12 @@ export function StopEditor({
       ))}
       {lines.length > 0 && (
         <div className="line-chips">
-          {lines.map(({ trackId, color }) => (
+          {lines.map(({ trackId, color, name }) => (
             <button
               key={trackId}
               type="button"
               className="line-chip"
-              aria-label="Leave line"
+              aria-label={`Leave ${name}`}
               data-track={trackId}
               style={{ '--track-color': color === null ? 'var(--ink)' : colorVar(color) } as CSSProperties}
               onClick={() => onLeave(trackId)}

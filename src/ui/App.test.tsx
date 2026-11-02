@@ -875,9 +875,10 @@ test('dragging the sun through two stops on two lines draws the day through them
     fireEvent.pointerMove(sun, point(dentist.x, dentist.y + 5));
     fireEvent.pointerMove(sun, point(release.x, release.y));
   });
-  // The ghost runs from the pick-up through each stop, in the order reached, to the finger.
+  // The ghost runs from where the day will start, 120 px above the first stop, through each stop
+  // in the order reached, to the finger: what is let go is what was drawn.
   const ghost = ghostPoints()!;
-  const want = [[900, 740], [goal2.x, goal2.y], [dentist.x, dentist.y], [release.x, release.y]];
+  const want = [[goal2.x, goal2.y - 120], [goal2.x, goal2.y], [dentist.x, dentist.y], [release.x, release.y]];
   expect(ghost).toHaveLength(want.length);
   ghost.forEach(([x, y], i) => {
     expect(x).toBeCloseTo(want[i][0], 3);
@@ -899,6 +900,57 @@ test('dragging the sun through two stops on two lines draws the day through them
   expect(day.origin.x).toBeCloseTo(2000, 6);
   expect(day.origin.y).toBeCloseTo(600 - 120 / scale, 3);
   for (const s of strokes(trackSvg(2))) expect(s[0]).toBe('var(--ink)');
+});
+
+test('before the sun collects a stop its ghost runs from the pick-up to the finger', () => {
+  const store = createStore(twoLines());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const sun = screen.getByRole('button', { name: 'Today' });
+  act(() => {
+    fireEvent.pointerDown(sun, point(900, 740));
+    fireEvent.pointerMove(sun, point(20, 20));
+  });
+  expect(ghostPoints()).toEqual([
+    [900, 740],
+    [20, 20],
+  ]);
+  act(() => fireEvent.pointerUp(sun, point(20, 20)));
+});
+
+test('the sun picked up over a stop does not collect it until the finger moves to it', () => {
+  const store = createStore(nearGoal2(twoLines()));
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const goal2 = at(/^Goal 2/);
+  const sun = screen.getByRole('button', { name: 'Today' });
+  act(() => {
+    fireEvent.pointerDown(sun, point(goal2.x, goal2.y));
+    fireEvent.pointerMove(sun, point(20, 20));
+    fireEvent.pointerUp(sun, point(20, 20));
+  });
+  expect(dayIn(store)).toBeUndefined();
+});
+
+test('lifting the sun on the last stop it collected puts the end square below it, not on it', () => {
+  const store = createStore(nearGoal2(twoLines()));
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const scale = scaleNow();
+  const goal2 = at(/^Goal 2/);
+  const dentist = at(/^Dentist/);
+  const sun = screen.getByRole('button', { name: 'Today' });
+  act(() => {
+    fireEvent.pointerDown(sun, point(900, 740));
+    fireEvent.pointerMove(sun, point(goal2.x + 5, goal2.y));
+    fireEvent.pointerMove(sun, point(dentist.x, dentist.y + 5));
+    fireEvent.pointerUp(sun, point(dentist.x + 3, dentist.y + 5));
+  });
+  const day = dayIn(store)!;
+  expect(day.stops.slice(0, -1)).toEqual(['goal2', 'dentist']);
+  const end = stopNamed(store, day.stops[2]);
+  expect(end.x).toBeCloseTo(1000, 6);
+  expect(end.y).toBeCloseTo(120 / scale, 3);
 });
 
 test('lifting the sun with no stops draws nothing', () => {
@@ -1105,17 +1157,21 @@ test('a tile dropped where two lines meet is added to both', () => {
 
 test('the editor shows a chip per line and leaving one removes the stop from it', () => {
   vi.useFakeTimers();
-  const store = createStore(twoLines());
+  // Goal 2 left untitled: its line's chip says so.
+  const world = twoLines();
+  world.stops.find((s) => s.id === 'goal2')!.title = '';
+  const store = createStore(world);
   render(<App store={store} now={() => WAITING} />);
   openEditorOn(/^Shared/);
-  const chips = screen.getAllByRole('button', { name: 'Leave line' });
+  const chips = screen.getAllByRole('button', { name: /^Leave / });
   expect(chips.map((c) => c.dataset.track)).toEqual(['t1', 't2']);
+  expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['Leave Wristband', 'Leave Unnamed']);
   act(() => chips[0].click());
   expect(trackStops(store, 't1')).toEqual(['dentist', 'wristband']);
   expect(trackStops(store, 't2')).toEqual(['shared', 'goal2']);
   // Still a stop, now on one line: the editor stays open, its chips gone.
   expect(screen.getByRole('group', { name: 'Edit stop' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Leave line' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Leave / })).not.toBeInTheDocument();
 });
 
 test('a stop on one line shows no chips', () => {
@@ -1123,7 +1179,7 @@ test('a stop on one line shows no chips', () => {
   render(<App store={createStore(twoLines())} now={() => WAITING} />);
   openEditorOn(/^Dentist/);
   expect(screen.getByRole('group', { name: 'Edit stop' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Leave line' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Leave / })).not.toBeInTheDocument();
 });
 
 test("a goal on the day shows only the day's chip, in ink", () => {
@@ -1132,8 +1188,9 @@ test("a goal on the day shows only the day's chip, in ink", () => {
   world.tracks.find((t) => t.day)!.stops = ['dentist', 'goal2', 'dayEnd'];
   render(<App store={createStore(world)} now={() => WAITING} />);
   openEditorOn(/^Goal 2/);
-  const chips = screen.getAllByRole('button', { name: 'Leave line' });
+  const chips = screen.getAllByRole('button', { name: /^Leave / });
   expect(chips.map((c) => c.dataset.track)).toEqual(['day']);
+  expect(chips[0]).toHaveAccessibleName('Leave today');
   expect(chips[0].style.getPropertyValue('--track-color')).toBe('var(--ink)');
 });
 

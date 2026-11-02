@@ -21,7 +21,7 @@ import {
   zoomAt,
 } from '../plane/camera';
 import type { Gesture } from '../plane/gestures';
-import type { Point } from '../plane/geometry';
+import { distance, type Point } from '../plane/geometry';
 import { bubbleFor } from '../plane/bubbles';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
@@ -58,6 +58,9 @@ export interface AppProps {
 function homeOf(world: World, stopId: string) {
   return tracksOf(world, stopId).find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
 }
+
+/** How far above its first stop a drawn day starts, and below its last the end square sits, in px. */
+const DAY_GAP_PX = 120;
 
 /** How long the camera takes to fly between two views. */
 const FLY_MS = 400;
@@ -208,8 +211,8 @@ export function App({ store, now = Date.now }: AppProps) {
     if (target.kind === 'tile') {
       if (target.tile === 'line') return;
       if (target.tile === 'sun') {
+        // Nothing is collected where the sun is picked up, only where the finger takes it.
         drawing.current = { from: g.at, ids: [] };
-        drawSun(g.at);
         return;
       }
       dragTile.current = { shape: target.tile, hits: [] };
@@ -336,7 +339,11 @@ export function App({ store, now = Date.now }: AppProps) {
     );
   };
 
-  /** Carries the sun: each pending stop the finger passes joins the drawing, in the order reached. */
+  /**
+   * Carries the sun: each pending stop the finger passes joins the drawing, in the order reached.
+   * Once one has, the ghost starts where the day will, above the first stop, so nothing jumps on
+   * release; before that it runs from the pick-up.
+   */
   const drawSun = (at: Point) => {
     const d = drawing.current;
     if (!d) return;
@@ -344,12 +351,15 @@ export function App({ store, now = Date.now }: AppProps) {
     const hit = nearestStop(dayCandidates(d.ids), screenToWorld(cam, at), SNAP_PX / cam.scale);
     if (hit) d.ids = [...d.ids, hit.id];
     const byId = new Map(store.getState().stops.map((s) => [s.id, s]));
-    setDayGhost([d.from, ...d.ids.map((id) => worldToScreen(cam, byId.get(id)!)), at]);
+    const through = d.ids.map((id) => worldToScreen(cam, byId.get(id)!));
+    const start = through.length > 0 ? { x: through[0].x, y: through[0].y - DAY_GAP_PX } : d.from;
+    setDayGhost([start, ...through, at]);
   };
 
   /**
    * Lifting the sun draws the day through what it gathered, its end square under the finger and
-   * its start just above the first stop. Gathering nothing draws nothing.
+   * its start just above the first stop. Let go on the last stop gathered, the square goes just
+   * below it rather than on top of it. Gathering nothing draws nothing.
    */
   const dropSun = (at: Point) => {
     drawSun(at);
@@ -358,15 +368,20 @@ export function App({ store, now = Date.now }: AppProps) {
     setDayGhost(null);
     if (!d || d.ids.length === 0) return;
     const cam = cameraRef.current;
-    const first = store.getState().stops.find((s) => s.id === d.ids[0])!;
+    const stops = store.getState().stops;
+    const first = stops.find((s) => s.id === d.ids[0])!;
+    const last = stops.find((s) => s.id === d.ids[d.ids.length - 1])!;
+    const under = screenToWorld(cam, at);
+    const gap = DAY_GAP_PX / cam.scale;
+    const end = distance(under, last) <= SNAP_PX / cam.scale ? { x: last.x, y: last.y + gap } : under;
     const t = now();
     store.dispatch({
       type: 'newDay',
       id: newId(),
       endId: newId(),
-      origin: { x: first.x, y: first.y - 120 / cam.scale },
+      origin: { x: first.x, y: first.y - gap },
       stops: d.ids,
-      end: screenToWorld(cam, at),
+      end,
       now: t,
       date: dayOf(t),
     });
@@ -554,7 +569,12 @@ export function App({ store, now = Date.now }: AppProps) {
     onTracks.length >= 2
       ? onTracks
           .filter(({ track, index }) => index !== track.stops.length - 1)
-          .map(({ track }) => ({ trackId: track.id, color: track.day ? null : track.color }))
+          .map(({ track }) => ({
+            trackId: track.id,
+            color: track.day ? null : track.color,
+            // A chip is named by its line, so chips the same shape can be told apart by ear.
+            name: track.day ? 'today' : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
+          }))
       : [];
   const editor =
     editedStop && onTracks.length > 0 ? (

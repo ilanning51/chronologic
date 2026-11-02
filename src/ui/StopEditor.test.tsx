@@ -10,7 +10,7 @@ function setup(props: {
   dayEnd?: boolean;
   done: boolean;
   holding?: boolean;
-  lines?: { trackId: string; color: number | null }[];
+  lines?: { trackId: string; color: number | null; name: string }[];
 }) {
   const handlers = { onEdit: vi.fn(), onDelete: vi.fn(), onUndo: vi.fn(), onClose: vi.fn(), onLeave: vi.fn() };
   render(
@@ -81,11 +81,13 @@ test('the editor shows a chip per line and leaving one removes the stop from it'
     goal: false,
     done: false,
     lines: [
-      { trackId: 't1', color: 0 },
-      { trackId: 'day', color: null },
+      { trackId: 't1', color: 0, name: 'Wristband' },
+      { trackId: 'day', color: null, name: 'today' },
     ],
   });
-  const chips = screen.getAllByRole('button', { name: 'Leave line' });
+  // Each chip is named by its line, so a screen reader can tell them apart.
+  const chips = screen.getAllByRole('button', { name: /^Leave / });
+  expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['Leave Wristband', 'Leave today']);
   expect(chips.map((c) => c.dataset.track)).toEqual(['t1', 'day']);
   expect(chips[0].style.getPropertyValue('--track-color')).toBe('var(--track-blue)');
   // The day line is ink.
@@ -97,7 +99,7 @@ test('the editor shows a chip per line and leaving one removes the stop from it'
 
 test('a stop on one line shows no chips', () => {
   setup({ goal: false, done: false, lines: [] });
-  expect(screen.queryByRole('button', { name: 'Leave line' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Leave / })).not.toBeInTheDocument();
   expect(document.querySelector('.line-chips')).toBeNull();
 });
 
