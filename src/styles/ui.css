@@ -164,6 +164,23 @@
   background: var(--muted);
 }
 
+/* A crowd where a train has long waited: a row of muted dots above-right, just past the 44 px target. */
+.crowd {
+  position: absolute;
+  left: calc(var(--tap) / 2 + 2px);
+  bottom: calc(var(--tap) / 2 + 2px);
+  display: flex;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.crowd .dot {
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--muted);
+}
+
 /* The label hangs beneath the shape, centered on the stop's point. */
 .stop .label {
   position: absolute;

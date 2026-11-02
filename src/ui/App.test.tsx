@@ -1223,3 +1223,36 @@ test('a goal drawn for the day drags as its line goal, scaling the stops ahead',
   expect(goal.y).toBeCloseTo(600, 6);
   expect(mid.y).toBeCloseTo(600, 6);
 });
+
+test('a long-waited stop shows a small crowd in the muted ink, at most five', () => {
+  // The train reaches Dentist at 1000 s on a 1000 s leg: one more dot for every 1000 s it waits.
+  const crowdAt = (now: number) => {
+    const { unmount } = render(<App store={createStore(running())} now={() => now} />);
+    const dentist = screen.getByRole('button', { name: /^Dentist/ });
+    const crowd = dentist.querySelector('.crowd');
+    const dots = crowd ? crowd.querySelectorAll('.dot').length : 0;
+    const text = crowd?.textContent;
+    // The crowd is a look, not news: the stop's name says nothing of it.
+    expect(dentist).toHaveAccessibleName('Dentist, step, medium, next');
+    // A stop the train has not waited at gathers no one.
+    expect(screen.getByRole('button', { name: /^Wristband/ }).querySelector('.crowd')).toBeNull();
+    unmount();
+    return { crowd, dots, text };
+  };
+  const three = crowdAt(4_000_000);
+  expect(three.crowd).toHaveAttribute('aria-hidden', 'true');
+  expect(three.dots).toBe(3);
+  expect(three.text).toBe('');
+  expect(crowdAt(1_000_000_000).dots).toBe(5);
+  // Half a leg-time in, no one yet.
+  expect(crowdAt(1_500_000).crowd).toBeNull();
+  // A row above-right of the stop, past its 44 px target, never in the way of a tap.
+  const row = cssRule('.crowd');
+  expect(row).toMatch(/left:\s*calc\(var\(--tap\) \/ 2 \+ 2px\)/);
+  expect(row).toMatch(/bottom:\s*calc\(var\(--tap\) \/ 2 \+ 2px\)/);
+  expect(row).toMatch(/pointer-events:\s*none/);
+  // Dots of the dot size in the muted ink: no colour, no number.
+  const dot = cssRule('.crowd .dot');
+  expect(dot).toMatch(/width:\s*var\(--dot\)/);
+  expect(dot).toMatch(/background:\s*var\(--muted\)/);
+});

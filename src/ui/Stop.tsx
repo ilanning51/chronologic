@@ -24,7 +24,8 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
  * One task on the plane: a solid shape for its kind and size, a dot once done, a label
  * beneath when there is room. The shape's centre sits on the stop's screen point. The next
  * stop is raised above the rest, so where hit targets crowd it is the one a tap finds. A stop
- * on two or more lines is a ring: its own shape in ink around a paper centre.
+ * on two or more lines is a ring: its own shape in ink around a paper centre. Where a train has
+ * long waited, a small crowd of muted dots gathers beside it.
  */
 export function Stop({ stop, track, color, finished = false, day = false, sketch = false }: StopProps) {
   const name = [
@@ -47,6 +48,14 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
       style={{ left: stop.x, top: stop.y, ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
     >
       <span aria-hidden="true" className={stop.done ? 'shape dot' : ['shape', stop.ring && 'ring', stop.shape, stop.size].filter(Boolean).join(' ')} />
+      {stop.crowd > 0 && !stop.done && (
+        // A look, not news: the name says nothing of it, and it carries no count.
+        <span aria-hidden="true" className="crowd">
+          {Array.from({ length: stop.crowd }, (_, i) => (
+            <span key={i} className="dot" />
+          ))}
+        </span>
+      )}
       {stop.label && stop.title && (
         <span aria-hidden="true" className="label">
           {stop.title}
