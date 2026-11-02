@@ -22,20 +22,24 @@ interface BubbleProps {
   y: number;
   /** The window edge the bubble hangs from. */
   side: 'left' | 'right' | 'top' | 'bottom';
+  /** The line whose train arrives first: its bubble is filled with its colour. */
+  soonest?: boolean;
+  /** The day line, whose colour is the ink. */
+  day?: boolean;
 }
 
 const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal', square: 'goal' };
 
 /** A paper pill on the window edge naming what a line points at, off screen in that direction. */
-export function Bubble({ track, color, shape, title, x, y, side }: BubbleProps) {
+export function Bubble({ track, color, shape, title, x, y, side, soonest = false, day = false }: BubbleProps) {
   return (
     <button
       type="button"
-      className="bubble"
+      className={soonest ? 'bubble soonest' : 'bubble'}
       data-target="bubble"
       data-track={track}
       aria-label={`${title || 'Unnamed'}, ${SHAPE_WORDS[shape]}. Tap to change what this line points at.`}
-      style={{ left: x, top: y, transform: ANCHOR[side], ['--track-color' as string]: colorVar(color) } as CSSProperties}
+      style={{ left: x, top: y, transform: ANCHOR[side], ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
     >
       <span aria-hidden="true" className={`shape ${shape} medium`} />
       <span aria-hidden="true" className="title">

@@ -143,6 +143,44 @@
   background: var(--muted);
 }
 
+/* An interchange is a ring: the shape in ink, the same shape again in paper 4 px inside it. */
+.shape.ring::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: var(--paper);
+}
+
+.shape.ring.circle::after {
+  border-radius: 50%;
+}
+
+.shape.ring.triangle::after {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+/* A sketch's goal is muted with its line. */
+.stop.sketch .shape {
+  background: var(--muted);
+}
+
+/* A crowd where a train has long waited: a row of muted dots above-right, just past the 44 px target. */
+.crowd {
+  position: absolute;
+  left: calc(var(--tap) / 2 + 2px);
+  bottom: calc(var(--tap) / 2 + 2px);
+  display: flex;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.crowd .dot {
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--muted);
+}
+
 /* The label hangs beneath the shape, centered on the stop's point. */
 .stop .label {
   position: absolute;
@@ -277,6 +315,40 @@ button:focus-visible {
   background: var(--track-color);
 }
 
+/* Leave a line: one chip per line the stop is on, a swatch of its colour ringed in paper so the
+   day's ink still shows on the ink pill. */
+.line-chips {
+  display: flex;
+  gap: 0.125rem;
+}
+
+.line-chip {
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.line-chip::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--track-color);
+  box-shadow: 0 0 0 2px var(--paper);
+}
+
+.line-chip:focus-visible,
+.line-chip:active {
+  background: var(--paper);
+}
+
 /* Hold to delete: the button fills with the track's color, then drains over HOLD_MS, so
    letting go early reads as a cancel. Opaque, no outline. */
 .pill-text.hold {
@@ -407,6 +479,25 @@ button:focus-visible {
   background: var(--track-color);
 }
 
+/* The soonest line's bubble is filled with its colour, its words and shape in paper. */
+.bubble.soonest {
+  background: var(--track-color);
+  color: var(--paper);
+}
+
+.bubble.soonest .shape {
+  background: var(--paper);
+}
+
 .bubble .title {
   white-space: nowrap;
+}
+
+/* The day being drawn with the sun: like a track, a one-pixel svg drawing outside its box. */
+.day-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
 }

@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
+import { dayTrack, isDayEnd } from '../model/day';
+import { dayOf } from '../model/days';
 import { newId } from '../model/ids';
-import { DEFAULT_GOAL_SECONDS, type GoalDragStart } from '../model/reducer';
-import { legSeconds, nextIndex, targetIndex, trackRoute, trainState } from '../model/train';
+import { DEFAULT_GOAL_SECONDS, tracksOf, undoable, type GoalDragStart } from '../model/reducer';
+import type { World } from '../model/types';
+import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
@@ -18,16 +21,18 @@ import {
   zoomAt,
 } from '../plane/camera';
 import type { Gesture } from '../plane/gestures';
-import type { Point } from '../plane/geometry';
+import { distance, type Point } from '../plane/geometry';
 import { bubbleFor } from '../plane/bubbles';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
 import { placeClear } from '../plane/placement';
-import { snapToTracks } from '../plane/snap';
+import { nearestStop, snapToAll } from '../plane/snap';
+import { soonestTrack } from '../plane/soonest';
 import { tickMsFor } from '../plane/tick';
 import { SNAP_PX } from '../plane/world';
 import { type Store, useWorld } from '../store/store';
 import { Bubble } from './Bubble';
+import { DayGhost } from './DayGhost';
 import { Ghost } from './Ghost';
 import { Grid } from './Grid';
 import { Legend } from './Legend';
@@ -36,6 +41,7 @@ import { NameField } from './NameField';
 import { Plane } from './Plane';
 import { Stop } from './Stop';
 import { StopEditor } from './StopEditor';
+import { stopsOnce } from './stopsOnce';
 import { Track } from './Track';
 import { Tray } from './Tray';
 
@@ -44,6 +50,17 @@ export interface AppProps {
   /** The clock the app reads, injectable for tests. */
   now?: () => number;
 }
+
+/**
+ * The project a stop is the goal of, if any. Read from the world, not from whichever listing is
+ * at hand: a goal also on the day is still a goal, whichever line comes first.
+ */
+function homeOf(world: World, stopId: string) {
+  return tracksOf(world, stopId).find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
+}
+
+/** How far above its first stop a drawn day starts, and below its last the end square sits, in px. */
+const DAY_GAP_PX = 120;
 
 /** How long the camera takes to fly between two views. */
 const FLY_MS = 400;
@@ -98,14 +115,15 @@ export function App({ store, now = Date.now }: AppProps) {
   const audio = useRef<AudioContext | null>(null);
   /**
    * The pending stop under a finger, how far its centre sits from where the finger landed, and
-   * the drag's start: the train's seconds then and, for the goal, the points it scales from.
+   * the drag's start: the seconds then of every train the drag re-routes, by track id, and, for
+   * the goal, the points it scales from.
    */
   const dragging = useRef<{
     id: string;
     track: string;
     goal: boolean;
     grip: Point;
-    keep: number;
+    keep: Record<string, number>;
     from?: GoalDragStart;
   } | null>(null);
 
@@ -113,8 +131,14 @@ export function App({ store, now = Date.now }: AppProps) {
   const [trayOpen, setTrayOpen] = useState(false);
   /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
   const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; x: number; y: number; snapped: boolean } | null>(null);
-  /** The shape and snap of the tile drag in flight; a ref so the drop reads the latest move. */
-  const dragTile = useRef<{ shape: 'circle' | 'triangle'; snap: ReturnType<typeof snapToTracks> } | null>(null);
+  /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
+  const dragTile = useRef<{ shape: 'circle' | 'triangle'; hits: ReturnType<typeof snapToAll> } | null>(null);
+  /** The sun drag in flight: where it was picked up on screen and the stops gathered, in order. */
+  const drawing = useRef<{ from: Point; ids: string[] } | null>(null);
+  /** The ghost ink line of the day being drawn, in screen points. */
+  const [dayGhost, setDayGhost] = useState<Point[] | null>(null);
+  /** The day's-end drag in flight: where the square started, the grip, and whether it added a stop. */
+  const endDrag = useRef<{ start: Point; grip: Point; added: boolean } | null>(null);
   /** The leg being set by a drag: where its stop is on screen and its planned seconds. */
   const [legTime, setLegTime] = useState<{ x: number; y: number; seconds: number } | null>(null);
   /** The stop or goal whose name field is open. */
@@ -128,8 +152,10 @@ export function App({ store, now = Date.now }: AppProps) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // The camera starts on the soonest train, once; after that the hand moves it.
+  // The camera starts on the soonest train, once; after that the hand moves it. Yesterday's day
+  // goes first, so the camera never opens on it.
   useEffect(() => {
+    store.dispatch({ type: 'tick', now: now() });
     setCamera(openingCamera(store.getState(), now(), { w: window.innerWidth, h: window.innerHeight }));
   }, []);
 
@@ -152,7 +178,8 @@ export function App({ store, now = Date.now }: AppProps) {
     const state = store.getState();
     const track = state.tracks.find((t) => t.id === trackId);
     const stop = state.stops.find((s) => s.id === stopId);
-    if (!track || !stop || stop.done || nextIndex(track) !== track.stops.indexOf(stopId)) return;
+    if (!track || !stop || stop.done) return;
+    if (nextIndex(track, new Map(state.stops.map((s) => [s.id, s]))) !== track.stops.indexOf(stopId)) return;
     const goal = stopId === track.stops[track.stops.length - 1];
     store.dispatch({ type: 'complete', trackId, now: now() });
     const ctx = sound();
@@ -163,44 +190,71 @@ export function App({ store, now = Date.now }: AppProps) {
     if (goal) buzz();
   };
 
-  /** A long press opens the editor on the most recent dot, or on any pending stop. */
-  const openEditor = (trackId: string, stopId: string) => {
+  /**
+   * A long press opens the editor on any pending stop, or on a dot Not done can put back, judged
+   * by the same rule the reducer uses, so the button undoes the stop that was pressed.
+   */
+  const openEditor = (stopId: string) => {
     const state = store.getState();
-    const track = state.tracks.find((t) => t.id === trackId);
     const stop = state.stops.find((s) => s.id === stopId);
-    if (!track || !stop) return;
-    if (!stop.done || track.stops.indexOf(stopId) === track.train.leg - 1) setEditing(stopId);
+    if (!stop) return;
+    if (!stop.done || undoable(state, stopId, now())) setEditing(stopId);
   };
 
   /** Starts dragging a pending stop; a dot is left alone for the whole drag. */
   const startDrag = (g: Extract<Gesture, { type: 'dragStart' }>) => {
     dragging.current = null;
     dragTile.current = null;
+    drawing.current = null;
+    endDrag.current = null;
     const target = g.target;
     if (target.kind === 'tile') {
       if (target.tile === 'line') return;
-      dragTile.current = { shape: target.tile, snap: null };
+      if (target.tile === 'sun') {
+        // Nothing is collected where the sun is picked up, only where the finger takes it.
+        drawing.current = { from: g.at, ids: [] };
+        return;
+      }
+      dragTile.current = { shape: target.tile, hits: [] };
       carryTile(g.at);
       return;
     }
     if (target.kind !== 'stop') return;
     const state = store.getState();
     const stop = state.stops.find((s) => s.id === target.id);
-    const track = state.tracks.find((t) => t.id === target.track);
-    if (!stop || stop.done || !track) return;
-    const byId = new Map(state.stops.map((s) => [s.id, s]));
-    const train = trainState(track, byId, now());
+    if (!stop || stop.done) return;
     const under = screenToWorld(cameraRef.current, g.at);
-    const ahead = Object.fromEntries(
-      track.stops.slice(track.train.leg, -1).map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]),
-    );
+    if (isDayEnd(state, stop.id)) {
+      const grip = { x: stop.x - under.x, y: stop.y - under.y };
+      endDrag.current = { start: { x: stop.x, y: stop.y }, grip, added: false };
+      return;
+    }
+    // A goal drags as its line's goal whichever line its button speaks for, the day's included.
+    // A plain stop's leg chip reads a project leg, where it is next or else the first: the day's
+    // legs are not time, so a stop speaking for the day must not read one.
+    const byId = new Map(state.stops.map((s) => [s.id, s]));
+    const home = homeOf(state, stop.id);
+    const goal = home !== undefined;
+    const projects = tracksOf(state, stop.id).filter(({ track: t }) => !t.day);
+    const project = projects.find(({ track: t, index }) => nextIndex(t, byId) === index) ?? projects[0];
+    const track = home ?? project?.track;
+    if (!track) return;
+    const train = trainState(track, byId, now());
+    const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
+    const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
+    // A shared stop re-routes every line through it; each keeps its own train. A goal drag also
+    // moves every pending stop ahead of its train.
+    const lines = goal
+      ? state.tracks.filter((t) => t.stops.some((id) => id === stop.id || pending.includes(id)))
+      : tracksOf(state, stop.id).map((f) => f.track);
+    const keep = Object.fromEntries(lines.map((t) => [t.id, trainState(t, byId, now()).seconds]));
     dragging.current = {
       id: stop.id,
-      track: target.track,
-      goal: target.goal,
+      track: track.id,
+      goal,
       grip: { x: stop.x - under.x, y: stop.y - under.y },
-      keep: train.seconds,
-      from: target.goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
+      keep,
+      from: goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
     };
   };
 
@@ -230,37 +284,133 @@ export function App({ store, now = Date.now }: AppProps) {
     setLegTime({ x: at.x, y: at.y, seconds: legSeconds(route, track.stops.indexOf(stopId)) });
   };
 
-  /** Carries a tile: the ghost follows the finger, or sits on the line it would join. */
+  /** Carries a tile: the ghost follows the finger, or sits on the nearest line it would join. */
   const carryTile = (at: Point) => {
     const d = dragTile.current;
     if (!d) return;
     const cam = cameraRef.current;
-    d.snap = snapToTracks(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale);
-    const shown = d.snap ? worldToScreen(cam, d.snap.at) : at;
-    setGhost({ shape: d.shape, x: shown.x, y: shown.y, snapped: d.snap !== null });
+    d.hits = snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale);
+    const snap = d.hits[0];
+    const shown = snap ? worldToScreen(cam, snap.at) : at;
+    setGhost({ shape: d.shape, x: shown.x, y: shown.y, snapped: snap !== undefined });
     // On a line the ghost would end a new leg as long as its way along the leg it splits.
-    setLegTime(d.snap ? { x: shown.x, y: shown.y, seconds: d.snap.offset } : null);
+    setLegTime(snap ? { x: shown.x, y: shown.y, seconds: snap.offset } : null);
   };
 
-  /** Dropping on a line adds a stop exactly there, so the track's total never changes. */
+  /**
+   * Dropping on a line adds a stop exactly there, so the track's total never changes. Where
+   * other lines are in reach too, the same stop joins each, staying at the nearest's point.
+   */
   const dropTile = () => {
     const d = dragTile.current;
     dragTile.current = null;
     setGhost(null);
     setLegTime(null);
-    if (!d?.snap) return;
+    const [first, ...rest] = d?.hits ?? [];
+    if (!d || !first) return;
     const id = newId();
+    const { x, y } = first.at;
+    store.dispatch({ type: 'addStop', trackId: first.trackId, id, shape: d.shape, leg: first.leg, x, y, now: now() });
+    for (const hit of rest) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: id, leg: hit.leg, x, y, now: now() });
+    setNaming({ id, kind: 'stop', trackId: first.trackId });
+  };
+
+  /**
+   * Letting go of a stop near another line's path joins it there, at the snap point; the line it
+   * came from keeps it. Only the release joins, so dragging through a line never does. A goal
+   * drag scales its line instead, and never joins.
+   */
+  const joinOnRelease = (d: NonNullable<typeof dragging.current>) => {
+    const state = store.getState();
+    // A square never joins: a goal drawn speaking for the day is still its line's goal.
+    if (d.goal || homeOf(state, d.id)) return;
+    const stop = state.stops.find((s) => s.id === d.id);
+    if (!stop) return;
+    const cam = cameraRef.current;
+    const hit = snapToAll(state, stop, now(), SNAP_PX / cam.scale, stop.id)[0];
+    if (hit) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: stop.id, leg: hit.leg, x: hit.at.x, y: hit.at.y, now: now() });
+  };
+
+  /** Stops a day can take: pending, listed by some project, and not among `skip`. */
+  const dayCandidates = (skip: string[]) => {
+    const state = store.getState();
+    return state.stops.filter(
+      (s) => !s.done && !skip.includes(s.id) && state.tracks.some((t) => !t.day && t.stops.includes(s.id)),
+    );
+  };
+
+  /**
+   * Carries the sun: each pending stop the finger passes joins the drawing, in the order reached.
+   * Once one has, the ghost starts where the day will, above the first stop, so nothing jumps on
+   * release; before that it runs from the pick-up.
+   */
+  const drawSun = (at: Point) => {
+    const d = drawing.current;
+    if (!d) return;
+    const cam = cameraRef.current;
+    const hit = nearestStop(dayCandidates(d.ids), screenToWorld(cam, at), SNAP_PX / cam.scale);
+    if (hit) d.ids = [...d.ids, hit.id];
+    const byId = new Map(store.getState().stops.map((s) => [s.id, s]));
+    const through = d.ids.map((id) => worldToScreen(cam, byId.get(id)!));
+    const start = through.length > 0 ? { x: through[0].x, y: through[0].y - DAY_GAP_PX } : d.from;
+    setDayGhost([start, ...through, at]);
+  };
+
+  /**
+   * Lifting the sun draws the day through what it gathered, its end square under the finger and
+   * its start just above the first stop. Let go on the last stop gathered, the square goes just
+   * below it rather than on top of it. Gathering nothing draws nothing.
+   */
+  const dropSun = (at: Point) => {
+    drawSun(at);
+    const d = drawing.current;
+    drawing.current = null;
+    setDayGhost(null);
+    if (!d || d.ids.length === 0) return;
+    const cam = cameraRef.current;
+    const stops = store.getState().stops;
+    const first = stops.find((s) => s.id === d.ids[0])!;
+    const last = stops.find((s) => s.id === d.ids[d.ids.length - 1])!;
+    const under = screenToWorld(cam, at);
+    const gap = DAY_GAP_PX / cam.scale;
+    const end = distance(under, last) <= SNAP_PX / cam.scale ? { x: last.x, y: last.y + gap } : under;
+    const t = now();
     store.dispatch({
-      type: 'addStop',
-      trackId: d.snap.trackId,
-      id,
-      shape: d.shape,
-      leg: d.snap.leg,
-      x: d.snap.at.x,
-      y: d.snap.at.y,
-      now: now(),
+      type: 'newDay',
+      id: newId(),
+      endId: newId(),
+      origin: { x: first.x, y: first.y - gap },
+      stops: d.ids,
+      end,
+      now: t,
+      date: dayOf(t),
     });
-    setNaming({ id, kind: 'stop', trackId: d.snap.trackId });
+  };
+
+  /**
+   * Moves the day's-end square alone, grip and all, scaling nothing; passing it over a pending
+   * stop not yet on the day adds that stop. No leg time shows: the day's legs are not time.
+   */
+  const dragDayEnd = (at: Point) => {
+    const d = endDrag.current;
+    if (!d) return;
+    const cam = cameraRef.current;
+    const under = screenToWorld(cam, at);
+    const p = { x: under.x + d.grip.x, y: under.y + d.grip.y };
+    store.dispatch({ type: 'moveDayEnd', x: p.x, y: p.y, now: now() });
+    const day = dayTrack(store.getState());
+    const hit = day ? nearestStop(dayCandidates(day.stops), p, SNAP_PX / cam.scale) : null;
+    if (!hit) return;
+    store.dispatch({ type: 'addToDay', stopId: hit.id, now: now() });
+    if (dayTrack(store.getState())?.stops.includes(hit.id)) d.added = true;
+  };
+
+  /** A square that added a stop goes back where it was; otherwise it stays where it was let go. */
+  const dropDayEnd = (at: Point) => {
+    dragDayEnd(at);
+    const d = endDrag.current;
+    endDrag.current = null;
+    if (d?.added) store.dispatch({ type: 'moveDayEnd', x: d.start.x, y: d.start.y, now: now() });
   };
 
   /** A new line starts clear of everything at the centre of the view, its goal thirty days out. */
@@ -308,7 +458,7 @@ export function App({ store, now = Date.now }: AppProps) {
         }
         return;
       case 'longPress':
-        if (g.target.kind === 'stop') openEditor(g.target.track, g.target.id);
+        if (g.target.kind === 'stop') openEditor(g.target.id);
         else if (g.target.kind === 'bubble') flyToTarget(g.target.track);
         return;
       case 'holdStart':
@@ -319,9 +469,13 @@ export function App({ store, now = Date.now }: AppProps) {
         setHolding(false);
         const open = editingRef.current;
         if (g.completed && open) {
-          const track = store.getState().tracks.find((t) => t.stops.includes(open));
-          if (track && open === track.stops[track.stops.length - 1]) {
+          const state = store.getState();
+          // The goal's hold takes its line; the day's-end square's takes the day, and only the day.
+          if (homeOf(state, open)) {
             store.dispatch({ type: 'delete', id: open, now: now() });
+            setEditing(null);
+          } else if (isDayEnd(state, open)) {
+            store.dispatch({ type: 'clearDay', now: now() });
             setEditing(null);
           }
         }
@@ -331,16 +485,27 @@ export function App({ store, now = Date.now }: AppProps) {
         startDrag(g);
         return;
       case 'dragMove':
-        if (g.target.kind === 'tile') carryTile(g.at);
+        if (drawing.current) drawSun(g.at);
+        else if (endDrag.current) dragDayEnd(g.at);
+        else if (g.target.kind === 'tile') carryTile(g.at);
         else dragTo(g.at);
         return;
       case 'dragEnd':
+        if (drawing.current) {
+          dropSun(g.at);
+          return;
+        }
+        if (endDrag.current) {
+          dropDayEnd(g.at);
+          return;
+        }
         if (g.target.kind === 'tile') {
           carryTile(g.at);
           dropTile();
           return;
         }
         dragTo(g.at);
+        if (dragging.current) joinOnRelease(dragging.current);
         dragging.current = null;
         setLegTime(null);
         return;
@@ -371,41 +536,70 @@ export function App({ store, now = Date.now }: AppProps) {
       fly(c, back);
       return;
     }
-    const track = store.getState().tracks.find((t) => t.id === trackId);
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
-    const at = trainState(track, new Map(store.getState().stops.map((s) => [s.id, s])), now()).at;
+    // The day train is a shadow: it is where dayState says, not where its legs' own clock would be.
+    const at = stateOf(track, state, now()).at;
     stash.current = c;
     fly(c, centerOn(c, at, viewport, MOTION_SCALE));
   };
 
   const byId = new Map(world.stops.map((s) => [s.id, s]));
-  const views = world.tracks.map((t) => layoutTrack(t, byId, camera, time, viewport));
+  const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport));
   const rolling = views.some((v) => !v.train.parked);
 
   useEffect(() => {
     if (!rolling) return;
-    const id = window.setInterval(() => setTime(now()), tickMsFor(camera.scale));
+    // Each tick also asks the world whether the day has turned over.
+    const id = window.setInterval(() => {
+      store.dispatch({ type: 'tick', now: now() });
+      setTime(now());
+    }, tickMsFor(camera.scale));
     return () => window.clearInterval(id);
-  }, [rolling, camera.scale, now]);
+  }, [rolling, camera.scale, now, store]);
 
-  const editedTrack = editing ? world.tracks.find((t) => t.stops.includes(editing)) : undefined;
+  // A goal is a goal whichever line its button spoke for; the day's end is neither stop nor goal.
   const editedStop = editing ? byId.get(editing) : undefined;
+  const editedHome = editing ? homeOf(world, editing) : undefined;
+  const editedDayEnd = editing ? isDayEnd(world, editing) : false;
+  // A chip per line the stop can leave, once it is on two or more; a square's home is not one.
+  const onTracks = editing ? tracksOf(world, editing) : [];
+  const lines =
+    onTracks.length >= 2
+      ? onTracks
+          .filter(({ track, index }) => index !== track.stops.length - 1)
+          .map(({ track }) => ({
+            trackId: track.id,
+            color: track.day ? null : track.color,
+            // A chip is named by its line, so chips the same shape can be told apart by ear.
+            name: track.day ? 'today' : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
+          }))
+      : [];
   const editor =
-    editedTrack && editedStop ? (
+    editedStop && onTracks.length > 0 ? (
       <StopEditor
         key={editedStop.id}
         stop={editedStop}
-        goal={editedTrack.stops[editedTrack.stops.length - 1] === editedStop.id}
+        goal={editedHome !== undefined}
+        dayEnd={editedDayEnd}
         done={editedStop.done}
         holding={holding}
+        lines={lines}
         onEdit={(change) => store.dispatch({ type: 'edit', id: editedStop.id, ...change })}
         onDelete={() => {
           store.dispatch({ type: 'delete', id: editedStop.id, now: now() });
           setEditing(null);
         }}
         onUndo={() => {
-          store.dispatch({ type: 'undo', trackId: editedTrack.id, now: now() });
+          store.dispatch({ type: 'undo', stopId: editedStop.id, now: now() });
           setEditing(null);
+        }}
+        onLeave={(trackId) => {
+          store.dispatch({ type: 'leave', trackId, stopId: editedStop.id, now: now() });
+          // Leaving its last project deletes the stop. The editor is gone with it; clearing
+          // `editing` is bookkeeping, so it never points at a deleted id.
+          if (!store.getState().stops.some((s) => s.id === editedStop.id)) setEditing(null);
         }}
         onClose={() => setEditing(null)}
       />
@@ -430,6 +624,7 @@ export function App({ store, now = Date.now }: AppProps) {
       onCancel={cancelNaming}
     />
   );
+  const soonest = soonestTrack(world, time);
   const bubbles = views.flatMap((v) => {
     if (!v.anyInView) return [];
     const track = world.tracks.find((t) => t.id === v.id);
@@ -438,7 +633,20 @@ export function App({ store, now = Date.now }: AppProps) {
     if (!track || !target) return [];
     // The stop may be off the grown viewport and so missing from the view: use its world point.
     const at = bubbleFor(worldToScreen(camera, target), viewport);
-    return at ? [<Bubble key={v.id} track={v.id} color={v.color} shape={target.shape} title={target.title} {...at} />] : [];
+    return at
+      ? [
+          <Bubble
+            key={v.id}
+            track={v.id}
+            color={v.color}
+            day={v.day}
+            soonest={v.id === soonest?.id}
+            shape={target.shape}
+            title={target.title}
+            {...at}
+          />,
+        ]
+      : [];
   });
   const hud = (
     <>
@@ -457,8 +665,11 @@ export function App({ store, now = Date.now }: AppProps) {
       {views.map((v) => (
         <Track key={v.id} view={v} />
       ))}
-      {views.flatMap((v) => v.stops.map((s) => <Stop key={s.id} stop={s} track={v.id} color={v.color} finished={v.finished} />))}
+      {stopsOnce(views).map((p) => (
+        <Stop key={p.stop.id} {...p} />
+      ))}
       {ghost && <Ghost {...ghost} />}
+      {dayGhost && <DayGhost points={dayGhost} />}
     </Plane>
   );
 }

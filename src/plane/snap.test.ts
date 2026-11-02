@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
-import { running } from '../test/fixtures';
-import { snapToTracks } from './snap';
+import { running, twoLines } from '../test/fixtures';
+import type { Stop, World } from '../model/types';
+import { nearestStop, snapToAll, snapToTracks } from './snap';
 
 const NOW = 500_000; // 500 s into the 1000 s leg to Dentist
 
@@ -30,4 +31,55 @@ test('a drop on top of a stop, or close enough to hide under it, snaps nowhere',
   expect(snapToTracks(world, { x: 2970, y: 5 }, NOW, 50)).toBeNull();
   // Clear of both stops it snaps as usual.
   expect(snapToTracks(world, { x: 1060, y: 5 }, NOW, 50)).toEqual({ trackId: 't1', leg: 1, offset: 60, at: { x: 1060, y: 0 } });
+});
+
+/** running() and a second line t2 just below t1, straight from its origin to Goal 2. */
+function parallel(): World {
+  const world = running();
+  world.tracks.push({ id: 't2', color: 1, origin: { x: 0, y: 60 }, stops: ['goal2'], train: { leg: 0, departedAt: 0 }, target: 'goal' });
+  world.stops.push({ id: 'goal2', title: 'Goal 2', shape: 'square', size: 'large', x: 3000, y: 60, done: false });
+  return world;
+}
+
+test('snapToAll lists every line within radius nearest first and skips lines the stop is on', () => {
+  const world = parallel();
+  expect(snapToAll(world, { x: 700, y: 20 }, NOW, 50)).toEqual([
+    { trackId: 't1', leg: 0, offset: 700, at: { x: 700, y: 0 } },
+    { trackId: 't2', leg: 0, offset: 700, at: { x: 700, y: 60 } },
+  ]);
+  expect(snapToAll(world, { x: 700, y: 45 }, NOW, 50).map((h) => h.trackId)).toEqual(['t2', 't1']);
+  // Dentist is on t1, so dragged here it can only join t2.
+  expect(snapToAll(world, { x: 700, y: 20 }, NOW, 50, 'dentist').map((h) => h.trackId)).toEqual(['t2']);
+  expect(snapToAll(world, { x: 700, y: 400 }, NOW, 50)).toEqual([]);
+});
+
+test('snapToAll never offers the day line', () => {
+  const world = parallel();
+  world.tracks[1].day = { date: '2026-11-01', budgets: [3600] };
+  expect(snapToAll(world, { x: 700, y: 45 }, NOW, 50).map((h) => h.trackId)).toEqual(['t1']);
+  expect(snapToTracks(world, { x: 700, y: 58 }, NOW, 50)).toBeNull();
+});
+
+test('a dragged stop does not block its own snap', () => {
+  // Dentist dragged live onto t2's path: t1 now runs through it too, but lists it, so t2 takes it.
+  const world = twoLines();
+  world.stops = world.stops.map((s) => (s.id === 'dentist' ? { ...s, x: 1000, y: 600 } : s));
+  expect(snapToTracks(world, { x: 1000, y: 600 }, NOW, 50, 'dentist')).toEqual({
+    trackId: 't2',
+    leg: 0,
+    offset: 1000,
+    at: { x: 1000, y: 600 },
+  });
+});
+
+test('nearestStop finds the closest pending stop within radius', () => {
+  const stops = twoLines().stops.map((s) => (s.id === 'wristband' ? { ...s, done: true } : s));
+  expect(nearestStop(stops, { x: 1020, y: 10 }, 50)?.id).toBe('dentist');
+  expect(nearestStop(stops, { x: 1480, y: 590 }, 50)?.id).toBe('shared');
+  // Two in reach: the closer wins.
+  const near: Stop = { id: 'near', title: '', shape: 'circle', size: 'small', x: 1040, y: 0, done: false };
+  expect(nearestStop([...stops, near], { x: 1030, y: 0 }, 50)?.id).toBe('near');
+  // A done stop, or one out of reach, is nothing.
+  expect(nearestStop(stops, { x: 3000, y: 0 }, 50)).toBeNull();
+  expect(nearestStop(stops, { x: 1100, y: 0 }, 50)).toBeNull();
 });

@@ -31,6 +31,8 @@ export interface Track {
   stops: string[];
   train: Train;
   target: BubbleTarget;
+  /** Set on the one day track. `date` is the local day it belongs to. It never keeps a stop alive. */
+  day?: { date: string; budgets: number[] };
 }
 
 export interface World {

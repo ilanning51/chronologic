@@ -14,7 +14,9 @@ interface TrackProps {
  * beneath it so the 30 by 20 body is not all a finger has to find.
  */
 export function Track({ view }: TrackProps) {
-  const color = view.finished ? 'var(--muted)' : colorVar(view.color);
+  // A sketch is a thought, not yet a plan: muted and thin, train and all.
+  const color = view.finished || view.sketch ? 'var(--muted)' : view.day ? 'var(--ink)' : colorVar(view.color);
+  const width = view.sketch ? TRACK_WIDTH / 2 : TRACK_WIDTH;
   const { train } = view;
   const rolling = !train.waiting && !train.parked;
   const target = rolling ? { 'data-target': 'train', 'data-track': view.id } : {};
@@ -28,7 +30,7 @@ export function Track({ view }: TrackProps) {
           y1={a.y}
           x2={b.x}
           y2={b.y}
-          style={{ stroke: color, strokeWidth: TRACK_WIDTH, strokeLinecap: 'round' }}
+          style={{ stroke: color, strokeWidth: width, strokeLinecap: 'round' }}
         />
       ))}
       {rolling && (
