@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_GOAL_SECONDS, EMPTY, reduce } from './reducer';
+import { DEFAULT_GOAL_SECONDS, EMPTY, reduce, undoable } from './reducer';
 import { dayState, legSeconds, timeLeftAny, trackRoute, trainState } from './train';
 import { running as fixtureRunning, twoLines, withDay as fixtureDay } from '../test/fixtures';
 import type { Stop, World } from './types';
@@ -271,7 +271,7 @@ describe('complete and undo', () => {
     expect(stopOf(one, 'b').done).toBe(false);
     expect(one.tracks[0].train).toEqual({ leg: 1, departedAt: now });
     expect(one.lastTouched).toBe(trackId);
-    const back = reduce(one, { type: 'undo', trackId, now });
+    const back = reduce(one, { type: 'undo', stopId: 'a', now });
     expect(stopOf(back, 'a').done).toBe(false);
     expect(back.tracks[0].train.leg).toBe(0);
     expect(stateOf(back)).toMatchObject({ leg: 0, waiting: true });
@@ -280,13 +280,13 @@ describe('complete and undo', () => {
 
   test('undo with nothing done is ignored; completing the goal parks the train and undo wakes it', () => {
     const w = running();
-    expect(reduce(w, { type: 'undo', trackId, now })).toBe(w);
+    expect(reduce(w, { type: 'undo', stopId: 'a', now })).toBe(w);
     let p = w;
     for (let i = 0; i < 3; i++) p = reduce(p, { type: 'complete', trackId, now });
     expect(p.tracks[0].train).toEqual({ leg: 3, departedAt: now });
     expect(stopOf(p, 'g').done).toBe(true);
     expect(reduce(p, { type: 'complete', trackId, now })).toBe(p);
-    const back = reduce(p, { type: 'undo', trackId, now });
+    const back = reduce(p, { type: 'undo', stopId: 'g', now });
     expect(stopOf(back, 'g').done).toBe(false);
     expect(back.tracks[0].train.leg).toBe(2);
     expect(stateOf(back).waiting).toBe(true);
@@ -303,7 +303,7 @@ describe('complete and undo', () => {
   test('unknown tracks are ignored', () => {
     const w = running();
     expect(reduce(w, { type: 'complete', trackId: 'x', now })).toBe(w);
-    expect(reduce(w, { type: 'undo', trackId: 'x', now })).toBe(w);
+    expect(reduce(w, { type: 'undo', stopId: 'x', now })).toBe(w);
     expect(reduce(w, { type: 'cycleTarget', trackId: 'x' })).toBe(w);
   });
 });
@@ -420,7 +420,7 @@ describe('shared stops', () => {
     trackOf(passed, 't1').train = { leg: 1, departedAt: 0 };
     trackOf(passed, 't2').train = { leg: 1, departedAt: 0 };
     expect(trainState(trackOf(passed, 't1'), byId(passed), late)).toMatchObject({ leg: 2, waiting: true });
-    const rolled = reduce(passed, { type: 'undo', trackId: 't2', now: late });
+    const rolled = reduce(passed, { type: 'undo', stopId: 'shared', now: late });
     expect(stopOf(rolled, 'shared').done).toBe(false);
     expect(trainState(trackOf(rolled, 't1'), byId(rolled), late)).toMatchObject({ leg: 1, waiting: true });
     expect(trainState(trackOf(rolled, 't2'), byId(rolled), late)).toMatchObject({ leg: 0, waiting: true });
@@ -428,15 +428,37 @@ describe('shared stops', () => {
     const far = done(twoLines(), 'dentist', 'shared', 'wristband');
     trackOf(far, 't1').train = { leg: 3, departedAt: 0 };
     trackOf(far, 't2').train = { leg: 1, departedAt: 0 };
-    expect(reduce(far, { type: 'undo', trackId: 't2', now })).toBe(far);
+    expect(reduce(far, { type: 'undo', stopId: 'shared', now })).toBe(far);
     // t1 just past shared: both trains go back to waiting at it.
     const just = done(twoLines(), 'dentist', 'shared');
     trackOf(just, 't1').train = { leg: 2, departedAt: now };
     trackOf(just, 't2').train = { leg: 1, departedAt: now };
-    const back = reduce(just, { type: 'undo', trackId: 't2', now });
+    const back = reduce(just, { type: 'undo', stopId: 'shared', now });
     expect(stopOf(back, 'shared').done).toBe(false);
     expect(at(back, 't1')).toMatchObject({ leg: 1, waiting: true });
     expect(at(back, 't2')).toMatchObject({ leg: 0, waiting: true });
+  });
+
+  test('undo puts back the stop pressed, judged against every derived train', () => {
+    // Shared done from t2, then Dentist from t1; t1 has since rolled through Shared to Wristband.
+    let w = reduce(twoLines(), { type: 'complete', trackId: 't2', now });
+    w = reduce(w, { type: 'complete', trackId: 't1', now });
+    const late = 100_000_000;
+    expect(trainState(trackOf(w, 't1'), byId(w), late)).toMatchObject({ leg: 2, waiting: true });
+    // Dentist is two behind t1's derived train: it cannot be put back, and nothing else is.
+    expect(undoable(w, 'dentist', late)).toBe(false);
+    expect(reduce(w, { type: 'undo', stopId: 'dentist', now: late })).toBe(w);
+    // Shared is the dot just behind on both lines: it comes back, and only it.
+    expect(undoable(w, 'shared', late)).toBe(true);
+    const back = reduce(w, { type: 'undo', stopId: 'shared', now: late });
+    expect(stopOf(back, 'shared').done).toBe(false);
+    expect(stopOf(back, 'dentist').done).toBe(true);
+    expect(trainState(trackOf(back, 't1'), byId(back), late)).toMatchObject({ leg: 1, waiting: true });
+    expect(trainState(trackOf(back, 't2'), byId(back), late)).toMatchObject({ leg: 0, waiting: true });
+    expect(back.lastTouched).toBe('t1');
+    // A pending or unknown stop is never undoable.
+    expect(undoable(w, 'wristband', late)).toBe(false);
+    expect(undoable(w, 'nope', late)).toBe(false);
   });
 
   test('keepTrain rebases from the derived leg', () => {
@@ -757,24 +779,46 @@ describe('the day line', () => {
 
   test('undo of a day stop puts the day train back there with budget zero', () => {
     const w = complete(fixtureDay(), 'day');
-    for (const trackId of ['t1', 'day']) {
-      const back = reduce(w, { type: 'undo', trackId, now: later });
-      expect(stopOf(back, 'dentist').done).toBe(false);
-      expect(trainState(trackOf(back, 't1'), byId(back), later)).toMatchObject({ leg: 0, waiting: true });
-      expect(day(back).train).toEqual({ leg: 0, departedAt: later });
-      expect(day(back).day!.budgets[0]).toBe(0);
-      expect(dayState(day(back), back, later)).toMatchObject({ leg: 0, waiting: true });
-    }
+    const back = reduce(w, { type: 'undo', stopId: 'dentist', now: later });
+    expect(stopOf(back, 'dentist').done).toBe(false);
+    expect(trainState(trackOf(back, 't1'), byId(back), later)).toMatchObject({ leg: 0, waiting: true });
+    expect(day(back).train).toEqual({ leg: 0, departedAt: later });
+    expect(day(back).day!.budgets[0]).toBe(0);
+    expect(dayState(day(back), back, later)).toMatchObject({ leg: 0, waiting: true });
+    expect(back.lastTouched).toBe('t1');
     // The day never blocks an undo: parked two past Shared, it still goes back to Shared's leg.
     const parked = complete(complete(w, 'day'), 'day');
     expect(day(parked).train.leg).toBe(3);
-    const undone = reduce(parked, { type: 'undo', trackId: 't2', now: later });
+    const undone = reduce(parked, { type: 'undo', stopId: 'shared', now: later });
     expect(stopOf(undone, 'shared').done).toBe(false);
     expect(day(undone).train).toEqual({ leg: 1, departedAt: later });
     expect(day(undone).day!.budgets[1]).toBe(0);
     // The end square goes back to pending: only tapping it parks the day again.
     expect(stopOf(undone, 'dayEnd').done).toBe(false);
     expect(day(reduce(undone, { type: 'complete', trackId: 't2', now: later })).train.leg).toBe(2);
+  });
+
+  test('a day stop done on the day ahead of a project train can be put back', () => {
+    // Shared first on the day: done there, t2 departs, but on t1 it is still ahead of the train.
+    const w = complete(newDay(twoLines(), ['shared']), 'd', later);
+    expect(stopOf(w, 'shared').done).toBe(true);
+    expect(trackOf(w, 't1').train).toEqual({ leg: 0, departedAt: 0 });
+    expect(undoable(w, 'shared', later)).toBe(true);
+    const back = reduce(w, { type: 'undo', stopId: 'shared', now: later });
+    expect(stopOf(back, 'shared').done).toBe(false);
+    // t1 never passed it, so it is left alone; t2 waits at it again; so does the day.
+    expect(trackOf(back, 't1')).toBe(trackOf(w, 't1'));
+    expect(trainState(trackOf(back, 't2'), byId(back), later)).toMatchObject({ leg: 0, waiting: true });
+    expect(day(back).train).toEqual({ leg: 0, departedAt: later });
+    expect(day(back).day!.budgets[0]).toBe(0);
+  });
+
+  test('a one-stop day waits at its end square, whose budget is zero', () => {
+    const w = complete(newDay(twoLines(), ['dentist']), 'd', later);
+    expect(day(w).stops).toEqual(['dentist', 'e']);
+    expect(day(w).train).toEqual({ leg: 1, departedAt: later });
+    expect(day(w).day!.budgets).toEqual([timeLeftAny(twoLines(), 'dentist', now), 0]);
+    expect(dayState(day(w), w, later)).toMatchObject({ leg: 1, waiting: true, fraction: 1 });
   });
 
   test('deleting a project goal takes its stops off the day unless another project has them', () => {

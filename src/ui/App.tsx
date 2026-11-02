@@ -5,7 +5,7 @@ import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayTrack, isDayEnd } from '../model/day';
 import { dayOf } from '../model/days';
 import { newId } from '../model/ids';
-import { DEFAULT_GOAL_SECONDS, tracksOf, type GoalDragStart } from '../model/reducer';
+import { DEFAULT_GOAL_SECONDS, tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { World } from '../model/types';
 import { legSeconds, nextIndex, targetIndex, trackRoute, trainState } from '../model/train';
 import {
@@ -187,13 +187,15 @@ export function App({ store, now = Date.now }: AppProps) {
     if (goal) buzz();
   };
 
-  /** A long press opens the editor on the most recent dot, or on any pending stop. */
-  const openEditor = (trackId: string, stopId: string) => {
+  /**
+   * A long press opens the editor on any pending stop, or on a dot Not done can put back, judged
+   * by the same rule the reducer uses, so the button undoes the stop that was pressed.
+   */
+  const openEditor = (stopId: string) => {
     const state = store.getState();
-    const track = state.tracks.find((t) => t.id === trackId);
     const stop = state.stops.find((s) => s.id === stopId);
-    if (!track || !stop) return;
-    if (!stop.done || track.stops.indexOf(stopId) === track.train.leg - 1) setEditing(stopId);
+    if (!stop) return;
+    if (!stop.done || undoable(state, stopId, now())) setEditing(stopId);
   };
 
   /** Starts dragging a pending stop; a dot is left alone for the whole drag. */
@@ -437,7 +439,7 @@ export function App({ store, now = Date.now }: AppProps) {
         }
         return;
       case 'longPress':
-        if (g.target.kind === 'stop') openEditor(g.target.track, g.target.id);
+        if (g.target.kind === 'stop') openEditor(g.target.id);
         else if (g.target.kind === 'bubble') flyToTarget(g.target.track);
         return;
       case 'holdStart':
@@ -558,7 +560,7 @@ export function App({ store, now = Date.now }: AppProps) {
           setEditing(null);
         }}
         onUndo={() => {
-          store.dispatch({ type: 'undo', trackId: editedTrack.id, now: now() });
+          store.dispatch({ type: 'undo', stopId: editedStop.id, now: now() });
           setEditing(null);
         }}
         onLeave={(trackId) => {

@@ -1256,3 +1256,41 @@ test('a long-waited stop shows a small crowd in the muted ink, at most five', ()
   expect(dot).toMatch(/width:\s*var\(--dot\)/);
   expect(dot).toMatch(/background:\s*var\(--muted\)/);
 });
+
+test('Not done puts back the stop pressed, and only a stop that can come back opens', () => {
+  vi.useFakeTimers();
+  // Shared done from t2, then Dentist from t1; t1 has rolled through Shared and waits at Wristband.
+  const world = twoLines();
+  for (const s of world.stops) if (s.id === 'dentist' || s.id === 'shared') s.done = true;
+  world.tracks[0].train = { leg: 1, departedAt: 0 };
+  world.tracks[1].train = { leg: 1, departedAt: 0 };
+  const LATE = 100_000_000;
+  const store = createStore(world);
+  render(<App store={store} now={() => LATE} />);
+  const before = store.getState();
+  // Dentist is two behind t1's train: no editor, nothing undone.
+  openEditorOn(/^Dentist/);
+  expect(screen.queryByRole('group', { name: 'Done stop' })).not.toBeInTheDocument();
+  expect(store.getState()).toBe(before);
+  // Shared is the dot just behind on both lines: Not done puts back Shared and leaves Dentist.
+  openEditorOn(/^Shared/);
+  act(() => screen.getByRole('button', { name: 'Not done' }).click());
+  expect(stopNamed(store, 'shared').done).toBe(false);
+  expect(stopNamed(store, 'dentist').done).toBe(true);
+});
+
+test('a day stop done ahead of its project train opens Not done and comes back', () => {
+  vi.useFakeTimers();
+  // Shared first on the day and done there: t2 departed, t1 has not reached it yet.
+  const world = dayOn(WAITING);
+  const day = world.tracks.find((t) => t.day)!;
+  day.stops = ['shared', 'dayEnd'];
+  day.day!.budgets = [1000, 0];
+  const store = createStore(world);
+  render(<App store={store} now={() => WAITING} />);
+  act(() => tapOn(screen.getByRole('button', { name: /^Shared/ })));
+  expect(stopNamed(store, 'shared').done).toBe(true);
+  openEditorOn(/^Shared/);
+  act(() => screen.getByRole('button', { name: 'Not done' }).click());
+  expect(stopNamed(store, 'shared').done).toBe(false);
+});

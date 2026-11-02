@@ -34,7 +34,7 @@ export type Action =
   | { type: 'join'; trackId: string; stopId: string; leg: number; x: number; y: number; now: number }
   | { type: 'leave'; trackId: string; stopId: string; now: number }
   | { type: 'complete'; trackId: string; now: number }
-  | { type: 'undo'; trackId: string; now: number }
+  | { type: 'undo'; stopId: string; now: number } // by stop, so Not done puts back the one pressed
   | { type: 'cycleTarget'; trackId: string }
   | { type: 'newDay'; id: string; endId: string; origin: Point; stops: string[]; end: Point; now: number; date: string }
   | { type: 'addToDay'; stopId: string; now: number } // appends before the day's-end square
@@ -123,6 +123,18 @@ function withoutStop(world: World, id: string, now: number, only?: string): Worl
   };
   // Read against the rebased project trains: the day's budget is their time left from now.
   return fresh ? freshDayBudget(merged, now) : merged;
+}
+
+/**
+ * Whether Not done can put this stop back: it is done and, on every project line through it, it
+ * is ahead of the derived train or the dot just behind it. Two or more behind on any line, it
+ * cannot. The day line never blocks: it follows its projects.
+ */
+export function undoable(world: World, stopId: string, now: number): boolean {
+  const byId = stopsById(world);
+  if (!byId.get(stopId)?.done) return false;
+  const found = tracksOf(world, stopId);
+  return found.length > 0 && found.every(({ track, index }) => track.day || index >= trainState(track, byId, now).leg - 1);
 }
 
 /** The actions that can change the day's next stop; each ends by settling the day. */
@@ -318,31 +330,22 @@ function apply(world: World, action: Action): World {
     }
 
     case 'undo': {
-      const { trackId, now } = action;
-      const track = world.tracks.find((t) => t.id === trackId);
-      if (!track) return world;
+      const { stopId: id, now } = action;
+      if (!undoable(world, id, now)) return world;
       const byId = stopsById(world);
-      // Legs are the derived trains': a train that rolled through a stop done elsewhere has it
-      // just behind, the same as one sent on from it.
-      const legOf = (t: Track) => trainState(t, byId, now).leg;
-      const id = track.stops[legOf(track) - 1];
-      if (id === undefined || !byId.get(id)?.done) return world;
-      // Every project line must take the stop back: it is ahead of that train or the dot just
-      // behind it. Two or more behind on any line, it cannot. The day line follows its projects.
-      const lines = tracksOf(world, id).filter(({ track: t }) => !t.day || t.id === trackId);
-      const behind = new Set(lines.filter(({ track: t, index }) => index === legOf(t) - 1).map(({ track: t }) => t.id));
-      if (lines.some(({ track: t, index }) => !behind.has(t.id) && index < legOf(t))) return world;
       const stops = world.stops.map((s) => (s.id === id ? { ...s, done: false } : s));
       const after = stopsById({ ...world, stops });
+      // Each project train past the stop goes back to wait at it; one still short of it is left
+      // alone. Legs are the derived trains': a train that rolled through it has it just behind.
       const undone: World = {
         tracks: world.tracks.map((t) => {
-          if (!behind.has(t.id) || t.day) return t;
           const i = t.stops.indexOf(id);
+          if (t.day || i < 0 || i !== trainState(t, byId, now).leg - 1) return t;
           const length = legSeconds(trackRoute(t, after), i);
           return { ...t, train: rebase(i, length, length, now) };
         }),
         stops,
-        lastTouched: trackId,
+        lastTouched: (tracksOf(world, id).find(({ track }) => !track.day) ?? tracksOf(world, id)[0]).track.id,
       };
       // The day train waits there too, on budget 0, however far past it it was.
       return dayBackTo(undone, id, now);
