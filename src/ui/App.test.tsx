@@ -821,13 +821,19 @@ test("the day's-end square is a small ink square, not a ring", () => {
 
 test('the soonest line fills its bubble', () => {
   const world = dayOn(500_000);
-  // Every target off screen, so each line shows a bubble; the day line points at its end.
+  // Every target off screen, so each line shows a bubble; the day line points at its end. The
+  // day starts far above, so the opening fits a long leg and both projects are in view.
   for (const id of ['wristband', 'goal2', 'dayEnd']) world.stops.find((s) => s.id === id)!.x = 1e6;
   world.tracks[2].target = 'goal';
+  world.tracks[2].origin = { x: 1000, y: -4000 };
   render(<App store={createStore(world)} now={() => 500_000} />);
   const bubble = (track: string) => document.querySelector(`[data-target="bubble"][data-track="${track}"]`) as HTMLElement;
-  // t1 is 500 s from Dentist, t2 1000 s from Shared.
+  const shown = [...document.querySelectorAll<HTMLElement>('[data-target="bubble"]')].map((b) => b.dataset.track);
+  expect(shown.sort()).toEqual(['day', 't1', 't2']);
+  // t1 is 500 s from Dentist, t2 1000 s from Shared: one bubble is filled, and it is t1's.
+  expect(document.querySelectorAll('.bubble.soonest')).toHaveLength(1);
   expect(bubble('t1')).toHaveClass('bubble', 'soonest');
+  expect(bubble('t2')).not.toHaveClass('soonest');
   expect(bubble('day')).not.toHaveClass('soonest');
   expect(bubble('day').style.getPropertyValue('--track-color')).toBe('var(--ink)');
   const filled = cssRule('.bubble.soonest');

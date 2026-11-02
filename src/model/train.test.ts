@@ -75,7 +75,7 @@ describe('train', () => {
     expect(targetIndex({ ...track, train: { leg: 3, departedAt: 0 } }, byId)).toBeNull();
   });
 
-  test('nextIndex is the leg, or null when parked', () => {
+  test('nextIndex is the leg on a fresh track, and null once the train has parked', () => {
     expect(nextIndex(track, byId)).toBe(0);
     expect(nextIndex({ ...track, train: { leg: 3, departedAt: 0 } }, byId)).toBeNull();
   });
