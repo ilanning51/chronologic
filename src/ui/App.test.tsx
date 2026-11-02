@@ -1311,3 +1311,59 @@ test('tapping the day train follows the day train, not the project motion on its
   expect(x).toBeCloseTo(window.innerWidth / 2, 3);
   expect(y).toBeCloseTo(window.innerHeight / 2, 3);
 });
+
+test("the day's-end square's editor is only a hold, and the hold clears the day", () => {
+  vi.useFakeTimers();
+  const store = createStore(dayOn(WAITING));
+  render(<App store={store} now={() => WAITING} />);
+  act(() => {
+    fireEvent.pointerDown(dayEndButton()!, point(500, 400));
+    vi.advanceTimersByTime(600);
+  });
+  fireEvent.pointerUp(dayEndButton()!, point(500, 400));
+  expect(screen.queryByRole('textbox', { name: 'Stop title' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Step' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Sub-goal' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  const hold = screen.getByRole('button', { name: 'Hold to delete the day' });
+  fireEvent.pointerDown(hold, point(500, 700));
+  act(() => {
+    vi.advanceTimersByTime(700);
+  });
+  expect(dayIn(store)).toBeUndefined();
+  expect(store.getState().tracks).toEqual(dayOn(WAITING).tracks.filter((t) => !t.day));
+  expect(store.getState().stops).toEqual(twoLines().stops);
+  expect(screen.queryByRole('button', { name: 'Hold to delete the day' })).not.toBeInTheDocument();
+});
+
+test("dragging a stop whose button speaks for the day shows its project leg's time", () => {
+  // Shared is on t1 only, behind Dentist, and first on the day: its button speaks for the day.
+  const world = twoLines();
+  world.tracks[1].stops = ['goal2'];
+  world.tracks.push({
+    id: 'day',
+    color: 2,
+    origin: { x: 1500, y: 200 },
+    stops: ['shared', 'dayEnd'],
+    train: { leg: 0, departedAt: 0 },
+    target: 'next',
+    day: { date: dayOf(WAITING), budgets: [1000, 0] },
+  });
+  world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
+  const store = createStore(world);
+  render(<App store={store} now={() => WAITING} />);
+  expect(document.querySelector('[data-id="shared"]')).toHaveAttribute('data-track', 'day');
+  const el = screen.getByRole('button', { name: /^Shared/ });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  act(() => {
+    fireEvent.pointerDown(el, point(x, y));
+    fireEvent.pointerMove(el, point(x + 50, y + 30));
+  });
+  expect(stopNamed(store, 'shared')).not.toMatchObject({ x: 1500, y: 600 });
+  const state = store.getState();
+  const t1 = state.tracks[0];
+  const seconds = legSeconds(trackRoute(t1, new Map(state.stops.map((s) => [s.id, s]))), 1);
+  expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(seconds));
+  act(() => fireEvent.pointerUp(el, point(x + 50, y + 30)));
+});

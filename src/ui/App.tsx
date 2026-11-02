@@ -227,11 +227,15 @@ export function App({ store, now = Date.now }: AppProps) {
       return;
     }
     // A goal drags as its line's goal whichever line its button speaks for, the day's included.
+    // A plain stop's leg chip reads a project leg, where it is next or else the first: the day's
+    // legs are not time, so a stop speaking for the day must not read one.
+    const byId = new Map(state.stops.map((s) => [s.id, s]));
     const home = homeOf(state, stop.id);
     const goal = home !== undefined;
-    const track = home ?? state.tracks.find((t) => t.id === target.track);
+    const projects = tracksOf(state, stop.id).filter(({ track: t }) => !t.day);
+    const project = projects.find(({ track: t, index }) => nextIndex(t, byId) === index) ?? projects[0];
+    const track = home ?? project?.track;
     if (!track) return;
-    const byId = new Map(state.stops.map((s) => [s.id, s]));
     const train = trainState(track, byId, now());
     const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
     const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
@@ -450,8 +454,13 @@ export function App({ store, now = Date.now }: AppProps) {
         setHolding(false);
         const open = editingRef.current;
         if (g.completed && open) {
-          if (homeOf(store.getState(), open)) {
+          const state = store.getState();
+          // The goal's hold takes its line; the day's-end square's takes the day, and only the day.
+          if (homeOf(state, open)) {
             store.dispatch({ type: 'delete', id: open, now: now() });
+            setEditing(null);
+          } else if (isDayEnd(state, open)) {
+            store.dispatch({ type: 'clearDay', now: now() });
             setEditing(null);
           }
         }
@@ -535,10 +544,10 @@ export function App({ store, now = Date.now }: AppProps) {
     return () => window.clearInterval(id);
   }, [rolling, camera.scale, now, store]);
 
-  // A goal's editor acts on its home line, so delete, undo and the hold reach the right track.
-  const editedHome = editing ? homeOf(world, editing) : undefined;
-  const editedTrack = editing ? (editedHome ?? world.tracks.find((t) => t.stops.includes(editing))) : undefined;
+  // A goal is a goal whichever line its button spoke for; the day's end is neither stop nor goal.
   const editedStop = editing ? byId.get(editing) : undefined;
+  const editedHome = editing ? homeOf(world, editing) : undefined;
+  const editedDayEnd = editing ? isDayEnd(world, editing) : false;
   // A chip per line the stop can leave, once it is on two or more; a square's home is not one.
   const onTracks = editing ? tracksOf(world, editing) : [];
   const lines =
@@ -548,11 +557,12 @@ export function App({ store, now = Date.now }: AppProps) {
           .map(({ track }) => ({ trackId: track.id, color: track.day ? null : track.color }))
       : [];
   const editor =
-    editedTrack && editedStop ? (
+    editedStop && onTracks.length > 0 ? (
       <StopEditor
         key={editedStop.id}
         stop={editedStop}
         goal={editedHome !== undefined}
+        dayEnd={editedDayEnd}
         done={editedStop.done}
         holding={holding}
         lines={lines}

@@ -7,6 +7,7 @@ const stop: Stop = { id: 's', title: 'Dentist', shape: 'circle', size: 'medium',
 
 function setup(props: {
   goal: boolean;
+  dayEnd?: boolean;
   done: boolean;
   holding?: boolean;
   lines?: { trackId: string; color: number | null }[];
@@ -98,4 +99,25 @@ test('a stop on one line shows no chips', () => {
   setup({ goal: false, done: false, lines: [] });
   expect(screen.queryByRole('button', { name: 'Leave line' })).not.toBeInTheDocument();
   expect(document.querySelector('.line-chips')).toBeNull();
+});
+
+test("the day's-end square offers only a hold that deletes the day", () => {
+  const { onDelete } = setup({ goal: false, dayEnd: true, done: false });
+  expect(screen.queryByRole('textbox', { name: 'Stop title' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Step' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Sub-goal' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Medium' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  const hold = screen.getByRole('button', { name: 'Hold to delete the day' });
+  expect(hold).toHaveAttribute('data-target', 'hold');
+  expect(hold).toHaveAttribute('data-id', 'delete');
+  fireEvent.click(hold);
+  expect(onDelete).not.toHaveBeenCalled();
+});
+
+test("a done day's-end square offers Not done and the hold", () => {
+  const { onUndo } = setup({ goal: false, dayEnd: true, done: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Not done' }));
+  expect(onUndo).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: 'Hold to delete the day' })).toBeInTheDocument();
 });
