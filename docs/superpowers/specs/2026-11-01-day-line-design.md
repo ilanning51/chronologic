@@ -367,3 +367,5 @@ Settled during the build, 2026-11-01:
 27. Join on release is for a plain stop only: a goal drag and the day's-end drag never join a line.
 28. The day's-end drag measures from the square; the sun measures from the finger.
 29. A goal is a goal on every line it sits on: its editor, its hold-to-delete and its drag act on its home line whichever line's button was pressed, and a square never joins a line on release.
+30. A ring's border is 4 px, not the track's 10 px: 10 px cannot fit a 14 px small circle.
+31. undo is by stop, judged against every project line's derived train, so Not done always puts back the stop that was pressed.

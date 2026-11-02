@@ -25,9 +25,9 @@ Everything lives on one infinite plane. The look is borrowed from Mini Metro and
 - Long press a stop to edit its name, shape and size, or to delete it. Long press the most recent dot to bring it back with Not done.
 - On a stop that sits on several lines, the editor also shows a chip in each line's colour. Tap a chip to take the stop off that line.
 - The tray has a sun. Drag it through the stops you mean to do today, in the order you mean to do them, and let go where the day should end. An ink line runs through them with its own train, which reaches each stop exactly when that stop's own train does. While a day is drawn, the app opens on its train.
-- Drag the small square at the end of the day through another stop to add that stop to the day. Drag it anywhere else to move it.
+- Drag the small square at the end of the day through another stop to add that stop to the day. Drag it anywhere else to move it. Long press it and hold Delete to clear the day; the lines it ran through stay as they are.
 - The day clears itself at 4 am. Drawing a new day replaces the old one.
-- Hold the Delete button on a goal's editor to delete the whole line. It is the one thing in the app that asks you to confirm.
+- Hold the Delete button on a goal's editor to delete the whole line. Deleting a line and clearing the day are the only things in the app that ask you to confirm.
 - Tap a bubble to change what it points at (next stop, next sub-goal, goal). Long press it to fly there.
 - One bubble is filled with its line's colour: the line whose train reaches its next stop soonest. The others stay paper.
 - A new line with only its goal is drawn faint and thin, as a sketch, until you give it a step.
