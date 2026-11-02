@@ -217,31 +217,35 @@ export function App({ store, now = Date.now }: AppProps) {
     if (target.kind !== 'stop') return;
     const state = store.getState();
     const stop = state.stops.find((s) => s.id === target.id);
-    const track = state.tracks.find((t) => t.id === target.track);
-    if (!stop || stop.done || !track) return;
+    if (!stop || stop.done) return;
     const under = screenToWorld(cameraRef.current, g.at);
     if (isDayEnd(state, stop.id)) {
       const grip = { x: stop.x - under.x, y: stop.y - under.y };
       endDrag.current = { start: { x: stop.x, y: stop.y }, grip, added: false };
       return;
     }
+    // A goal drags as its line's goal whichever line its button speaks for, the day's included.
+    const home = homeOf(state, stop.id);
+    const goal = home !== undefined;
+    const track = home ?? state.tracks.find((t) => t.id === target.track);
+    if (!track) return;
     const byId = new Map(state.stops.map((s) => [s.id, s]));
     const train = trainState(track, byId, now());
     const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
     const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
     // A shared stop re-routes every line through it; each keeps its own train. A goal drag also
     // moves every pending stop ahead of its train.
-    const lines = target.goal
+    const lines = goal
       ? state.tracks.filter((t) => t.stops.some((id) => id === stop.id || pending.includes(id)))
       : tracksOf(state, stop.id).map((f) => f.track);
     const keep = Object.fromEntries(lines.map((t) => [t.id, trainState(t, byId, now()).seconds]));
     dragging.current = {
       id: stop.id,
-      track: target.track,
-      goal: target.goal,
+      track: track.id,
+      goal,
       grip: { x: stop.x - under.x, y: stop.y - under.y },
       keep,
-      from: target.goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
+      from: goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
     };
   };
 

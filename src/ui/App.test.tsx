@@ -1188,8 +1188,38 @@ test('a goal drawn for the day and let go on another line is not joined', () => 
   const store = createStore(world);
   render(<App store={store} now={() => WAITING} />);
   expect(document.querySelector('[data-id="goal2"]')).toHaveAttribute('data-track', 'day');
-  // A goal moves only by its own line's drag, so it stays put; the release must not join it.
+  // It drags as t2's goal, along t1's path; the release must not join it there.
   act(() => dragStop(/^Goal 2/, 30, 0));
-  expect(stopNamed(store, 'goal2')).toMatchObject({ x: 2000, y: 20 });
+  expect(stopNamed(store, 'goal2').x).toBeGreaterThan(2000);
+  expect(stopNamed(store, 'goal2').y).toBeCloseTo(20, 3);
   expect(trackStops(store, 't1')).toEqual(['dentist', 'wristband']);
+});
+
+test('a goal drawn for the day drags as its line goal, scaling the stops ahead', () => {
+  // t2 waits at Near; Goal 2 is the day's next stop, so its button speaks for the day.
+  const world = underneath(600);
+  world.tracks[1].stops = ['near', 'mid', 'goal2'];
+  world.stops.push({ id: 'mid', title: 'Mid', shape: 'circle', size: 'medium', x: 2000, y: 600, done: false });
+  world.tracks.push({
+    id: 'day',
+    color: 2,
+    origin: { x: 1500, y: -400 },
+    stops: ['goal2', 'near', 'dayEnd'],
+    train: { leg: 0, departedAt: 0 },
+    target: 'next',
+    day: { date: dayOf(WAITING), budgets: [1000, 0, 0] },
+  });
+  world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
+  const store = createStore(world);
+  render(<App store={store} now={() => WAITING} />);
+  expect(document.querySelector('[data-id="goal2"]')).toHaveAttribute('data-track', 'day');
+  act(() => dragStop(/^Goal 2/, 100, 0));
+  const goal = stopNamed(store, 'goal2');
+  const mid = stopNamed(store, 'mid');
+  // Scaled from t2's train at Near (1000, 600): Mid keeps its share of the way to the goal.
+  const factor = (goal.x - 1000) / 2000;
+  expect(factor).toBeGreaterThan(1);
+  expect((mid.x - 1000) / 1000).toBeCloseTo(factor, 6);
+  expect(goal.y).toBeCloseTo(600, 6);
+  expect(mid.y).toBeCloseTo(600, 6);
 });
