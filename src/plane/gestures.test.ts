@@ -229,3 +229,27 @@ test('a drag starting on a bubble or a train emits nothing', () => {
   }
   expect(emit).not.toHaveBeenCalled();
 });
+
+const origin: Target = { kind: 'origin', track: 't' };
+const marquee: Target = { kind: 'marquee' };
+const selection: Target = { kind: 'selection' };
+
+test.each([origin, marquee, selection])('%o drags like a stop and never long presses', (target) => {
+  const { r, gestures } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, target);
+  r.tick(LONG_PRESS_MS + 1);
+  r.move({ id: 1, x: 20, y: 0, t: 600 });
+  r.up({ id: 1, x: 30, y: 0, t: 700 });
+  expect(gestures()).toEqual([
+    { type: 'dragStart', target, at: { x: 0, y: 0 } },
+    { type: 'dragMove', target, at: { x: 20, y: 0 } },
+    { type: 'dragEnd', target, at: { x: 30, y: 0 } },
+  ]);
+});
+
+test('a short press on the marquee or the selection is a tap', () => {
+  const { r, gestures } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, selection);
+  r.up({ id: 1, x: 2, y: 0, t: 100 });
+  expect(gestures()).toEqual([{ type: 'tap', target: selection, at: { x: 0, y: 0 } }]);
+});
