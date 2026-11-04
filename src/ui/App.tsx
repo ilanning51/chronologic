@@ -11,6 +11,7 @@ import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } f
 import {
   type Camera,
   centerOn,
+  fitPoints,
   HOME,
   interpolate,
   MOTION_SCALE,
@@ -805,7 +806,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         if (g.target.kind === 'train') motionZoom(g.target.track);
         else if (g.target.kind === 'stop') complete(g.target.track, g.target.id);
         else if (g.target.kind === 'split') openEditor(g.target.id); // a secondary click that never moved
-        else if (g.target.kind === 'bubble') store.dispatch({ type: 'cycleTarget', trackId: g.target.track });
+        else if (g.target.kind === 'bubble') tapBubble(g.target.track);
         else if (g.target.kind === 'tile') toggleBrush(g.target.tile);
         else if (
           g.target.kind === 'paper' ||
@@ -926,6 +927,36 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (dragging.current) joinOnRelease(dragging.current);
     dragging.current = null;
     setLegTime(null);
+  };
+
+  /**
+   * A tap on a bubble cycles what its line points at, except a picture bubble, which flies out
+   * until the whole line is in view: the picture is the goal, so there is nothing to cycle to by
+   * sight, and the line is what you want to see.
+   */
+  const tapBubble = (trackId: string) => {
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
+    if (!track) return;
+    const stops = new Map(state.stops.map((s) => [s.id, s]));
+    const i = targetIndex(track, stops);
+    const target = i === null ? undefined : stops.get(track.stops[i]);
+    if (target?.image !== undefined) fitLine(track.id);
+    else store.dispatch({ type: 'cycleTarget', trackId });
+  };
+
+  /** Flies out, never in, until the line's start and every stop on it are in view with room around them. */
+  const fitLine = (trackId: string) => {
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
+    if (!track) return;
+    const stops = new Map(state.stops.map((s) => [s.id, s]));
+    const points = [track.origin, ...track.stops.flatMap((id) => (stops.has(id) ? [stops.get(id)!] : []))];
+    const c = cameraRef.current;
+    // Leaving a followed train or a pinned level by this flight is the hand moving the camera.
+    stash.current = null;
+    pinned.current = new Set();
+    fly(c, fitPoints(c, points, viewport));
   };
 
   /** A long press on a bubble flies to the stop it points at, keeping the current scale. */
@@ -1085,6 +1116,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             track={v.id}
             color={v.color}
             day={v.day}
+            sketch={v.sketch}
             soonest={v.id === soonest?.id}
             shape={target.shape}
             title={target.title}

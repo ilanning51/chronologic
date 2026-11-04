@@ -28,6 +28,8 @@ interface BubbleProps {
   soonest?: boolean;
   /** The day line, whose colour is the ink. */
   day?: boolean;
+  /** A sketch, a line with only its goal: muted like the line, its train and its goal. */
+  sketch?: boolean;
 }
 
 const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal', square: 'goal' };
@@ -38,7 +40,8 @@ const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal
  * goal with a picture has no pill: the bubble is the picture itself, centred in a square of the
  * line's colour, so the thing the line is for is a glance away from anywhere, framed in its line.
  */
-export function Bubble({ track, color, shape, title, image, x, y, side, soonest = false, day = false }: BubbleProps) {
+export function Bubble({ track, color, shape, title, image, x, y, side, soonest = false, day = false, sketch = false }: BubbleProps) {
+  const ink = day ? 'var(--ink)' : sketch ? 'var(--muted)' : colorVar(color);
   return (
     <button
       type="button"
@@ -46,7 +49,7 @@ export function Bubble({ track, color, shape, title, image, x, y, side, soonest 
       data-target="bubble"
       data-track={track}
       aria-label={`${title || 'Unnamed'}, ${SHAPE_WORDS[shape]}. Tap to change what this line points at.`}
-      style={{ left: x, top: y, transform: ANCHOR[side], ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
+      style={{ left: x, top: y, transform: ANCHOR[side], ['--track-color' as string]: ink } as CSSProperties}
     >
       {image !== undefined ? (
         <img aria-hidden="true" alt="" className="mural" src={image} draggable={false} />

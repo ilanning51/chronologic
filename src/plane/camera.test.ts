@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { centerOn, fitLeg, HOME, interpolate, MAX_SCALE, MIN_SCALE, MOTION_SCALE, panBy, screenToWorld, worldToScreen, zoomAt } from './camera';
+import { centerOn, FIT_PAD_PX, fitLeg, fitPoints, HOME, interpolate, MAX_SCALE, MIN_SCALE, MOTION_SCALE, panBy, screenToWorld, worldToScreen, zoomAt } from './camera';
 import { distance } from './geometry';
 
 test('distance is euclidean', () => {
@@ -61,4 +61,27 @@ test('interpolate is linear in position and geometric in scale', () => {
   expect(mid.y).toBeCloseTo(50);
   expect(mid.scale).toBeCloseTo(0.1);
   expect(interpolate(a, b, 1).scale).toBeCloseTo(1);
+});
+
+test('fitPoints zooms out until every point fits with the pad around it, centred, and never zooms in', () => {
+  const viewport = { w: 1000, h: 800 };
+  const c = { x: 0, y: 0, scale: 1 };
+  const points = [{ x: 0, y: 0 }, { x: 4200, y: 0 }, { x: 2000, y: 1000 }];
+  const fitted = fitPoints(c, points, viewport);
+  // Wide, so the width decides: 4200 world units across 1000 - 2 * 80 px.
+  expect(fitted.scale).toBeCloseTo((1000 - 2 * FIT_PAD_PX) / 4200, 9);
+  const shown = points.map((p) => worldToScreen(fitted, p));
+  for (const p of shown) {
+    expect(p.x).toBeGreaterThanOrEqual(FIT_PAD_PX - 1e-6);
+    expect(p.x).toBeLessThanOrEqual(1000 - FIT_PAD_PX + 1e-6);
+    expect(p.y).toBeGreaterThanOrEqual(FIT_PAD_PX - 1e-6);
+    expect(p.y).toBeLessThanOrEqual(800 - FIT_PAD_PX + 1e-6);
+  }
+  expect((shown[0].x + shown[1].x) / 2).toBeCloseTo(500, 6);
+  // A short line that already fits is brought to the middle at the scale it had.
+  const small = fitPoints(c, [{ x: 3000, y: 0 }, { x: 3100, y: 50 }], viewport);
+  expect(small.scale).toBe(1);
+  expect(worldToScreen(small, { x: 3050, y: 25 })).toEqual({ x: 500, y: 400 });
+  // Nothing to fit leaves the camera alone.
+  expect(fitPoints(c, [], viewport)).toBe(c);
 });

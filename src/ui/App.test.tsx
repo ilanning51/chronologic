@@ -120,6 +120,43 @@ test('a goal with a picture carries it as a mural, and its bubble shows it in pl
   expect(tokensCss).toMatch(/--frame:\s*4px/);
 });
 
+test('a tap on a picture bubble flies out until the whole line is in view, and never cycles', () => {
+  reduceMotion();
+  const world = farGoal();
+  world.stops[1].image = PICTURE;
+  const store = createStore(world);
+  render(<App store={store} now={() => 500_000} />);
+  const bubble = document.querySelector('[data-target="bubble"]')!;
+  expect(bubble).toHaveClass('picture');
+  act(() => tapOn(bubble));
+  // The target is unchanged: a picture bubble does not cycle.
+  expect(store.getState().tracks[0].target).toBe('goal');
+  // The goal is on screen now, with room around it, so no bubble is needed.
+  expect(document.querySelector('[data-target="bubble"]')).not.toBeInTheDocument();
+  const inView = (el: HTMLElement) => {
+    const x = parseFloat(el.style.left);
+    const y = parseFloat(el.style.top);
+    return x >= 0 && x <= window.innerWidth && y >= 0 && y <= window.innerHeight;
+  };
+  expect(inView(screen.getByRole('button', { name: /^Dentist/ }))).toBe(true);
+  expect(inView(screen.getByRole('button', { name: /^Wristband/ }))).toBe(true);
+  const origin = document.querySelector('.origin-hit') as SVGRectElement;
+  const ox = Number(/translate\(([-\d.e]+)px/.exec(origin.style.transform)![1]);
+  expect(ox).toBeGreaterThanOrEqual(0);
+});
+
+test("a sketch's bubble is muted, like its line", () => {
+  const world = running();
+  world.tracks[0].stops = ['wristband'];
+  world.stops = world.stops.filter((s) => s.id === 'wristband');
+  // Far enough to be off screen even when the leg is fitted at the smallest zoom.
+  world.stops[0].x = 1e8;
+  render(<App store={createStore(world)} now={() => 500_000} />);
+  const bubble = document.querySelector('[data-target="bubble"]') as HTMLElement;
+  expect(bubble).toBeInTheDocument();
+  expect(bubble.style.getPropertyValue('--track-color')).toBe('var(--muted)');
+});
+
 test("choosing a picture in the goal's editor keeps the shrunk one on the goal", async () => {
   vi.useFakeTimers();
   const store = createStore(running());
