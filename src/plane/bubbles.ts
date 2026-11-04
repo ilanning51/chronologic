@@ -3,6 +3,12 @@ import type { Point } from './geometry';
 /** How far in from the window edge a bubble sits, so it never touches the glass. */
 export const BUBBLE_INSET_PX = 16;
 
+/** Half a bubble's height: its least height is the 44 px tap target. */
+const BUBBLE_HALF_PX = 22;
+
+/** How far along the top edge from the corner a centred bubble could still reach back over it. */
+const TOP_REACH_PX = 100;
+
 /** Where a bubble sits, and which inset edge it hangs from. */
 export interface BubbleSpot extends Point {
   side: 'left' | 'right' | 'top' | 'bottom';
@@ -25,4 +31,17 @@ export function bubbleFor(target: Point, viewport: { w: number; h: number }): Bu
   const t = Math.min(tx, ty);
   const side = tx <= ty ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'bottom' : 'top';
   return { x: cx + t * dx, y: cy + t * dy, side };
+}
+
+/**
+ * Keeps a bubble clear of a HUD piece in the top-left corner, given as the corner's size in px.
+ * A bubble on the left edge that would overlap it moves down to just below it; one on the top
+ * edge near it, whose width is not known here, hangs from the left edge just below it instead.
+ * Anywhere else it stays where it was.
+ */
+export function clearOf(spot: BubbleSpot, corner: { w: number; h: number }): BubbleSpot {
+  const below = corner.h + BUBBLE_HALF_PX;
+  if (spot.side === 'left' && spot.y < below) return { ...spot, y: below };
+  if (spot.side === 'top' && spot.x < corner.w + TOP_REACH_PX) return { x: BUBBLE_INSET_PX, y: below, side: 'left' };
+  return spot;
 }

@@ -1,12 +1,14 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef } from 'react';
 import type { Point } from '../plane/geometry';
-import { type Gesture, Recognizer, type Sample, type Target } from '../plane/gestures';
+import { type Gesture, Recognizer, type Sample, type Target, type Tile } from '../plane/gestures';
 
 interface PlaneProps {
   onGesture: (gesture: Gesture) => void;
   onZoom: (at: Point, factor: number) => void;
   hud: ReactNode;
   children: ReactNode;
+  /** The brush that is on: a press on empty paper is the brush's, not a pan. */
+  brush?: Tile | null;
 }
 
 /** How often the recognizer is told that time passed while a pointer is down. */
@@ -55,8 +57,9 @@ const sample = (e: ReactPointerEvent): Sample => ({ id: e.pointerId, x: e.client
  * except on a stop: there the secondary button goes to the recognizer as a split target, so a
  * drag splits a step off the stop and a plain click is still the editor. Shift held on empty
  * paper, or on the kept box, is the marquee: the recognizer is told so and never sees the key.
+ * With a brush on, a press on empty paper is the brush's; Shift still wins.
  */
-export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
+export function Plane({ onGesture, onZoom, hud, children, brush = null }: PlaneProps) {
   const latest = useRef(onGesture);
   latest.current = onGesture;
   const recognizer = useMemo(() => new Recognizer((g) => latest.current(g)), []);
@@ -99,7 +102,7 @@ export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
   return (
     <main
       ref={main}
-      className="plane"
+      className={brush ? 'plane brushing' : 'plane'}
       aria-label="The plane"
       onPointerDown={(e) => {
         const target = targetOf(e.target);
@@ -116,7 +119,10 @@ export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
         }
         pointersDown.current += 1;
         const onPaper = target.kind === 'paper' || target.kind === 'selection';
-        recognizer.down(sample(e), onPaper && e.shiftKey ? { kind: 'marquee' } : target);
+        // The kept box still drags its selection under a brush: only bare paper is the brush's.
+        const given: Target =
+          onPaper && e.shiftKey ? { kind: 'marquee' } : brush && target.kind === 'paper' ? { kind: 'brush' } : target;
+        recognizer.down(sample(e), given);
         startTicking();
       }}
       onPointerMove={(e) => recognizer.move(sample(e))}

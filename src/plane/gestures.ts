@@ -1,24 +1,28 @@
 import { distance, type Point } from './geometry';
 
+/** The tray's tiles, each also a brush. */
+export type Tile = 'circle' | 'triangle' | 'line' | 'sun';
+
 /** What a pointer went down on. Read from the DOM by the plane, never by this module. */
 export type Target =
   | { kind: 'paper' }
   | { kind: 'stop'; id: string; track: string; goal: boolean }
   | { kind: 'train'; track: string }
   | { kind: 'bubble'; track: string }
-  | { kind: 'tile'; tile: 'circle' | 'triangle' | 'line' | 'sun' }
+  | { kind: 'tile'; tile: Tile }
   | { kind: 'hold'; id: string }
   | { kind: 'hud' }
   | { kind: 'origin'; track: string } // the start of a line
   | { kind: 'marquee' } // empty paper with the select key held: a box is drawn, not a pan
   | { kind: 'selection' } // the drawn box: dragging it moves what it holds
-  | { kind: 'split'; id: string; track: string }; // a stop under the secondary button: dragging splits a step off it
+  | { kind: 'split'; id: string; track: string } // a stop under the secondary button: dragging splits a step off it
+  | { kind: 'brush' }; // empty paper while a brush is on: a drag draws, not pans
 
 /**
  * The targets a moving pointer drags. A tap on any of them is still a tap. A train drags so the
  * app can hand a press on a train sitting at its line's start to the start; the app drops the rest.
  */
-const DRAGS = new Set<Target['kind']>(['stop', 'tile', 'origin', 'marquee', 'selection', 'train', 'split']);
+const DRAGS = new Set<Target['kind']>(['stop', 'tile', 'origin', 'marquee', 'selection', 'train', 'split', 'brush']);
 
 /** One pointer event, in screen pixels and milliseconds. */
 export interface Sample {
@@ -35,7 +39,8 @@ export type Gesture =
   | { type: 'longPress'; target: Target; at: Point }
   | { type: 'dragStart'; target: Target; at: Point }
   | { type: 'dragMove'; target: Target; at: Point }
-  | { type: 'dragEnd'; target: Target; at: Point }
+  /** cancelled: a brush stroke a second finger or the browser took over; nothing is drawn. */
+  | { type: 'dragEnd'; target: Target; at: Point; cancelled?: true }
   | { type: 'holdStart'; target: Target }
   | { type: 'holdEnd'; target: Target; completed: boolean };
 
@@ -204,7 +209,14 @@ export class Recognizer {
 
   /** Closes whatever a lone pointer was doing, as a second finger or a cancel took it over. */
   private endSingle(t: Tracked): void {
-    if (t.mode === 'drag') this.emit({ type: 'dragEnd', target: t.target, at: t.last });
+    if (t.mode === 'drag') {
+      // A stroke cut short draws nothing; any other drag ends where it got to.
+      this.emit(
+        t.target.kind === 'brush'
+          ? { type: 'dragEnd', target: t.target, at: t.last, cancelled: true }
+          : { type: 'dragEnd', target: t.target, at: t.last },
+      );
+    }
     if (t.mode === 'hold') this.emit({ type: 'holdEnd', target: t.target, completed: false });
   }
 

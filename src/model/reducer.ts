@@ -25,7 +25,7 @@ export interface GoalDragStart {
  * track the record does not name keeps what it has now.
  */
 export type Action =
-  | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; now: number }
+  | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; goal?: Point; now: number } // goal: a month out, unless drawn
   | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
@@ -151,14 +151,15 @@ function apply(world: World, action: Action): World {
   switch (action.type) {
     case 'newTrack': {
       const { id, goalId, title, origin, now } = action;
+      const at = action.goal ?? { x: origin.x + DEFAULT_GOAL_SECONDS, y: origin.y };
       if (world.tracks.some((t) => t.id === id) || world.stops.some((s) => s.id === goalId)) return world;
       const goal: Stop = {
         id: goalId,
         title,
         shape: 'square',
         size: 'large',
-        x: origin.x + DEFAULT_GOAL_SECONDS,
-        y: origin.y,
+        x: at.x,
+        y: at.y,
         done: false,
       };
       const track: Track = {
@@ -266,7 +267,15 @@ function apply(world: World, action: Action): World {
     case 'edit': {
       const { id, title, shape, size, image } = action;
       const found = tracksOf(world, id);
-      if (found.length === 0) return world;
+      const stop = world.stops.find((s) => s.id === id);
+      if (found.length === 0 || !stop) return world;
+      // Nothing that would change, such as an empty name committed on a bare stop, is no step.
+      const same =
+        (title === undefined || title === stop.title) &&
+        (shape === undefined || shape === stop.shape || stop.shape === 'square') &&
+        (size === undefined || size === stop.size) &&
+        (image === undefined || stop.shape !== 'square' || image === (stop.image ?? null));
+      if (same) return world;
       return {
         ...world,
         stops: world.stops.map((s) => {

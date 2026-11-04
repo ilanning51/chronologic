@@ -5,13 +5,12 @@ import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayTrack, isDayEnd } from '../model/day';
 import { dayOf } from '../model/days';
 import { newId } from '../model/ids';
-import { DEFAULT_GOAL_SECONDS, tracksOf, undoable, type GoalDragStart } from '../model/reducer';
+import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
 import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
-  fitLeg,
   HOME,
   interpolate,
   MOTION_SCALE,
@@ -20,13 +19,13 @@ import {
   worldToScreen,
   zoomAt,
 } from '../plane/camera';
-import type { Gesture } from '../plane/gestures';
+import type { Gesture, Tile } from '../plane/gestures';
 import { distance, type Point } from '../plane/geometry';
-import { bubbleFor } from '../plane/bubbles';
+import { bubbleFor, clearOf } from '../plane/bubbles';
 import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
-import { placeClear } from '../plane/placement';
+import { pathLength, routeThrough } from '../plane/routing';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
 import { nearestStop, snapToAll } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
@@ -37,6 +36,7 @@ import { Bubble } from './Bubble';
 import { DayGhost } from './DayGhost';
 import { Ghost } from './Ghost';
 import { Grid } from './Grid';
+import { History, HISTORY_CORNER_PX } from './History';
 import { Legend } from './Legend';
 import { LegTime } from './LegTime';
 import { NameField } from './NameField';
@@ -138,6 +138,12 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   /** Whether the tray of tiles is open. */
   const [trayOpen, setTrayOpen] = useState(false);
+  /** The tile whose brush is on, if any. App state only: never saved, off at start. */
+  const [brush, setBrush] = useState<Tile | null>(null);
+  const brushRef = useRef(brush);
+  brushRef.current = brush;
+  /** The line being drawn with the brush: where on screen the press went down. */
+  const lineDraw = useRef<{ from: Point } | null>(null);
   /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
   const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; size?: Size; x: number; y: number; snapped: boolean } | null>(null);
   /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
@@ -191,9 +197,30 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   // Escape lets go of the box, as a tap on paper does. A field that took the key for itself,
   // to cancel a name or close the editor, keeps the box: one key does one thing.
+  // Backspace or Delete takes every stop in the box off the plane, as one step undo puts back.
+  // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes (Cmd on a Mac). In a text field each of
+  // these keys is the field's own.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) setSelection(null);
+      if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        setSelection(null);
+        setBrush(null);
+        dropStroke();
+        return;
+      }
+      const el = e.target;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)) return;
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
+        e.preventDefault();
+        history(key === 'y' || e.shiftKey ? 'redo' : 'undo');
+        return;
+      }
+      if ((e.key === 'Backspace' || e.key === 'Delete') && selectionRef.current) {
+        e.preventDefault();
+        deleteSelected();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -279,8 +306,15 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     endDrag.current = null;
     originDrag.current = null;
     groupDrag.current = null;
+    lineDraw.current = null;
     splitDrag.current = null;
     const target = g.target;
+    if (target.kind === 'brush') {
+      // A line or the day is drawn from where the press went down; the step brushes only tap.
+      if (brushRef.current === 'line') lineDraw.current = { from: g.at };
+      else if (brushRef.current === 'sun') drawing.current = { from: g.at, ids: [] };
+      return;
+    }
     if (target.kind === 'marquee') {
       marquee.current = { from: g.at, to: g.at };
       setMarqueeBox(rectOf(g.at, g.at));
@@ -554,6 +588,45 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     placeCarried(d?.shape ?? 'circle', d?.size ?? 'medium', d?.hits ?? []);
   };
 
+  /** A tap with a step brush: a medium stop on the line nearest the tap, if one is in reach. */
+  const placeStop = (shape: 'circle' | 'triangle', at: Point) => {
+    const cam = cameraRef.current;
+    placeCarried(shape, 'medium', snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale));
+  };
+
+  /** The line brush in flight: the routed ghost from the press to the pointer, and its time. */
+  const drawLineTo = (at: Point) => {
+    const d = lineDraw.current;
+    if (!d) return;
+    const cam = cameraRef.current;
+    const route = routeThrough([screenToWorld(cam, d.from), screenToWorld(cam, at)]);
+    setDayGhost(route.vertices.map((p) => worldToScreen(cam, p)));
+    setLegTime({ x: at.x, y: at.y, seconds: pathLength(route.vertices, 0, route.vertices.length - 1) });
+  };
+
+  /** Lifting the line brush makes the line: its start at the press, its goal under the pointer. */
+  const dropLine = (at: Point) => {
+    const d = lineDraw.current;
+    lineDraw.current = null;
+    setDayGhost(null);
+    setLegTime(null);
+    if (!d) return;
+    const cam = cameraRef.current;
+    const id = newId();
+    const goalId = newId();
+    const origin = screenToWorld(cam, d.from);
+    store.dispatch({ type: 'newTrack', id, goalId, title: '', origin, goal: screenToWorld(cam, at), now: now() });
+    setNaming({ id: goalId, kind: 'goal', trackId: id });
+  };
+
+  /** A stroke a second finger or the browser took over: whatever it was drawing is thrown away. */
+  const dropStroke = () => {
+    lineDraw.current = null;
+    drawing.current = null;
+    setDayGhost(null);
+    setLegTime(null);
+  };
+
   /**
    * Letting go of a stop near another line's path joins it there, at the snap point; the line it
    * came from keeps it. Only the release joins, so dragging through a line never does. A goal
@@ -652,28 +725,72 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (d?.added) store.dispatch({ type: 'moveDayEnd', x: d.start.x, y: d.start.y, now: now() });
   };
 
-  /** A new line starts clear of everything at the centre of the view, its goal thirty days out. */
-  const newLine = () => {
-    const cam = cameraRef.current;
+  /**
+   * Deletes every stop the box holds, as one step. Goals go first, each taking its line and every
+   * stop only that line had; what is left goes one by one. A line's start is not a stop and stays
+   * unless its goal went. A stop the reducer refuses, such as one on a line already finished, stays.
+   */
+  const deleteSelected = () => {
     const state = store.getState();
-    const taken = [...state.stops, ...state.tracks.map((t) => t.origin)];
-    const origin = placeClear(screenToWorld(cam, { x: viewport.w / 2, y: viewport.h / 2 }), taken, 48 / cam.scale);
-    const id = newId();
-    const goalId = newId();
-    store.dispatch({ type: 'newTrack', id, goalId, title: '', origin, now: now() });
-    setNaming({ id: goalId, kind: 'goal', trackId: id });
-    const middle = { x: origin.x + DEFAULT_GOAL_SECONDS / 2, y: origin.y };
-    setCamera(centerOn(cam, middle, viewport, fitLeg(DEFAULT_GOAL_SECONDS, viewport.w, 1 / 2)));
+    const held = selectionRef.current && prune(state, selectionRef.current);
+    setSelection(null);
+    if (!held) return;
+    const goals = held.stops.filter((id) => homeOf(state, id));
+    const rest = held.stops.filter((id) => !goals.includes(id));
+    store.begin();
+    for (const id of [...goals, ...rest]) store.dispatch({ type: 'delete', id, now: now() });
+    store.end();
+    const open = editingRef.current;
+    if (open && !store.getState().stops.some((s) => s.id === open)) setEditing(null);
   };
 
   /** Escape on a name keeps a bare stop, but a goal escaped from is no line at all. */
   const cancelNaming = () => {
     const n = namingRef.current;
     setNaming(null);
-    if (n?.kind === 'goal') store.dispatch({ type: 'delete', id: n.id, now: now() });
+    if (n?.kind !== 'goal') return;
+    // Straight after the line was made, take that step back whole, so Undo never brings back a
+    // line just dismissed; otherwise delete it as before.
+    const before = store.previous();
+    if (before && !before.stops.some((s) => s.id === n.id)) store.retract();
+    else store.dispatch({ type: 'delete', id: n.id, now: now() });
   };
 
+  /**
+   * The editor's typing, as one undo step: opened at the first letter, closed when the editor
+   * closes or anything else happens on the plane.
+   */
+  const titleStep = useRef<string | null>(null);
+  const endTitleStep = () => {
+    if (titleStep.current === null) return;
+    titleStep.current = null;
+    store.end();
+  };
+  useEffect(() => endTitleStep, [editing]);
+
+  /**
+   * Undo or redo, after settling what is open: an open name is committed (as walking away from
+   * it always does) and the editor closes, so neither is left pointing at a stop that is gone.
+   */
+  const history = (dir: 'undo' | 'redo') => {
+    endTitleStep();
+    // A drag in flight is one step still being made: taking it back under the hand would split it.
+    if (store.inStep()) return;
+    (document.activeElement as HTMLElement | null)?.blur();
+    setEditing(null);
+    if (dir === 'undo') store.undo();
+    else store.redo();
+    // A world from before midnight may hold yesterday's day; the clock clears it, as on opening.
+    store.dispatch({ type: 'tick', now: now() });
+    const n = namingRef.current;
+    if (n && !store.getState().stops.some((s) => s.id === n.id)) setNaming(null);
+  };
+
+  /** A tap on a tile: its brush on, or off if it was on; another tile's brush goes off. */
+  const toggleBrush = (tile: Tile) => setBrush((b) => (b === tile ? null : tile));
+
   const onGesture = (g: Gesture) => {
+    endTitleStep();
     switch (g.type) {
       case 'pan':
         stash.current = null;
@@ -689,14 +806,25 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         else if (g.target.kind === 'stop') complete(g.target.track, g.target.id);
         else if (g.target.kind === 'split') openEditor(g.target.id); // a secondary click that never moved
         else if (g.target.kind === 'bubble') store.dispatch({ type: 'cycleTarget', trackId: g.target.track });
-        else if (g.target.kind === 'tile') {
-          if (g.target.tile === 'line') newLine();
-        } else if (g.target.kind === 'paper' || g.target.kind === 'marquee' || g.target.kind === 'selection') {
+        else if (g.target.kind === 'tile') toggleBrush(g.target.tile);
+        else if (
+          g.target.kind === 'paper' ||
+          g.target.kind === 'marquee' ||
+          g.target.kind === 'selection' ||
+          g.target.kind === 'brush'
+        ) {
           setSelection(null);
           setEditing(null);
-          setTrayOpen(false);
           // A tap elsewhere commits an open name. A touchscreen blurs only after this tap, so blur now.
           (document.activeElement as HTMLElement | null)?.blur();
+          // A brush keeps the tray open; the step brushes place a stop where the tap fell.
+          if (!brushRef.current) setTrayOpen(false);
+          const b = brushRef.current;
+          if (g.target.kind === 'brush' && (b === 'circle' || b === 'triangle')) {
+            store.begin();
+            placeStop(b, g.at);
+            store.end();
+          }
         }
         return;
       case 'longPress':
@@ -724,10 +852,13 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         return;
       }
       case 'dragStart':
+        // Every move of a drag, and whatever its drop adds, is one step for undo.
+        store.begin();
         startDrag(g);
         return;
       case 'dragMove':
-        if (marquee.current) drawMarquee(g.at);
+        if (lineDraw.current) drawLineTo(g.at);
+        else if (marquee.current) drawMarquee(g.at);
         else if (groupDrag.current) dragGroupTo(g.at);
         else if (drawing.current) drawSun(g.at);
         else if (endDrag.current) dragDayEnd(g.at);
@@ -737,47 +868,64 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         else if (g.target.kind !== 'split') dragTo(g.at);
         return;
       case 'dragEnd':
-        if (marquee.current) {
-          dropMarquee(g.at);
-          return;
+        try {
+          endDragGesture(g);
+        } finally {
+          store.end();
         }
-        if (groupDrag.current) {
-          dragGroupTo(g.at);
-          groupDrag.current = null;
-          return;
-        }
-        if (drawing.current) {
-          dropSun(g.at);
-          return;
-        }
-        if (endDrag.current) {
-          dropDayEnd(g.at);
-          return;
-        }
-        if (originDrag.current) {
-          dragOriginTo(g.at);
-          originDrag.current = null;
-          setLegTime(null);
-          return;
-        }
-        if (g.target.kind === 'tile') {
-          carryTile(g.at);
-          dropTile();
-          return;
-        }
-        if (g.target.kind === 'split') {
-          carrySplit(g.at);
-          dropSplit();
-          return;
-        }
-        dragTo(g.at);
-        if (dragging.current) joinOnRelease(dragging.current);
-        dragging.current = null;
-        setLegTime(null);
         return;
       default:
         return; // the other gestures arrive with the tasks that use them
     }
+  };
+
+  /** Lets go of whatever the drag was carrying. */
+  const endDragGesture = (g: Extract<Gesture, { type: 'dragEnd' }>) => {
+    if (g.cancelled) {
+      dropStroke();
+      return;
+    }
+    if (lineDraw.current) {
+      dropLine(g.at);
+      return;
+    }
+    if (marquee.current) {
+      dropMarquee(g.at);
+      return;
+    }
+    if (groupDrag.current) {
+      dragGroupTo(g.at);
+      groupDrag.current = null;
+      return;
+    }
+    if (drawing.current) {
+      dropSun(g.at);
+      return;
+    }
+    if (endDrag.current) {
+      dropDayEnd(g.at);
+      return;
+    }
+    if (originDrag.current) {
+      dragOriginTo(g.at);
+      originDrag.current = null;
+      setLegTime(null);
+      return;
+    }
+    if (g.target.kind === 'tile') {
+      carryTile(g.at);
+      dropTile();
+      return;
+    }
+    if (g.target.kind === 'split') {
+      carrySplit(g.at);
+      dropSplit();
+      return;
+    }
+    dragTo(g.at);
+    if (dragging.current) joinOnRelease(dragging.current);
+    dragging.current = null;
+    setLegTime(null);
   };
 
   /** A long press on a bubble flies to the stop it points at, keeping the current scale. */
@@ -865,7 +1013,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         done={editedStop.done}
         holding={holding}
         lines={lines}
-        onEdit={(change) => store.dispatch({ type: 'edit', id: editedStop.id, ...change })}
+        onEdit={(change) => {
+          // Letters typed in one sitting are one step; a shape or size is a step of its own.
+          if (change.title !== undefined && change.shape === undefined && change.size === undefined) {
+            if (titleStep.current !== editedStop.id) {
+              endTitleStep();
+              store.begin();
+              titleStep.current = editedStop.id;
+            }
+          } else endTitleStep();
+          store.dispatch({ type: 'edit', id: editedStop.id, ...change });
+        }}
         onPicture={(file) => {
           const id = editedStop.id;
           // A file the browser cannot read as an image leaves the goal as it was.
@@ -918,7 +1076,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const target = track && i !== null ? byId.get(track.stops[i]) : undefined;
     if (!track || !target) return [];
     // The stop may be off the grown viewport and so missing from the view: use its world point.
-    const at = bubbleFor(worldToScreen(camera, target), viewport);
+    const spot = bubbleFor(worldToScreen(camera, target), viewport);
+    const at = spot && clearOf(spot, HISTORY_CORNER_PX);
     return at
       ? [
           <Bubble
@@ -940,14 +1099,24 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       {bubbles}
       {legTime && <LegTime {...legTime} />}
       {editor}
+      <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={() => history('undo')} onRedo={() => history('redo')} />
       <Legend camera={camera} />
-      <Tray open={trayOpen} onToggle={() => setTrayOpen((o) => !o)} />
+      <Tray
+        open={trayOpen}
+        brush={brush}
+        onToggle={() => {
+          // Closing the tray puts the brush down with it.
+          if (trayOpen) setBrush(null);
+          setTrayOpen(!trayOpen);
+        }}
+        onBrushKey={toggleBrush}
+      />
       {nameField}
     </>
   );
 
   return (
-    <Plane onGesture={onGesture} onZoom={onZoom} hud={hud}>
+    <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
       <Grid camera={camera} />
       {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
       {views.map((v) => (
