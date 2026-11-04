@@ -201,6 +201,13 @@ describe('moveGoal', () => {
 });
 
 describe('edit', () => {
+  test('an edit that changes nothing returns the same world', () => {
+    const w = running();
+    const title = stopOf(w, 'a').title;
+    expect(reduce(w, { type: 'edit', id: 'a', title })).toBe(w);
+    expect(reduce(w, { type: 'edit', id: 'a', shape: stopOf(w, 'a').shape as 'circle' })).toBe(w);
+  });
+
   test('changes title, shape and size and marks the track touched', () => {
     const next = reduce(running(), { type: 'edit', id: 'a', title: 'Call', shape: 'triangle', size: 'large' });
     expect(stopOf(next, 'a')).toEqual({ id: 'a', title: 'Call', shape: 'triangle', size: 'large', x: 1000, y: 0, done: false });

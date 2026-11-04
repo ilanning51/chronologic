@@ -201,8 +201,7 @@ export function App({ store, now = Date.now }: AppProps) {
       const key = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
         e.preventDefault();
-        if (key === 'y' || e.shiftKey) store.redo();
-        else store.undo();
+        history(key === 'y' || e.shiftKey ? 'redo' : 'undo');
         return;
       }
       if ((e.key === 'Backspace' || e.key === 'Delete') && selectionRef.current) {
@@ -678,10 +677,37 @@ export function App({ store, now = Date.now }: AppProps) {
     if (n?.kind === 'goal') store.dispatch({ type: 'delete', id: n.id, now: now() });
   };
 
+  /**
+   * The editor's typing, as one undo step: opened at the first letter, closed when the editor
+   * closes or anything else happens on the plane.
+   */
+  const titleStep = useRef<string | null>(null);
+  const endTitleStep = () => {
+    if (titleStep.current === null) return;
+    titleStep.current = null;
+    store.end();
+  };
+  useEffect(() => endTitleStep, [editing]);
+
+  /**
+   * Undo or redo, after settling what is open: an open name is committed (as walking away from
+   * it always does) and the editor closes, so neither is left pointing at a stop that is gone.
+   */
+  const history = (dir: 'undo' | 'redo') => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    setEditing(null);
+    endTitleStep();
+    if (dir === 'undo') store.undo();
+    else store.redo();
+    const n = namingRef.current;
+    if (n && !store.getState().stops.some((s) => s.id === n.id)) setNaming(null);
+  };
+
   /** A tap on a tile: its brush on, or off if it was on; another tile's brush goes off. */
   const toggleBrush = (tile: Tile) => setBrush((b) => (b === tile ? null : tile));
 
   const onGesture = (g: Gesture) => {
+    endTitleStep();
     switch (g.type) {
       case 'pan':
         stash.current = null;
@@ -708,7 +734,7 @@ export function App({ store, now = Date.now }: AppProps) {
           // A tap elsewhere commits an open name. A touchscreen blurs only after this tap, so blur now.
           (document.activeElement as HTMLElement | null)?.blur();
           // A brush keeps the tray open; the step brushes place a stop where the tap fell.
-          if (g.target.kind !== 'brush') setTrayOpen(false);
+          if (!brushRef.current) setTrayOpen(false);
           const b = brushRef.current;
           if (g.target.kind === 'brush' && (b === 'circle' || b === 'triangle')) {
             store.begin();
@@ -897,7 +923,17 @@ export function App({ store, now = Date.now }: AppProps) {
         done={editedStop.done}
         holding={holding}
         lines={lines}
-        onEdit={(change) => store.dispatch({ type: 'edit', id: editedStop.id, ...change })}
+        onEdit={(change) => {
+          // Letters typed in one sitting are one step; a shape or size is a step of its own.
+          if (change.title !== undefined && change.shape === undefined && change.size === undefined) {
+            if (titleStep.current !== editedStop.id) {
+              endTitleStep();
+              store.begin();
+              titleStep.current = editedStop.id;
+            }
+          } else endTitleStep();
+          store.dispatch({ type: 'edit', id: editedStop.id, ...change });
+        }}
         onDelete={() => {
           store.dispatch({ type: 'delete', id: editedStop.id, now: now() });
           setEditing(null);
@@ -964,7 +1000,7 @@ export function App({ store, now = Date.now }: AppProps) {
       {bubbles}
       {legTime && <LegTime {...legTime} />}
       {editor}
-      <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={store.undo} onRedo={store.redo} />
+      <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={() => history('undo')} onRedo={() => history('redo')} />
       <Legend camera={camera} />
       <Tray
         open={trayOpen}

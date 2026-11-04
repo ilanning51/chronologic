@@ -267,7 +267,14 @@ function apply(world: World, action: Action): World {
     case 'edit': {
       const { id, title, shape, size } = action;
       const found = tracksOf(world, id);
-      if (found.length === 0) return world;
+      const stop = world.stops.find((s) => s.id === id);
+      if (found.length === 0 || !stop) return world;
+      // Nothing that would change, such as an empty name committed on a bare stop, is no step.
+      const same =
+        (title === undefined || title === stop.title) &&
+        (shape === undefined || shape === stop.shape || stop.shape === 'square') &&
+        (size === undefined || size === stop.size);
+      if (same) return world;
       return {
         ...world,
         stops: world.stops.map((s) => {

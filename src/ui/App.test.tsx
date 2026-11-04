@@ -2089,7 +2089,47 @@ test('a drawn line is one undo step', () => {
   act(() => {
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Line name' }), { key: 'Enter' });
   });
-  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' }))); // the name
-  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' }))); // the line
+  // An empty name changes nothing, so it is no step: one Undo takes the line.
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
   expect(store.getState()).toBe(before);
+});
+
+test('Undo with an empty name field open takes back the stop and closes the field', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  tapTile('Step');
+  const at = midLeg();
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: at.x, clientY: at.y });
+    fireEvent.pointerUp(paper(), { pointerId: 1, clientX: at.x, clientY: at.y });
+  });
+  expect(store.getState().tracks[0].stops).toHaveLength(3);
+  // A touchscreen's button tap does not blur the field: Undo has to settle it.
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+  expect(store.getState().tracks[0].stops).toHaveLength(2);
+  expect(screen.queryByRole('textbox', { name: 'Stop title' })).not.toBeInTheDocument();
+});
+
+test('with a brush on, a tap inside the kept box keeps the tray open', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  boxAround(/^Dentist/);
+  openTray();
+  tapTile('Step');
+  act(() => tapOn(box()!));
+  expect(pressed('Step')).toBe('true');
+});
+
+test('typing in the editor is one undo step, and Undo closes the editor', () => {
+  vi.useFakeTimers();
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const title = stopNamed(store, 'dentist').title;
+  openEditorOn(/^Dentist/);
+  const input = screen.getByRole('textbox', { name: 'Stop title' });
+  for (const v of [title + ' 3', title + ' 3p', title + ' 3pm']) fireEvent.change(input, { target: { value: v } });
+  expect(stopNamed(store, 'dentist').title).toBe(title + ' 3pm');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+  expect(stopNamed(store, 'dentist').title).toBe(title);
+  expect(screen.queryByRole('group', { name: 'Edit stop' })).not.toBeInTheDocument();
 });
