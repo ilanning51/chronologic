@@ -244,9 +244,10 @@ button:focus-visible {
   cursor: pointer;
 }
 
+/* Pressed or focused, the plus lightens to the muted ink. (--track-color is never set on it.) */
 .hud-add:focus-visible,
 .hud-add:active {
-  background: var(--track-color);
+  background: var(--muted);
 }
 
 /* Undo and Redo: one toolbar group, top left, on the glass layer above the plane. The capsule
@@ -479,14 +480,36 @@ button:focus-visible {
   touch-action: none;
 }
 
-.tile .shape {
-  display: block;
-  background: var(--paper);
+.tile {
+  color: var(--paper);
 }
 
-.tile:focus-visible .shape,
-.tile:active .shape {
-  background: var(--track-color);
+.tile .shape {
+  display: block;
+  background: currentColor;
+}
+
+/* Held down, a tile's picture dims; it never goes blank. */
+.tile:active > * {
+  opacity: 0.6;
+}
+
+.tile:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: -2px;
+  border-radius: 50%;
+}
+
+/* The brush that is on: the tile fills with paper and its picture turns ink. */
+.tile[aria-pressed='true'] {
+  background: var(--paper);
+  border-radius: 50%;
+  color: var(--ink);
+}
+
+/* With a brush on, the plane is drawn on, so the pointer is a crosshair. */
+.plane.brushing {
+  cursor: crosshair;
 }
 
 /* The shape carried from the tray, centered on its screen point. Muted until it sits on a line. */
