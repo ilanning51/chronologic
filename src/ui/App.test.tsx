@@ -44,6 +44,34 @@ test('a done stop is a dot and a finished track is muted', () => {
   expect(document.querySelector('[data-target="train"]')).not.toBeInTheDocument();
 });
 
+test('a done goal stays as a terminus: a large ink dot that keeps its name in ink', () => {
+  const world = running();
+  world.stops = world.stops.map((s) => ({ ...s, done: true }));
+  world.tracks[0].train = { leg: 2, departedAt: 0 };
+  render(<App store={createStore(world)} now={() => 500_000} />);
+  const goal = screen.getByRole('button', { name: /^Wristband.*done/ });
+  expect(goal).toHaveClass('terminus');
+  expect(goal.querySelector('.shape.dot')).toBeInTheDocument();
+  // A passed step is an ordinary dot.
+  expect(screen.getByRole('button', { name: /^Dentist/ })).not.toHaveClass('terminus');
+  const dot = /\.stop\.terminus \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(dot).toMatch(/width:\s*var\(--square-large\)/);
+  expect(dot).toMatch(/background:\s*var\(--ink\)/);
+  expect(/\.stop\.terminus \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
+  // The terminus rules come after the finished and done ones, so they win at equal weight.
+  expect(uiCss.indexOf('.stop.terminus .shape.dot')).toBeGreaterThan(uiCss.indexOf('.stop.finished .shape.dot'));
+  expect(uiCss.indexOf('.stop.terminus .label')).toBeGreaterThan(uiCss.indexOf('.stop.done .label'));
+});
+
+test("a goal's name is set in bold capitals on the plane and in its bubble", () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  expect(screen.getByText('Wristband')).toHaveClass('label', 'goal-name');
+  expect(screen.getByText('Dentist')).not.toHaveClass('goal-name');
+  const rule = /\.goal-name\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(rule).toMatch(/font-weight:\s*700/);
+  expect(rule).toMatch(/text-transform:\s*uppercase/);
+});
+
 test('every stop has a centered 44 px hit target that paints nothing', () => {
   // jsdom does not lay out pseudo-elements, so read the rule itself.
   const rule = /\.stop::before\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
@@ -459,6 +487,8 @@ test('a track whose goal is off screen shows a bubble naming it, and a tap cycle
   const bubble = document.querySelector('[data-target="bubble"]')!;
   expect(bubble).toHaveAccessibleName(/^Wristband, goal/);
   expect((bubble as HTMLElement).style.transform).toContain('-100%');
+  // The goal's name in the bubble is set as it is on the plane.
+  expect(bubble.querySelector('.title')).toHaveClass('goal-name');
   act(() => tapOn(bubble));
   expect(store.getState().tracks[0].target).toBe('next');
   expect(document.querySelector('[data-target="bubble"]')).not.toBeInTheDocument();

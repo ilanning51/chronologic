@@ -37,8 +37,8 @@ test('a track lays out in screen space with constant shapes, a dot for done, and
     [{ x: 200, y: 100 }, { x: 200, y: 300 }],
   ]);
   expect(v.stops).toEqual([
-    { id: 'a', x: 200, y: 100, shape: 'circle', size: 'medium', done: false, title: 'a', label: true, next: true, goal: false, ring: false, crowd: 0 },
-    { id: 'g', x: 200, y: 300, shape: 'square', size: 'large', done: true, title: 'g', label: true, next: false, goal: true, ring: false, crowd: 0 },
+    { id: 'a', x: 200, y: 100, shape: 'circle', size: 'medium', done: false, title: 'a', label: true, next: true, goal: false, projectGoal: false, terminus: false, ring: false, crowd: 0 },
+    { id: 'g', x: 200, y: 300, shape: 'square', size: 'large', done: true, title: 'g', label: true, next: false, goal: true, projectGoal: true, terminus: true, ring: false, crowd: 0 },
   ]);
   // halfway through leg 0 (1000 s): world (500, 0) -> screen (150, 100).
   expect(v.train).toMatchObject({ x: 150, y: 100, waiting: false, parked: false });

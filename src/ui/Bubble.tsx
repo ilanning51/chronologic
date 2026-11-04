@@ -30,7 +30,10 @@ interface BubbleProps {
 
 const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal', square: 'goal' };
 
-/** A paper pill on the window edge naming what a line points at, off screen in that direction. */
+/**
+ * A paper pill on the window edge naming what a line points at, off screen in that direction. A
+ * square is a goal, and a goal's name is set in bold capitals, as a terminus is on the map.
+ */
 export function Bubble({ track, color, shape, title, x, y, side, soonest = false, day = false }: BubbleProps) {
   return (
     <button
@@ -42,7 +45,7 @@ export function Bubble({ track, color, shape, title, x, y, side, soonest = false
       style={{ left: x, top: y, transform: ANCHOR[side], ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
     >
       <span aria-hidden="true" className={`shape ${shape} medium`} />
-      <span aria-hidden="true" className="title">
+      <span aria-hidden="true" className={shape === 'square' ? 'title goal-name' : 'title'}>
         {title}
       </span>
     </button>

@@ -29,6 +29,9 @@ export function stopsOnce(views: TrackView[]): PlacedStop[] {
         ...stop,
         next: listings.some((l) => l.stop.next),
         label: listings.some((l) => l.stop.label),
+        // A goal is a goal whichever line its button speaks for.
+        projectGoal: listings.some((l) => l.stop.projectGoal),
+        terminus: listings.some((l) => l.stop.terminus),
         crowd: Math.max(...listings.map((l) => l.stop.crowd)),
       },
       track: view.id,

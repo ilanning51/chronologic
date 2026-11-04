@@ -21,6 +21,10 @@ export interface StopView {
   label: boolean;
   next: boolean;
   goal: boolean;
+  /** The goal of a project line, done or not: its name is set in bold capitals. */
+  projectGoal: boolean;
+  /** A project's goal, done: a terminus, drawn as a large ink dot that keeps its name. */
+  terminus: boolean;
   /** On two or more lines and not done: an interchange, drawn as a ring. */
   ring: boolean;
   /** Dots of crowd, only on the stop the train waits at. */
@@ -128,6 +132,8 @@ export function layoutTrack(
     label: labeled.has(stop.id),
     next: index === next,
     goal: index === goalIndex,
+    projectGoal: index === goalIndex && !track.day,
+    terminus: index === goalIndex && !track.day && stop.done,
     ring: !stop.done && tracksOf(world, stop.id).length >= 2,
     crowd: index === state.leg ? crowd : 0,
   }));

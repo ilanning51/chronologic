@@ -207,6 +207,25 @@
   color: var(--muted);
 }
 
+/* A goal's name, on the plane or in a bubble: bold capitals, the way the system map sets the
+   end of a line. */
+.goal-name {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* A done goal stays on the map as a large ink dot with its name in ink, however its line dims. */
+.stop.terminus .shape.dot {
+  width: var(--square-large);
+  height: var(--square-large);
+  background: var(--ink);
+}
+
+.stop.terminus .label {
+  color: var(--ink);
+}
+
 /* Focus and press are the shape filling with the track color, never a ring. */
 button:focus-visible {
   outline: none;

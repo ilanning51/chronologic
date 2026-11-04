@@ -22,7 +22,9 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
 
 /**
  * One task on the plane: a solid shape for its kind and size, a dot once done, a label
- * beneath when there is room. The shape's centre sits on the stop's screen point. The next
+ * beneath when there is room. A project's goal's name is set in bold capitals, and once done it
+ * stays as a terminus, a large ink dot with its name, the way a system map keeps its
+ * termini. The shape's centre sits on the stop's screen point. The next
  * stop is raised above the rest, so where hit targets crowd it is the one a tap finds. A stop
  * on two or more lines is a ring: its own shape in ink around a paper centre. Where a train has
  * long waited, a small crowd of muted dots gathers beside it.
@@ -39,7 +41,16 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
   return (
     <button
       type="button"
-      className={['stop', stop.done && 'done', stop.next && !stop.done && 'next', finished && 'finished', sketch && 'sketch'].filter(Boolean).join(' ')}
+      className={[
+        'stop',
+        stop.done && 'done',
+        stop.next && !stop.done && 'next',
+        finished && 'finished',
+        sketch && 'sketch',
+        stop.terminus && 'terminus',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       data-target="stop"
       data-id={stop.id}
       data-track={track}
@@ -57,7 +68,7 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
         </span>
       )}
       {stop.label && stop.title && (
-        <span aria-hidden="true" className="label">
+        <span aria-hidden="true" className={stop.projectGoal ? 'label goal-name' : 'label'}>
           {stop.title}
         </span>
       )}
