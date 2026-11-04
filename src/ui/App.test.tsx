@@ -1430,3 +1430,58 @@ test("dragging a stop whose button speaks for the day shows its project leg's ti
   expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(seconds));
   act(() => fireEvent.pointerUp(el, point(x + 50, y + 30)));
 });
+
+// Levels: from far away the map draws only its big shapes, as a map draws cities and not streets.
+
+/** Zooms the wheel until one grid square is six hours, where a medium circle is below the level. */
+function zoomOutToSixHours() {
+  act(() => {
+    fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 2500 });
+  });
+  expect(document.querySelector('.legend')!.textContent).toBe('6 hours');
+}
+
+test('zoomed out, a stop below the level is not drawn, while the next stop and the goal are', () => {
+  const world = running();
+  world.tracks[0].stops = ['dentist', 'later', 'wristband'];
+  world.stops.push({ id: 'later', title: 'Later', shape: 'circle', size: 'medium', x: 2000, y: 0, done: false });
+  render(<App store={createStore(world)} now={() => WAITING} />);
+  expect(screen.getByRole('button', { name: /^Later/ })).toBeInTheDocument();
+  zoomOutToSixHours();
+  expect(screen.queryByRole('button', { name: /^Later/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Dentist/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Wristband/ })).toBeInTheDocument();
+});
+
+test('a stop added while zoomed out stays drawn until the next zoom', () => {
+  // The far goal opens at a day a square, where a medium circle is below the level.
+  const store = createStore(farGoal());
+  render(<App store={store} now={() => WAITING} />);
+  expect(document.querySelector('.legend')!.textContent).toBe('1 day');
+  openTray();
+  act(() => dragTile('Step', midLeg()));
+  expect(store.getState().tracks[0].stops).toHaveLength(3);
+  const field = screen.getByRole('textbox', { name: 'Stop title' });
+  act(() => {
+    fireEvent.change(field, { target: { value: 'Order parts' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+  });
+  expect(screen.getByRole('button', { name: /^Order parts/ })).toBeInTheDocument();
+  act(() => {
+    fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 10 });
+  });
+  expect(screen.queryByRole('button', { name: /^Order parts/ })).not.toBeInTheDocument();
+});
+
+test('a stop being named stays drawn through a zoom, so its field has somewhere to be', () => {
+  const store = createStore(farGoal());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  act(() => dragTile('Step', midLeg()));
+  act(() => {
+    fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 10 });
+  });
+  expect(screen.getByRole('button', { name: /^Unnamed, step/ })).toBeInTheDocument();
+  const box = screen.getByRole('textbox', { name: 'Stop title' }).closest<HTMLElement>('.name-field')!;
+  expect(parseFloat(box.style.left)).toBeGreaterThan(0);
+});

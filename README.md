@@ -33,6 +33,7 @@ Everything lives on one infinite plane. The look is borrowed from Mini Metro and
 - A new line with only its goal is drawn faint and thin, as a sketch, until you give it a step.
 - When a train has waited at a stop for a long time compared with the leg into it, a few small dots gather beside the stop. They go when you complete it.
 - Tap a train to zoom in and watch it. Tap it again to go back.
+- From far away the map draws only its big shapes, as a map draws cities and not streets. Zoom in and the smaller ones appear, in step with the legend: sub-goals come in at a week and a day, steps at six hours, an hour and fifteen minutes, larger first. The next stop and the goal are always drawn, and so is a stop you just added, until you next zoom.
 
 ## Running it
 

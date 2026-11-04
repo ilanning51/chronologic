@@ -5,7 +5,9 @@ import type { Shape, Size, Track, World } from '../model/types';
 import { type Camera, worldToScreen } from './camera';
 import { CLIP_MARGIN_PX, clipSegment } from './clip';
 import type { Point } from './geometry';
+import { gridFor } from './grid';
 import { labelsWithRoom } from './labels';
+import { showsAt } from './level';
 
 export interface StopView {
   id: string;
@@ -50,6 +52,8 @@ export interface TrackView {
  * Turns a track, the camera and the clock into screen pixels, ready to paint. Only the
  * positions scale with zoom. Segments are cut to the viewport plus a margin and stops
  * outside it are left out, so a month of track at full zoom never reaches the renderer.
+ * Stops below the grid's level are left out too, as a map leaves out streets from far away,
+ * except the next stop, the goal and any id in `pinned`; the line still routes through them.
  */
 export function layoutTrack(
   track: Track,
@@ -57,6 +61,7 @@ export function layoutTrack(
   camera: Camera,
   now: number,
   viewport: { w: number; h: number },
+  pinned: Set<string> = new Set(),
 ): TrackView {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const grown = {
@@ -79,10 +84,12 @@ export function layoutTrack(
 
   const next = nextIndex(track, byId);
   const goalIndex = track.stops.length - 1;
+  const gridSeconds = gridFor(camera.scale).seconds;
   const placed = track.stops.flatMap((id, index) => {
     const stop = byId.get(id)!;
     const at = worldToScreen(camera, stop);
-    return inside(at) ? [{ stop, at, index }] : [];
+    const shown = index === next || index === goalIndex || pinned.has(id) || showsAt(stop.shape, stop.size, gridSeconds);
+    return inside(at) && shown ? [{ stop, at, index }] : [];
   });
   const always = new Set<string>();
   for (const p of placed) {
