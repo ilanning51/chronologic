@@ -30,7 +30,7 @@ import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane
 import { nearestStop, snapToAll } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
 import { tickMsFor } from '../plane/tick';
-import { BOX_PAD_PX, SNAP_PX } from '../plane/world';
+import { BOX_PAD_PX, SNAP_PX, TAP_PX } from '../plane/world';
 import { type Store, useWorld } from '../store/store';
 import { Bubble } from './Bubble';
 import { DayGhost } from './DayGhost';
@@ -270,6 +270,15 @@ export function App({ store, now = Date.now }: AppProps) {
     }
     if (target.kind === 'origin') {
       startOriginDrag(target.track, g.at);
+      return;
+    }
+    // A train's own hit square sits above the start's. A press inside the start's square that the
+    // train took is still the start's, so a line just made can be picked up by either end.
+    if (target.kind === 'train') {
+      const track = store.getState().tracks.find((t) => t.id === target.track);
+      if (!track) return;
+      const o = worldToScreen(cameraRef.current, track.origin);
+      if (Math.abs(g.at.x - o.x) <= TAP_PX / 2 && Math.abs(g.at.y - o.y) <= TAP_PX / 2) startOriginDrag(track.id, g.at);
       return;
     }
     if (target.kind === 'tile') {

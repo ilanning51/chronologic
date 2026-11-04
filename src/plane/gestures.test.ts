@@ -220,14 +220,20 @@ test('holding a bubble fires a long press with the bubble as its target', () => 
   expect(gestures()).toEqual([{ type: 'longPress', target: bubble, at: { x: 5, y: 5 } }]);
 });
 
-test('a drag starting on a bubble or a train emits nothing', () => {
+test('a drag starting on a bubble emits nothing', () => {
   const { r, emit } = rig();
-  for (const target of [bubble, train]) {
-    r.down({ id: 1, x: 0, y: 0, t: 0 }, target);
-    r.move({ id: 1, x: 50, y: 50, t: 10 });
-    r.up({ id: 1, x: 50, y: 50, t: 20 });
-  }
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, bubble);
+  r.move({ id: 1, x: 50, y: 50, t: 10 });
+  r.up({ id: 1, x: 50, y: 50, t: 20 });
   expect(emit).not.toHaveBeenCalled();
+});
+
+test('a drag starting on a train is a drag, for the app to read as the start of its line', () => {
+  const { r, types } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, train);
+  r.move({ id: 1, x: 50, y: 50, t: 10 });
+  r.up({ id: 1, x: 50, y: 50, t: 20 });
+  expect(types()).toEqual(['dragStart', 'dragMove', 'dragEnd']);
 });
 
 const origin: Target = { kind: 'origin', track: 't' };

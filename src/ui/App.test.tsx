@@ -1693,3 +1693,47 @@ test("the start's hit target is drawn above the line, so a press on the rounded 
   const train = document.querySelector('.train-hit');
   if (train) expect(hit.compareDocumentPosition(train) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
+
+test('the start of a fresh line drags from under its own train', () => {
+  const NOW = 500_000;
+  const world = running();
+  world.tracks[0].train = { leg: 0, departedAt: NOW }; // just departed: the train sits on the start
+  const store = createStore(world);
+  render(<App store={store} now={() => NOW} />);
+  const origin = document.querySelector<SVGRectElement>('[data-target="origin"]')!;
+  const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(origin.style.transform)!;
+  const x = parseFloat(m[1]);
+  const y = parseFloat(m[2]);
+  // The press lands on the train's own hit square, which is drawn above the start's.
+  const trainHit = document.querySelector('.train-hit')!;
+  act(() => {
+    fireEvent.pointerDown(trainHit, { pointerId: 1, clientX: x + 3, clientY: y });
+    fireEvent.pointerMove(trainHit, { pointerId: 1, clientX: x + 3, clientY: y + 60 });
+    fireEvent.pointerUp(trainHit, { pointerId: 1, clientX: x + 3, clientY: y + 60 });
+  });
+  expect(store.getState().tracks[0].origin.y).toBeGreaterThan(0);
+  expect(stopNamed(store, 'dentist')).toMatchObject({ x: 1000, y: 0 });
+});
+
+test('a line stroke takes no pointer events, so a press on it falls through to the box or the paper', () => {
+  const rule = /\.track line\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(rule).toMatch(/pointer-events:\s*none/);
+});
+
+test('a shift drag inside the kept box draws a new box instead of moving the group', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const dx = left(/^Dentist/);
+  const y = parseFloat(screen.getByRole('button', { name: /^Dentist/ }).style.top);
+  act(() => drawBox(dx - 30, y - 30, dx + 30, y + 30));
+  const before = store.getState();
+  act(() => {
+    fireEvent.pointerDown(box()!, { pointerId: 1, clientX: dx, clientY: y, shiftKey: true });
+    fireEvent.pointerMove(box()!, { pointerId: 1, clientX: dx + 80, clientY: y + 80 });
+  });
+  expect(box()).toHaveClass('live');
+  expect(store.getState()).toBe(before);
+  act(() => fireEvent.pointerUp(box()!, { pointerId: 1, clientX: dx + 80, clientY: y + 80 }));
+  expect(box()).not.toBeNull(); // the new box caught Dentist again
+  expect(box()).not.toHaveClass('live');
+});

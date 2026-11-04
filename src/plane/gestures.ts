@@ -13,8 +13,11 @@ export type Target =
   | { kind: 'marquee' } // empty paper with the select key held: a box is drawn, not a pan
   | { kind: 'selection' }; // the drawn box: dragging it moves what it holds
 
-/** The targets a moving pointer drags. A tap on any of them is still a tap. */
-const DRAGS = new Set<Target['kind']>(['stop', 'tile', 'origin', 'marquee', 'selection']);
+/**
+ * The targets a moving pointer drags. A tap on any of them is still a tap. A train drags so the
+ * app can hand a press on a train sitting at its line's start to the start; the app drops the rest.
+ */
+const DRAGS = new Set<Target['kind']>(['stop', 'tile', 'origin', 'marquee', 'selection', 'train']);
 
 /** One pointer event, in screen pixels and milliseconds. */
 export interface Sample {
