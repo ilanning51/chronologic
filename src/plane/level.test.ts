@@ -1,10 +1,6 @@
 import { expect, test } from 'vitest';
+import { DAY, HOUR, MINUTE, WEEK } from './grid';
 import { showsAt } from './level';
-
-const MINUTE = 60;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-const WEEK = 7 * DAY;
 
 test('a square and a large triangle show at every grid unit', () => {
   expect(showsAt('square', 'small', 30 * DAY)).toBe(true);

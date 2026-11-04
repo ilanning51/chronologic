@@ -5,10 +5,10 @@
  * Only the unit changes with zoom, never the ladder, so a square always reads as a round time.
  */
 
-const MINUTE = 60;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-const WEEK = 7 * DAY;
+export const MINUTE = 60;
+export const HOUR = 60 * MINUTE;
+export const DAY = 24 * HOUR;
+export const WEEK = 7 * DAY;
 
 /** The ladder, smallest first. Each is a round duration a person would estimate in. */
 export const UNITS: { seconds: number; label: string }[] = [

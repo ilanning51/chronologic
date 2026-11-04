@@ -162,6 +162,8 @@ export function App({ store, now = Date.now }: AppProps) {
   /**
    * Stops added since the last zoom, drawn whatever the level, so a circle dropped from far
    * away does not vanish the moment it is named. The next zoom lets the level decide again.
+   * A ref, not state: adding one always comes with a store dispatch, and clearing it always
+   * comes with a camera change, so each is redrawn by the thing that caused it.
    */
   const pinned = useRef(new Set<string>());
 
@@ -556,7 +558,9 @@ export function App({ store, now = Date.now }: AppProps) {
   };
 
   const byId = new Map(world.stops.map((s) => [s.id, s]));
-  const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport, pinned.current));
+  // The stop being named is kept too, so a zoom with its field open leaves the field a place to be.
+  const shown = naming ? new Set([...pinned.current, naming.id]) : pinned.current;
+  const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport, shown));
   const rolling = views.some((v) => !v.train.parked);
 
   useEffect(() => {

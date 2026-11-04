@@ -1472,3 +1472,16 @@ test('a stop added while zoomed out stays drawn until the next zoom', () => {
   });
   expect(screen.queryByRole('button', { name: /^Order parts/ })).not.toBeInTheDocument();
 });
+
+test('a stop being named stays drawn through a zoom, so its field has somewhere to be', () => {
+  const store = createStore(farGoal());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  act(() => dragTile('Step', midLeg()));
+  act(() => {
+    fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 10 });
+  });
+  expect(screen.getByRole('button', { name: /^Unnamed, step/ })).toBeInTheDocument();
+  const box = screen.getByRole('textbox', { name: 'Stop title' }).closest<HTMLElement>('.name-field')!;
+  expect(parseFloat(box.style.left)).toBeGreaterThan(0);
+});

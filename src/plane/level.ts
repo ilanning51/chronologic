@@ -1,4 +1,5 @@
 import type { Shape, Size } from '../model/types';
+import { DAY, HOUR, MINUTE, WEEK } from './grid';
 
 /**
  * Which stops the map shows at a height. Like a map that draws cities from far away and
@@ -7,11 +8,6 @@ import type { Shape, Size } from '../model/types';
  * shape appears at the same moment the legend steps down. The square and the large triangle
  * are always drawn; the next stop and the goal are kept by the layout whatever their shape.
  */
-
-const MINUTE = 60;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-const WEEK = 7 * DAY;
 
 /** The widest grid unit, in seconds, at which each shape and size is drawn. */
 export const LEVELS: Record<Shape, Record<Size, number>> = {

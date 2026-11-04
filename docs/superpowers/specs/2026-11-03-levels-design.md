@@ -28,8 +28,9 @@ idea of level in the app.
 
 The units are Claude's call, kept as constants in `src/plane/level.ts`, to be tuned by feel.
 
-**Always drawn**, whatever the level: the next stop of any line, the goal, the train, and a stop
-added since the last zoom, so a circle dropped from far away does not vanish on being named.
+**Always drawn**, whatever the level: the next stop of any line, the goal, the train, a stop
+added since the last zoom, and a stop whose name field is open, so a circle dropped from far
+away does not vanish on being named and its field always has a place to be.
 
 **A hidden stop** still routes the line, so the picture's shape and every leg's time are
 untouched. It has no shape, no label and no hit target. A done dot follows the rule of the stop

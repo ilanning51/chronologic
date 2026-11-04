@@ -53,7 +53,7 @@ export interface TrackView {
  * positions scale with zoom. Segments are cut to the viewport plus a margin and stops
  * outside it are left out, so a month of track at full zoom never reaches the renderer.
  * Stops below the grid's level are left out too, as a map leaves out streets from far away,
- * except the next stop, the goal and any id in `keep`; the line still routes through them.
+ * except the next stop, the goal and any id in `pinned`; the line still routes through them.
  */
 export function layoutTrack(
   track: Track,
@@ -61,7 +61,7 @@ export function layoutTrack(
   camera: Camera,
   now: number,
   viewport: { w: number; h: number },
-  keep: Set<string> = new Set(),
+  pinned: Set<string> = new Set(),
 ): TrackView {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const grown = {
@@ -88,7 +88,7 @@ export function layoutTrack(
   const placed = track.stops.flatMap((id, index) => {
     const stop = byId.get(id)!;
     const at = worldToScreen(camera, stop);
-    const shown = index === next || index === goalIndex || keep.has(id) || showsAt(stop.shape, stop.size, gridSeconds);
+    const shown = index === next || index === goalIndex || pinned.has(id) || showsAt(stop.shape, stop.size, gridSeconds);
     return inside(at) && shown ? [{ stop, at, index }] : [];
   });
   const always = new Set<string>();
