@@ -234,3 +234,11 @@ test('a day track through another goal is accepted; two day tracks or a bad date
   bad((w) => { w.tracks[2].day!.budgets = 'none' as never; });
   bad((w) => { w.tracks[2].day = null as never; });
 });
+
+test("a goal's picture round-trips, and one that is not an image data URL is refused", () => {
+  const world = sample();
+  world.stops[1].image = 'data:image/jpeg;base64,AAAA';
+  expect(loadOf(world)).toEqual(world);
+  world.stops[1].image = 'https://example.com/ship.jpg';
+  expect(loadOf(world)).toEqual(EMPTY);
+});

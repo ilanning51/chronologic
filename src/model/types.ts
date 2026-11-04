@@ -14,6 +14,11 @@ export interface Stop {
   x: number;
   y: number;
   done: boolean;
+  /**
+   * A goal's picture, as a small data URL: the thing the line is for, shown as the goal's mural
+   * on the plane and in its bubble on the edge. Only a square ever carries one.
+   */
+  image?: string;
 }
 
 /** Heading to stops[leg] since departedAt (ms epoch). leg === stops.length means parked after the goal. */

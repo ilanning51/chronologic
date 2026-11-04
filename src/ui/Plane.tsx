@@ -51,9 +51,10 @@ const sample = (e: ReactPointerEvent): Sample => ({ id: e.pointerId, x: e.client
 /**
  * The full-screen paper. It turns pointer events into samples for the recognizer and
  * draws the world layer in screen space (no transform), with the HUD on top in screen space.
- * A right click is a long press at once, straight to the app; the recognizer never sees it.
- * Shift held on empty paper, or on the kept box, is the marquee: the recognizer is told so and
- * never sees the key.
+ * A right click is a long press at once, straight to the app; the recognizer never sees it,
+ * except on a stop: there the secondary button goes to the recognizer as a split target, so a
+ * drag splits a step off the stop and a plain click is still the editor. Shift held on empty
+ * paper, or on the kept box, is the marquee: the recognizer is told so and never sees the key.
  */
 export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
   const latest = useRef(onGesture);
@@ -62,6 +63,8 @@ export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
   const main = useRef<HTMLElement>(null);
   const ticker = useRef<number | null>(null);
   const pointersDown = useRef(0);
+  /** The secondary-button pointers the recognizer is tracking, so their release reaches it. */
+  const splitting = useRef(new Set<number>());
 
   const startTicking = () => {
     if (ticker.current === null) {
@@ -99,19 +102,26 @@ export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
       className="plane"
       aria-label="The plane"
       onPointerDown={(e) => {
+        const target = targetOf(e.target);
         if (e.button === RIGHT_BUTTON) {
-          onGesture({ type: 'longPress', target: targetOf(e.target), at: { x: e.clientX, y: e.clientY } });
+          if (target.kind !== 'stop') {
+            onGesture({ type: 'longPress', target, at: { x: e.clientX, y: e.clientY } });
+            return;
+          }
+          splitting.current.add(e.pointerId);
+          pointersDown.current += 1;
+          recognizer.down(sample(e), { kind: 'split', id: target.id, track: target.track });
+          startTicking();
           return;
         }
         pointersDown.current += 1;
-        const target = targetOf(e.target);
         const onPaper = target.kind === 'paper' || target.kind === 'selection';
         recognizer.down(sample(e), onPaper && e.shiftKey ? { kind: 'marquee' } : target);
         startTicking();
       }}
       onPointerMove={(e) => recognizer.move(sample(e))}
       onPointerUp={(e) => {
-        if (e.button === RIGHT_BUTTON) return;
+        if (e.button === RIGHT_BUTTON && !splitting.current.delete(e.pointerId)) return;
         pointersDown.current = Math.max(0, pointersDown.current - 1);
         recognizer.up(sample(e));
         stopTickingWhenIdle();
@@ -121,6 +131,7 @@ export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
         if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
       }}
       onPointerCancel={(e) => {
+        splitting.current.delete(e.pointerId);
         pointersDown.current = Math.max(0, pointersDown.current - 1);
         recognizer.cancel(e.pointerId);
         stopTickingWhenIdle();

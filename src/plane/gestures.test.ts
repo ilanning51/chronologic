@@ -239,8 +239,9 @@ test('a drag starting on a train is a drag, for the app to read as the start of 
 const origin: Target = { kind: 'origin', track: 't' };
 const marquee: Target = { kind: 'marquee' };
 const selection: Target = { kind: 'selection' };
+const split: Target = { kind: 'split', id: 'a', track: 't' };
 
-test.each([origin, marquee, selection])('%o drags like a stop and never long presses', (target) => {
+test.each([origin, marquee, selection, split])('%o drags like a stop and never long presses', (target) => {
   const { r, gestures } = rig();
   r.down({ id: 1, x: 0, y: 0, t: 0 }, target);
   r.tick(LONG_PRESS_MS + 1);
