@@ -249,6 +249,74 @@ button:focus-visible {
   background: var(--track-color);
 }
 
+/* Undo and Redo: one toolbar group, top left, on the glass layer above the plane. The capsule
+   is always there; only a symbol with nothing to take back dims, so the corner never changes. */
+.hud-history {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  display: flex;
+  overflow: hidden; /* clips each half's fill to the pill's rounded ends */
+  border-radius: calc(var(--hit) / 2);
+  border: 1px solid rgba(43, 36, 32, 0.12);
+  background: rgba(238, 235, 229, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: 0 2px 10px rgba(43, 36, 32, 0.12);
+}
+
+/* Glass gives way to solid paper when the person asks for less transparency or more contrast. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .hud-history {
+    background: var(--paper);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .hud-history {
+    border-color: var(--ink);
+  }
+}
+
+/* Each button is one half of the pill, edge to edge, so its hover and press fill the whole half. */
+.hud-segment {
+  width: calc(var(--hit) + 0.5rem);
+  height: var(--hit);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.hud-segment:hover:not(:disabled) {
+  background: rgba(43, 36, 32, 0.08);
+}
+
+.hud-segment:active:not(:disabled) {
+  background: rgba(43, 36, 32, 0.16);
+}
+
+.hud-segment:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+/* Nothing to take back: the symbol dims, the button keeps its place. */
+.hud-segment:disabled {
+  cursor: default;
+}
+
+.hud-segment:disabled svg {
+  opacity: 0.3;
+}
+
 /* The editor's title field: paper on ink, no outline. */
 .hud-editor input {
   width: 11rem;

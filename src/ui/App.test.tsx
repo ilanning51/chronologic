@@ -1824,3 +1824,87 @@ test("dragging the day line's start moves it with no chip, and no train moves", 
   for (const t of after.tracks.filter((t) => !t.day)) expect(t.train).toEqual(before.tracks.find((b) => b.id === t.id)!.train);
   expect(after.stops).toEqual(before.stops);
 });
+
+/** Draws a box snug around the named stop, as Shift-drag on paper would. */
+function boxAround(name: RegExp) {
+  const x = left(name);
+  const y = parseFloat(screen.getByRole('button', { name }).style.top);
+  act(() => drawBox(x - 30, y - 30, x + 30, y + 30));
+}
+
+test('Backspace deletes every stop in the box as one step, and Undo and Redo take it back and forth', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const undo = screen.getByRole('button', { name: 'Undo' });
+  const redo = screen.getByRole('button', { name: 'Redo' });
+  expect(undo).toBeDisabled();
+  expect(redo).toBeDisabled();
+  boxAround(/^Dentist/);
+  act(() => {
+    fireEvent.keyDown(window, { key: 'Backspace' });
+  });
+  expect(store.getState().stops.some((s) => s.id === 'dentist')).toBe(false);
+  expect(box()).toBeNull();
+  expect(undo).toBeEnabled();
+  act(() => fireEvent.click(undo));
+  expect(store.getState().stops.some((s) => s.id === 'dentist')).toBe(true);
+  expect(redo).toBeEnabled();
+  act(() => fireEvent.click(redo));
+  expect(store.getState().stops.some((s) => s.id === 'dentist')).toBe(false);
+});
+
+test('Delete on a box holding a goal takes its whole line, and Ctrl+Z puts it all back', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const before = store.getState();
+  boxAround(/^Wristband/);
+  act(() => {
+    fireEvent.keyDown(window, { key: 'Delete' });
+  });
+  expect(store.getState().tracks).toHaveLength(0);
+  expect(store.getState().stops).toHaveLength(0);
+  act(() => {
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+  });
+  expect(store.getState()).toBe(before);
+  act(() => {
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true });
+  });
+  expect(store.getState().tracks).toHaveLength(0);
+});
+
+test('Backspace with no box, or typed in a name field, deletes nothing', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const before = store.getState();
+  act(() => {
+    fireEvent.keyDown(window, { key: 'Backspace' });
+  });
+  expect(store.getState()).toBe(before);
+  boxAround(/^Dentist/);
+  openTray();
+  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  const field = screen.getByRole('textbox', { name: 'Line name' });
+  const stops = store.getState().stops.length;
+  act(() => {
+    fireEvent.keyDown(field, { key: 'Backspace' });
+  });
+  expect(store.getState().stops).toHaveLength(stops);
+});
+
+test('a whole drag is one step for Undo', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const x = stopNamed(store, 'dentist').x;
+  act(() => {
+    const el = screen.getByRole('button', { name: /^Dentist/ });
+    const at = { x: left(/^Dentist/), y: parseFloat(el.style.top) };
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: at.x, clientY: at.y });
+    for (let i = 1; i <= 5; i++) fireEvent.pointerMove(el, { pointerId: 1, clientX: at.x + 20 * i, clientY: at.y });
+    fireEvent.pointerUp(el, { pointerId: 1, clientX: at.x + 100, clientY: at.y });
+  });
+  expect(stopNamed(store, 'dentist').x).not.toBe(x);
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+  expect(stopNamed(store, 'dentist').x).toBe(x);
+  expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+});

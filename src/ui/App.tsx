@@ -36,6 +36,7 @@ import { Bubble } from './Bubble';
 import { DayGhost } from './DayGhost';
 import { Ghost } from './Ghost';
 import { Grid } from './Grid';
+import { History } from './History';
 import { Legend } from './Legend';
 import { LegTime } from './LegTime';
 import { NameField } from './NameField';
@@ -179,9 +180,29 @@ export function App({ store, now = Date.now }: AppProps) {
 
   // Escape lets go of the box, as a tap on paper does. A field that took the key for itself,
   // to cancel a name or close the editor, keeps the box: one key does one thing.
+  // Backspace or Delete takes every stop in the box off the plane, as one step undo puts back.
+  // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes (Cmd on a Mac). In a text field each of
+  // these keys is the field's own.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) setSelection(null);
+      if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        setSelection(null);
+        return;
+      }
+      const el = e.target;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)) return;
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
+        e.preventDefault();
+        if (key === 'y' || e.shiftKey) store.redo();
+        else store.undo();
+        return;
+      }
+      if ((e.key === 'Backspace' || e.key === 'Delete') && selectionRef.current) {
+        e.preventDefault();
+        deleteSelected();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -592,6 +613,25 @@ export function App({ store, now = Date.now }: AppProps) {
     setCamera(centerOn(cam, middle, viewport, fitLeg(DEFAULT_GOAL_SECONDS, viewport.w, 1 / 2)));
   };
 
+  /**
+   * Deletes every stop the box holds, as one step. Goals go first, each taking its line and every
+   * stop only that line had; what is left goes one by one. A line's start is not a stop and stays
+   * unless its goal went. A stop the reducer refuses, such as one on a line already finished, stays.
+   */
+  const deleteSelected = () => {
+    const state = store.getState();
+    const held = selectionRef.current && prune(state, selectionRef.current);
+    setSelection(null);
+    if (!held) return;
+    const goals = held.stops.filter((id) => homeOf(state, id));
+    const rest = held.stops.filter((id) => !goals.includes(id));
+    store.begin();
+    for (const id of [...goals, ...rest]) store.dispatch({ type: 'delete', id, now: now() });
+    store.end();
+    const open = editingRef.current;
+    if (open && !store.getState().stops.some((s) => s.id === open)) setEditing(null);
+  };
+
   /** Escape on a name keeps a bare stop, but a goal escaped from is no line at all. */
   const cancelNaming = () => {
     const n = namingRef.current;
@@ -649,6 +689,8 @@ export function App({ store, now = Date.now }: AppProps) {
         return;
       }
       case 'dragStart':
+        // Every move of a drag, and whatever its drop adds, is one step for undo.
+        store.begin();
         startDrag(g);
         return;
       case 'dragMove':
@@ -661,42 +703,51 @@ export function App({ store, now = Date.now }: AppProps) {
         else dragTo(g.at);
         return;
       case 'dragEnd':
-        if (marquee.current) {
-          dropMarquee(g.at);
-          return;
+        try {
+          endDragGesture(g);
+        } finally {
+          store.end();
         }
-        if (groupDrag.current) {
-          dragGroupTo(g.at);
-          groupDrag.current = null;
-          return;
-        }
-        if (drawing.current) {
-          dropSun(g.at);
-          return;
-        }
-        if (endDrag.current) {
-          dropDayEnd(g.at);
-          return;
-        }
-        if (originDrag.current) {
-          dragOriginTo(g.at);
-          originDrag.current = null;
-          setLegTime(null);
-          return;
-        }
-        if (g.target.kind === 'tile') {
-          carryTile(g.at);
-          dropTile();
-          return;
-        }
-        dragTo(g.at);
-        if (dragging.current) joinOnRelease(dragging.current);
-        dragging.current = null;
-        setLegTime(null);
         return;
       default:
         return; // the other gestures arrive with the tasks that use them
     }
+  };
+
+  /** Lets go of whatever the drag was carrying. */
+  const endDragGesture = (g: Extract<Gesture, { type: 'dragEnd' }>) => {
+    if (marquee.current) {
+      dropMarquee(g.at);
+      return;
+    }
+    if (groupDrag.current) {
+      dragGroupTo(g.at);
+      groupDrag.current = null;
+      return;
+    }
+    if (drawing.current) {
+      dropSun(g.at);
+      return;
+    }
+    if (endDrag.current) {
+      dropDayEnd(g.at);
+      return;
+    }
+    if (originDrag.current) {
+      dragOriginTo(g.at);
+      originDrag.current = null;
+      setLegTime(null);
+      return;
+    }
+    if (g.target.kind === 'tile') {
+      carryTile(g.at);
+      dropTile();
+      return;
+    }
+    dragTo(g.at);
+    if (dragging.current) joinOnRelease(dragging.current);
+    dragging.current = null;
+    setLegTime(null);
   };
 
   /** A long press on a bubble flies to the stop it points at, keeping the current scale. */
@@ -851,6 +902,7 @@ export function App({ store, now = Date.now }: AppProps) {
       {bubbles}
       {legTime && <LegTime {...legTime} />}
       {editor}
+      <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={store.undo} onRedo={store.redo} />
       <Legend camera={camera} />
       <Tray open={trayOpen} onToggle={() => setTrayOpen((o) => !o)} />
       {nameField}
