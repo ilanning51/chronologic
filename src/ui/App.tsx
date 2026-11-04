@@ -139,6 +139,11 @@ export function App({ store, now = Date.now }: AppProps) {
   const [dayGhost, setDayGhost] = useState<Point[] | null>(null);
   /** The day's-end drag in flight: where the square started, the grip, and whether it added a stop. */
   const endDrag = useRef<{ start: Point; grip: Point; added: boolean } | null>(null);
+  /**
+   * The drag of a line's start: its track, the grip, the seconds its train had covered, and
+   * whether the first leg's chip shows, as it does only while the train is still on that leg.
+   */
+  const originDrag = useRef<{ track: string; grip: Point; keep?: number; chip: boolean } | null>(null);
   /** The leg being set by a drag: where its stop is on screen and its planned seconds. */
   const [legTime, setLegTime] = useState<{ x: number; y: number; seconds: number } | null>(null);
   /** The stop or goal whose name field is open. */
@@ -216,7 +221,12 @@ export function App({ store, now = Date.now }: AppProps) {
     dragTile.current = null;
     drawing.current = null;
     endDrag.current = null;
+    originDrag.current = null;
     const target = g.target;
+    if (target.kind === 'origin') {
+      startOriginDrag(target.track, g.at);
+      return;
+    }
     if (target.kind === 'tile') {
       if (target.tile === 'line') return;
       if (target.tile === 'sun') {
@@ -265,6 +275,43 @@ export function App({ store, now = Date.now }: AppProps) {
       keep,
       from: goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
     };
+  };
+
+  /**
+   * Picks up the start of a line. While the train is still on the first leg the leg changes
+   * length under it and the chip shows; once past the first stop the start is history. The day
+   * line's start moves the same way and never shows a chip, as its legs are not time.
+   */
+  const startOriginDrag = (trackId: string, at: Point) => {
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === trackId);
+    if (!track) return;
+    const under = screenToWorld(cameraRef.current, at);
+    const train = trainState(track, new Map(state.stops.map((s) => [s.id, s])), now());
+    const live = !track.day && !train.parked;
+    originDrag.current = {
+      track: trackId,
+      grip: { x: track.origin.x - under.x, y: track.origin.y - under.y },
+      keep: live ? train.seconds : undefined,
+      chip: live && train.leg === 0,
+    };
+  };
+
+  /** Moves the start of the line under the finger, grip and all, and reads back the first leg. */
+  const dragOriginTo = (at: Point) => {
+    const d = originDrag.current;
+    if (!d) return;
+    const under = screenToWorld(cameraRef.current, at);
+    const x = under.x + d.grip.x;
+    const y = under.y + d.grip.y;
+    store.dispatch({ type: 'moveOrigin', trackId: d.track, x, y, now: now(), keep: d.keep });
+    if (!d.chip) return;
+    const state = store.getState();
+    const track = state.tracks.find((t) => t.id === d.track);
+    if (!track) return;
+    const route = trackRoute(track, new Map(state.stops.map((s) => [s.id, s])));
+    const shown = worldToScreen(cameraRef.current, track.origin);
+    setLegTime({ x: shown.x, y: shown.y, seconds: legSeconds(route, 0) });
   };
 
   /**
@@ -498,6 +545,7 @@ export function App({ store, now = Date.now }: AppProps) {
       case 'dragMove':
         if (drawing.current) drawSun(g.at);
         else if (endDrag.current) dragDayEnd(g.at);
+        else if (originDrag.current) dragOriginTo(g.at);
         else if (g.target.kind === 'tile') carryTile(g.at);
         else dragTo(g.at);
         return;
@@ -508,6 +556,12 @@ export function App({ store, now = Date.now }: AppProps) {
         }
         if (endDrag.current) {
           dropDayEnd(g.at);
+          return;
+        }
+        if (originDrag.current) {
+          dragOriginTo(g.at);
+          originDrag.current = null;
+          setLegTime(null);
           return;
         }
         if (g.target.kind === 'tile') {

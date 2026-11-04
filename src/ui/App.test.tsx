@@ -1495,3 +1495,54 @@ test('the start of a line has a 44 px hit target that paints nothing', () => {
   expect(hit.getAttribute('fill')).toBe('none');
   expect(hit.dataset.track).toBe('t1');
 });
+
+/** Presses on a line's start 4 px off its centre, moves by (dx, dy), and returns the release. */
+function dragOrigin(dx: number, dy: number) {
+  const hit = document.querySelector<SVGRectElement>('[data-target="origin"]')!;
+  const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(hit.style.transform)!;
+  const x = parseFloat(m[1]) + 4;
+  const y = parseFloat(m[2]);
+  fireEvent.pointerDown(hit, { pointerId: 1, clientX: x, clientY: y });
+  fireEvent.pointerMove(hit, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+  return () => fireEvent.pointerUp(hit, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+}
+
+test('dragging the start of a line moves it, keeps the train, and shows the first leg time', () => {
+  const NOW = 500_000;
+  const store = createStore(running());
+  render(<App store={store} now={() => NOW} />);
+  const stops = () => new Map(store.getState().stops.map((s) => [s.id, s]));
+  const was = trainState(store.getState().tracks[0], stops(), NOW);
+  // The goal is off screen at this clock, so read the scale from the start to Dentist, 1000 s apart.
+  const hit = document.querySelector<SVGRectElement>('[data-target="origin"]')!;
+  const originX = parseFloat(/translate\(([-\d.e]+)px/.exec(hit.style.transform)![1]);
+  const scale = (left(/^Dentist/) - originX) / 1000;
+  let up = () => {};
+  act(() => {
+    up = dragOrigin(-50, 30);
+  });
+  const track = store.getState().tracks[0];
+  expect(track.origin.x).toBeCloseTo(-50 / scale, 6);
+  expect(track.origin.y).toBeCloseTo(30 / scale, 6);
+  expect(stopNamed(store, 'dentist')).toMatchObject({ x: 1000, y: 0 });
+  expect(trainState(track, stops(), NOW).seconds).toBeCloseTo(was.seconds, 6);
+  const chip = document.querySelector('.leg-time')!;
+  expect(chip.textContent).toBe(formatSeconds(legSeconds(trackRoute(track, stops()), 0)));
+  act(() => up());
+  expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+});
+
+test('past the first stop the start drags with no chip', () => {
+  const world = running();
+  world.stops[0].done = true;
+  world.tracks[0].train = { leg: 1, departedAt: 0 };
+  const store = createStore(world);
+  render(<App store={store} now={() => 500_000} />);
+  let up = () => {};
+  act(() => {
+    up = dragOrigin(-50, 0);
+  });
+  expect(store.getState().tracks[0].origin.x).toBeLessThan(0);
+  expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+  act(() => up());
+});
