@@ -21,6 +21,8 @@ Everything lives on one infinite plane. The look is borrowed from Mini Metro and
 - Drop a step or a sub-goal from the tray where two lines run close and it joins both.
 - While you drag a stop or the goal, a chip beneath it shows how long the leg into it is, so you can set the length to your estimate. It goes when you let go. A tile carried onto a line shows the same for the leg it would end.
 - Drag the goal to stretch or squeeze everything ahead of the train. The line behind the train does not move.
+- Drag the start of a line to move where it begins. While the train is still on the first leg, the chip shows that leg's time; after that the start is history and moves freely.
+- With a mouse, hold Shift and drag on empty paper to draw a box. Everything inside it, stops, dots and line starts, is picked up, and dragging inside the box moves it all together, nothing scaling. Tap on paper, tap the box, or press Escape to let it go.
 - Tap the next stop to complete it, whether the train has arrived or not. Other stops ignore a tap.
 - Long press a stop to edit its name, shape and size, or to delete it. Long press the most recent dot to bring it back with Not done.
 - On a stop that sits on several lines, the editor also shows a chip in each line's colour. Tap a chip to take the stop off that line.
@@ -63,4 +65,4 @@ The app ships a web app manifest, therefore it installs to the home screen from 
 
 ## Design
 
-The design is in `docs/superpowers/specs/2026-11-01-day-line-design.md` and the plan it was built from is in `docs/superpowers/plans/2026-11-01-chronologic-v3-day-line.md`. They build on the v2 design in `docs/superpowers/specs/2026-10-31-tracks-design.md` and its plan in `docs/superpowers/plans/2026-10-31-chronologic-v2-tracks.md`. The first version's design is in `design/chronologic-design.md`, and the look and flow principles in the `design` folder still apply.
+The design is in `docs/superpowers/specs/2026-11-01-day-line-design.md` and the plan it was built from is in `docs/superpowers/plans/2026-11-01-chronologic-v3-day-line.md`. The levels are in `docs/superpowers/specs/2026-11-03-levels-design.md`, and the box and the start of a line in `docs/superpowers/specs/2026-11-03-select-and-origin-design.md` with its plan in `docs/superpowers/plans/2026-11-03-select-and-origin.md`. They build on the v2 design in `docs/superpowers/specs/2026-10-31-tracks-design.md` and its plan in `docs/superpowers/plans/2026-10-31-chronologic-v2-tracks.md`. The first version's design is in `design/chronologic-design.md`, and the look and flow principles in the `design` folder still apply.
