@@ -29,6 +29,8 @@ function targetOf(el: EventTarget | null): Target {
       };
     case 'train':
       return { kind: 'train', track: hit.dataset.track ?? '' };
+    case 'origin':
+      return { kind: 'origin', track: hit.dataset.track ?? '' };
     case 'bubble':
       return { kind: 'bubble', track: hit.dataset.track ?? '' };
     case 'tile': {

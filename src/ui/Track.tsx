@@ -11,7 +11,8 @@ interface TrackProps {
  * that draws outside its own box, since the segments are already in screen pixels. It is
  * drawn before the stops, so a train waiting at a stop sits beneath it and the stop takes
  * the tap. Only a rolling train is a target of its own, and it carries an unpainted 44 px square
- * beneath it so the 30 by 20 body is not all a finger has to find.
+ * beneath it so the 30 by 20 body is not all a finger has to find. The start of the line has the
+ * same square and nothing drawn: the rounded end of the line is the handle.
  */
 export function Track({ view }: TrackProps) {
   // A sketch is a thought, not yet a plan: muted and thin, train and all.
@@ -23,6 +24,18 @@ export function Track({ view }: TrackProps) {
   const place = `translate(${train.x}px, ${train.y}px) rotate(${train.angle}deg)`;
   return (
     <svg className="track" aria-hidden="true" width={1} height={1}>
+      <rect
+        className="origin-hit"
+        data-target="origin"
+        data-track={view.id}
+        x={-TAP_PX / 2}
+        y={-TAP_PX / 2}
+        width={TAP_PX}
+        height={TAP_PX}
+        fill="none"
+        pointerEvents="all"
+        style={{ transform: `translate(${view.origin.x}px, ${view.origin.y}px)` }}
+      />
       {view.segments.map(([a, b], i) => (
         <line
           key={i}

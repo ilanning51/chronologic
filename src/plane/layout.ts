@@ -43,6 +43,8 @@ export interface TrackView {
   /** A project line with only its goal, drawn muted and thin. A look, not a state. */
   sketch: boolean;
   segments: [Point, Point][];
+  /** The start of the line, in screen pixels: a drag handle with nothing drawn at it. */
+  origin: Point;
   stops: StopView[];
   train: TrainView;
   anyInView: boolean;
@@ -121,6 +123,7 @@ export function layoutTrack(
     day: track.day !== undefined,
     sketch: !track.day && track.stops.length === 1,
     segments,
+    origin: vertices[0],
     stops,
     train,
     anyInView: segments.length > 0 || stops.length > 0 || inside(trainAt),

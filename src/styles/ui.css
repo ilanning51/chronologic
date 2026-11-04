@@ -64,9 +64,15 @@
 }
 
 .track .train,
-.track .train-hit {
+.track .train-hit,
+.track .origin-hit {
   transform-box: fill-box;
   transform-origin: center;
+}
+
+/* The start of a line only drags, so it takes the hand a tile does, not a stop's pointer. */
+.track .origin-hit {
+  cursor: grab;
 }
 
 /* Stops. The shape's center sits on the stop's screen point. */

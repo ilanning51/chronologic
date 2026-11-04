@@ -183,3 +183,10 @@ test('labels make room among the stops that are drawn, not the hidden ones', () 
 
   expect(v.stops.find((s) => s.id === 'c')?.label).toBe(true);
 });
+
+test('the view carries the origin in screen pixels', () => {
+  const camera = { x: 100, y: 100, scale: 0.1 };
+  const track = trackOf(['a']);
+  const v = layoutTrack(track, worldOf(track, [stop('a', 1000, 0)]), camera, 0, viewport);
+  expect(v.origin).toEqual(worldToScreen(camera, { x: 0, y: 0 }));
+});

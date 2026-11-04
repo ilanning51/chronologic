@@ -1485,3 +1485,13 @@ test('a stop being named stays drawn through a zoom, so its field has somewhere 
   const box = screen.getByRole('textbox', { name: 'Stop title' }).closest<HTMLElement>('.name-field')!;
   expect(parseFloat(box.style.left)).toBeGreaterThan(0);
 });
+
+test('the start of a line has a 44 px hit target that paints nothing', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  const hit = document.querySelector<SVGRectElement>('[data-target="origin"]')!;
+  expect(hit).toBeInTheDocument();
+  expect(hit.getAttribute('width')).toBe('44');
+  expect(hit.getAttribute('height')).toBe('44');
+  expect(hit.getAttribute('fill')).toBe('none');
+  expect(hit.dataset.track).toBe('t1');
+});
