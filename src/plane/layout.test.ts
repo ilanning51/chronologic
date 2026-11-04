@@ -134,3 +134,52 @@ test('the crowd sits on the waiting stop only', () => {
   expect(crowdOf(layoutTrack(d.tracks[0], d, wide, 3500 * s, viewport)).dentist).toBe(2);
   expect(Object.values(crowdOf(layoutTrack(day, d, wide, 3500 * s, viewport)))).toEqual([0, 0, 0]);
 });
+
+// A scale at which one grid square is a day: a large circle is below the level, a small
+// triangle is at it. Screen x is world x / 2000 + 100.
+const dayCamera = { x: 100, y: 100, scale: 0.0005 };
+const atScreenX = (x: number) => (x - 100) / 0.0005;
+
+test('below its level a stop is left out of the view, but the line still routes through it', () => {
+  const a = stop('a', atScreenX(200), 0);
+  const b = stop('b', atScreenX(400), 0, { size: 'large' });
+  const c = stop('c', atScreenX(600), 0, { shape: 'triangle', size: 'small' });
+  const g = stop('g', atScreenX(800), 0, { shape: 'square' });
+  const track = trackOf(['a', 'b', 'c', 'g']);
+  const v = layoutTrack(track, worldOf(track, [a, b, c, g]), dayCamera, 1000, viewport);
+
+  expect(v.stops.map((s) => s.id)).toEqual(['a', 'c', 'g']);
+  expect(v.segments).toContainEqual([{ x: 200, y: 100 }, { x: 400, y: 100 }]);
+});
+
+test('the next stop and the goal show whatever their shape, and so does a kept stop', () => {
+  const a = stop('a', atScreenX(200), 0, { size: 'small' });
+  const b = stop('b', atScreenX(400), 0, { size: 'small' });
+  const g = stop('g', atScreenX(800), 0, { shape: 'square', size: 'small' });
+  const track = trackOf(['a', 'b', 'g']);
+  const world = worldOf(track, [a, b, g]);
+
+  expect(layoutTrack(track, world, dayCamera, 1000, viewport).stops.map((s) => s.id)).toEqual(['a', 'g']);
+  expect(layoutTrack(track, world, dayCamera, 1000, viewport, new Set(['b'])).stops.map((s) => s.id)).toEqual(['a', 'b', 'g']);
+});
+
+test('a done dot follows the level of the stop it was', () => {
+  const d = stop('d', atScreenX(200), 0, { done: true });
+  const a = stop('a', atScreenX(400), 0);
+  const g = stop('g', atScreenX(800), 0, { shape: 'square' });
+  const track = trackOf(['d', 'a', 'g'], 1);
+  const v = layoutTrack(track, worldOf(track, [d, a, g]), dayCamera, 1000, viewport);
+
+  expect(v.stops.map((s) => s.id)).toEqual(['a', 'g']);
+});
+
+test('labels make room among the stops that are drawn, not the hidden ones', () => {
+  const a = stop('a', atScreenX(200), 0);
+  const b = stop('b', atScreenX(290), 0);
+  const c = stop('c', atScreenX(350), 0, { shape: 'triangle', size: 'small' });
+  const g = stop('g', atScreenX(800), 0, { shape: 'square' });
+  const track = trackOf(['a', 'b', 'c', 'g']);
+  const v = layoutTrack(track, worldOf(track, [a, b, c, g]), dayCamera, 1000, viewport);
+
+  expect(v.stops.find((s) => s.id === 'c')?.label).toBe(true);
+});

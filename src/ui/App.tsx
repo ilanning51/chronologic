@@ -159,9 +159,16 @@ export function App({ store, now = Date.now }: AppProps) {
     setCamera(openingCamera(store.getState(), now(), { w: window.innerWidth, h: window.innerHeight }));
   }, []);
 
+  /**
+   * Stops added since the last zoom, drawn whatever the level, so a circle dropped from far
+   * away does not vanish the moment it is named. The next zoom lets the level decide again.
+   */
+  const pinned = useRef(new Set<string>());
+
   /** The hand moving the camera ends any motion zoom: the next tap on a train follows it afresh. */
   const onZoom = useCallback((p: Point, factor: number) => {
     stash.current = null;
+    pinned.current = new Set();
     setCamera((c) => zoomAt(c, p, factor));
   }, []);
 
@@ -312,6 +319,7 @@ export function App({ store, now = Date.now }: AppProps) {
     const { x, y } = first.at;
     store.dispatch({ type: 'addStop', trackId: first.trackId, id, shape: d.shape, leg: first.leg, x, y, now: now() });
     for (const hit of rest) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: id, leg: hit.leg, x, y, now: now() });
+    pinned.current.add(id);
     setNaming({ id, kind: 'stop', trackId: first.trackId });
   };
 
@@ -442,6 +450,7 @@ export function App({ store, now = Date.now }: AppProps) {
         return;
       case 'pinch':
         stash.current = null;
+        pinned.current = new Set();
         setCamera((c) => panBy(zoomAt(c, g.center, g.factor), g.dx, g.dy));
         return;
       case 'tap':
@@ -531,6 +540,7 @@ export function App({ store, now = Date.now }: AppProps) {
   const motionZoom = (trackId: string) => {
     const c = cameraRef.current;
     const back = stash.current;
+    pinned.current = new Set();
     if (back) {
       stash.current = null;
       fly(c, back);
@@ -546,7 +556,7 @@ export function App({ store, now = Date.now }: AppProps) {
   };
 
   const byId = new Map(world.stops.map((s) => [s.id, s]));
-  const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport));
+  const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport, pinned.current));
   const rolling = views.some((v) => !v.train.parked);
 
   useEffect(() => {
