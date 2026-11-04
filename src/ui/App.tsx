@@ -40,7 +40,7 @@ import { Grid } from './Grid';
 import { Legend } from './Legend';
 import { LegTime } from './LegTime';
 import { NameField } from './NameField';
-import { shrink } from './picture';
+import { pixelate } from './picture';
 import { Plane } from './Plane';
 import { SelectionBox } from './SelectionBox';
 import { Stop } from './Stop';
@@ -53,7 +53,7 @@ export interface AppProps {
   store: Store;
   /** The clock the app reads, injectable for tests. */
   now?: () => number;
-  /** Turns a chosen image into the small data URL a goal keeps; injectable for tests. */
+  /** Turns a chosen image into the small painted data URL a goal keeps; injectable for tests. */
   picture?: (file: Blob) => Promise<string>;
 }
 
@@ -106,7 +106,7 @@ function useFly(setCamera: (c: Camera) => void) {
 }
 
 /** The v2 plane: every track and stop in screen space, redrawn as the clock ticks. */
-export function App({ store, now = Date.now, picture = shrink }: AppProps) {
+export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const world = useWorld(store);
   const [camera, setCamera] = useState(HOME);
   const cameraRef = useRef(camera);

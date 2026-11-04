@@ -193,7 +193,8 @@
 }
 
 /* A goal's mural: its picture, a square tile above the shape, opaque and unframed. It paints
-   only; the stop's hit target and the shape take every press. */
+   only; the stop's hit target and the shape take every press. The picture is a small grid of
+   blocks in the map's inks, scaled up with hard edges, so it is drawn the way the map is. */
 .stop .mural {
   position: absolute;
   left: 0;
@@ -202,6 +203,7 @@
   height: var(--mural);
   transform: translate(-50%, -100%);
   object-fit: cover;
+  image-rendering: pixelated;
   pointer-events: none;
 }
 
@@ -542,6 +544,7 @@ button:focus-visible {
   height: var(--mural-small);
   margin-left: -0.375rem;
   object-fit: cover;
+  image-rendering: pixelated;
 }
 
 /* The soonest line's bubble is filled with its colour, its words and shape in paper. */
