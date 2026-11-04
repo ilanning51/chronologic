@@ -21,7 +21,7 @@ import {
 } from '../plane/camera';
 import type { Gesture, Tile } from '../plane/gestures';
 import { distance, type Point } from '../plane/geometry';
-import { bubbleFor } from '../plane/bubbles';
+import { bubbleFor, clearOf } from '../plane/bubbles';
 import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
@@ -36,7 +36,7 @@ import { Bubble } from './Bubble';
 import { DayGhost } from './DayGhost';
 import { Ghost } from './Ghost';
 import { Grid } from './Grid';
-import { History } from './History';
+import { History, HISTORY_CORNER_PX } from './History';
 import { Legend } from './Legend';
 import { LegTime } from './LegTime';
 import { NameField } from './NameField';
@@ -206,6 +206,7 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
       if (e.key === 'Escape') {
         setSelection(null);
         setBrush(null);
+        dropStroke();
         return;
       }
       const el = e.target;
@@ -747,7 +748,12 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
   const cancelNaming = () => {
     const n = namingRef.current;
     setNaming(null);
-    if (n?.kind === 'goal') store.dispatch({ type: 'delete', id: n.id, now: now() });
+    if (n?.kind !== 'goal') return;
+    // Straight after the line was made, take that step back whole, so Undo never brings back a
+    // line just dismissed; otherwise delete it as before.
+    const before = store.previous();
+    if (before && !before.stops.some((s) => s.id === n.id)) store.retract();
+    else store.dispatch({ type: 'delete', id: n.id, now: now() });
   };
 
   /**
@@ -767,11 +773,15 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
    * it always does) and the editor closes, so neither is left pointing at a stop that is gone.
    */
   const history = (dir: 'undo' | 'redo') => {
+    endTitleStep();
+    // A drag in flight is one step still being made: taking it back under the hand would split it.
+    if (store.inStep()) return;
     (document.activeElement as HTMLElement | null)?.blur();
     setEditing(null);
-    endTitleStep();
     if (dir === 'undo') store.undo();
     else store.redo();
+    // A world from before midnight may hold yesterday's day; the clock clears it, as on opening.
+    store.dispatch({ type: 'tick', now: now() });
     const n = namingRef.current;
     if (n && !store.getState().stops.some((s) => s.id === n.id)) setNaming(null);
   };
@@ -1066,7 +1076,8 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
     const target = track && i !== null ? byId.get(track.stops[i]) : undefined;
     if (!track || !target) return [];
     // The stop may be off the grown viewport and so missing from the view: use its world point.
-    const at = bubbleFor(worldToScreen(camera, target), viewport);
+    const spot = bubbleFor(worldToScreen(camera, target), viewport);
+    const at = spot && clearOf(spot, HISTORY_CORNER_PX);
     return at
       ? [
           <Bubble

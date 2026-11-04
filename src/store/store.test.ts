@@ -102,3 +102,23 @@ test('a step that changed nothing leaves nothing to undo, and undo notifies', ()
   store.undo();
   expect(seen).toHaveBeenCalledTimes(1);
 });
+
+test('inStep is true only between begin and end', () => {
+  const store = createStore(EMPTY);
+  expect(store.inStep()).toBe(false);
+  store.begin();
+  expect(store.inStep()).toBe(true);
+  store.end();
+  expect(store.inStep()).toBe(false);
+});
+
+test('retract takes back the last step and leaves nothing to redo', () => {
+  const store = createStore(EMPTY);
+  store.dispatch(newTrack);
+  expect(store.previous()).toBe(EMPTY);
+  store.retract();
+  expect(store.getState()).toBe(EMPTY);
+  expect(store.canUndo()).toBe(false);
+  expect(store.canRedo()).toBe(false);
+  expect(store.previous()).toBeUndefined();
+});

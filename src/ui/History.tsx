@@ -3,7 +3,17 @@ interface HistoryProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  /** Whether to name the Mac's shortcuts in the tooltips; read from the browser unless given. */
+  mac?: boolean;
 }
+
+/**
+ * The corner the pill takes, with a margin, in px: 1rem in, two 52 px halves and a 1 px border
+ * across, 44 px and the border down, then 8 px clear. Bubbles keep out of it.
+ */
+export const HISTORY_CORNER_PX = { w: 130, h: 70 };
+
+const onMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
 /** The U-turn arrow of the system's Undo symbol (arrow.uturn.backward); Redo is it mirrored. */
 function Arrow({ flip }: { flip?: boolean }) {
@@ -26,13 +36,13 @@ function Arrow({ flip }: { flip?: boolean }) {
  * them; the plane's recognizer reads them as HUD and leaves them alone. Hovering names the
  * shortcut, the way a desktop toolbar's tooltip does.
  */
-export function History({ canUndo, canRedo, onUndo, onRedo }: HistoryProps) {
+export function History({ canUndo, canRedo, onUndo, onRedo, mac = onMac() }: HistoryProps) {
   return (
     <div className="hud-history" data-target="hud" role="group" aria-label="History">
-      <button type="button" className="hud-segment" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={onUndo}>
+      <button type="button" className="hud-segment" aria-label="Undo" title={mac ? 'Undo (⌘Z)' : 'Undo (Ctrl+Z)'} disabled={!canUndo} onClick={onUndo}>
         <Arrow />
       </button>
-      <button type="button" className="hud-segment" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={onRedo}>
+      <button type="button" className="hud-segment" aria-label="Redo" title={mac ? 'Redo (⇧⌘Z)' : 'Redo (Ctrl+Shift+Z)'} disabled={!canRedo} onClick={onRedo}>
         <Arrow flip />
       </button>
     </div>

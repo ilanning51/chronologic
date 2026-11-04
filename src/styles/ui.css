@@ -551,6 +551,11 @@ button:focus-visible {
   color: var(--ink);
 }
 
+/* On the paper-filled tile a paper ring would vanish: the focus ring turns ink. */
+.tile[aria-pressed='true']:focus-visible {
+  outline-color: var(--ink);
+}
+
 /* With a brush on, the plane is drawn on, so the pointer is a crosshair. */
 .plane.brushing {
   cursor: crosshair;

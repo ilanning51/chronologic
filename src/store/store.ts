@@ -16,6 +16,12 @@ export interface Store {
   /** Everything dispatched from here until end() is one step: a whole drag undoes at once. */
   begin(): void;
   end(): void;
+  /** Whether a step is open: a drag in flight. */
+  inStep(): boolean;
+  /** The world before the last step, if there is one. */
+  previous(): World | undefined;
+  /** Takes back the last step as if it never happened: nothing is left to redo. */
+  retract(): void;
 }
 
 /** How many steps back undo can go. */
@@ -81,6 +87,16 @@ export function createStore(initial: World): Store {
     },
     end() {
       step = null;
+    },
+    inStep: () => step !== null,
+    previous: () => past[past.length - 1],
+    retract() {
+      const previous = past[past.length - 1];
+      if (!previous) return;
+      past = past.slice(0, -1);
+      future = [];
+      step = null;
+      set(previous);
     },
   };
 }

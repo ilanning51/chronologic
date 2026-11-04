@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { BUBBLE_INSET_PX, bubbleFor } from './bubbles';
+import { BUBBLE_INSET_PX, bubbleFor, clearOf } from './bubbles';
 
 const viewport = { w: 1000, h: 800 };
 
@@ -21,4 +21,17 @@ test('a target up and to the left lands on the top or left inset edge, inside th
   // The ray is flatter than the window's diagonal, so it reaches the left edge first.
   expect(at.side).toBe('left');
   expect(at.x).toBe(BUBBLE_INSET_PX);
+});
+
+test('a left-edge bubble that would sit under the corner pill moves just below it', () => {
+  const corner = { w: 130, h: 70 };
+  expect(clearOf({ x: 16, y: 40, side: 'left' }, corner)).toEqual({ x: 16, y: 70 + 22, side: 'left' });
+  expect(clearOf({ x: 16, y: 300, side: 'left' }, corner)).toEqual({ x: 16, y: 300, side: 'left' });
+});
+
+test('a top-edge bubble near the corner pill hangs from the left edge below it instead', () => {
+  const corner = { w: 130, h: 70 };
+  expect(clearOf({ x: 100, y: 16, side: 'top' }, corner)).toEqual({ x: BUBBLE_INSET_PX, y: 70 + 22, side: 'left' });
+  expect(clearOf({ x: 600, y: 16, side: 'top' }, corner)).toEqual({ x: 600, y: 16, side: 'top' });
+  expect(clearOf({ x: 984, y: 40, side: 'right' }, corner)).toEqual({ x: 984, y: 40, side: 'right' });
 });

@@ -2274,3 +2274,67 @@ test('typing in the editor is one undo step, and Undo closes the editor', () => 
   expect(stopNamed(store, 'dentist').title).toBe(title);
   expect(screen.queryByRole('group', { name: 'Edit stop' })).not.toBeInTheDocument();
 });
+
+test('Escape mid-stroke throws the stroke away', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  tapTile('New line');
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 150, clientY: 650 });
+    fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 300, clientY: 650 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+  });
+  expect(document.querySelector('.day-ghost')).toBeNull();
+  act(() => fireEvent.pointerUp(paper(), { pointerId: 1, clientX: 450, clientY: 650 }));
+  expect(store.getState().tracks).toHaveLength(1);
+});
+
+test('Ctrl+Z waits while a drag is in flight', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const x = stopNamed(store, 'dentist').x;
+  const el = screen.getByRole('button', { name: /^Dentist/ });
+  const at = { x: left(/^Dentist/), y: parseFloat(el.style.top) };
+  act(() => {
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: at.x, clientY: at.y });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: at.x + 40, clientY: at.y });
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+  });
+  const moved = stopNamed(store, 'dentist').x;
+  expect(moved).not.toBe(x); // the drag was not taken back under the hand
+  act(() => {
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: at.x + 80, clientY: at.y });
+    fireEvent.pointerUp(el, { pointerId: 1, clientX: at.x + 80, clientY: at.y });
+  });
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+  expect(stopNamed(store, 'dentist').x).toBe(x); // still one step
+});
+
+test("an undo past midnight never brings back yesterday's day", () => {
+  const world = dayOn(WAITING);
+  const store = createStore(world);
+  const project = world.tracks.find((t) => !t.day)!;
+  store.dispatch({ type: 'cycleTarget', trackId: project.id }); // a step whose before still holds the day
+  const tomorrow = WAITING + 2 * 86_400_000;
+  render(<App store={store} now={() => tomorrow} />);
+  expect(store.getState().tracks.some((t) => t.day)).toBe(false); // the opening tick cleared it
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+  expect(store.getState().tracks.some((t) => t.day)).toBe(false);
+});
+
+test('the lit tile keeps a visible focus ring', () => {
+  expect(uiCss).toMatch(/\.tile\[aria-pressed='true'\]:focus-visible\s*\{[^}]*outline-color:\s*var\(--ink\)/);
+});
+
+test("Escape on a new line's name leaves no line and nothing to undo or redo", () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  drawLine();
+  act(() => {
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Line name' }), { key: 'Escape' });
+  });
+  expect(store.getState().tracks).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled();
+});
