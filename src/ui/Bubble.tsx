@@ -35,14 +35,14 @@ const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal
 /**
  * A paper pill on the window edge naming what a line points at, off screen in that direction. A
  * square is a goal, and a goal's name is set in bold capitals, as a terminus is on the map. A
- * goal with a picture shows it in place of its shape, so the thing the line is for is a glance
- * away from anywhere.
+ * goal with a picture has no pill: the bubble is the picture itself, centred in a square of the
+ * line's colour, so the thing the line is for is a glance away from anywhere, framed in its line.
  */
 export function Bubble({ track, color, shape, title, image, x, y, side, soonest = false, day = false }: BubbleProps) {
   return (
     <button
       type="button"
-      className={soonest ? 'bubble soonest' : 'bubble'}
+      className={['bubble', image !== undefined && 'picture', soonest && 'soonest'].filter(Boolean).join(' ')}
       data-target="bubble"
       data-track={track}
       aria-label={`${title || 'Unnamed'}, ${SHAPE_WORDS[shape]}. Tap to change what this line points at.`}
@@ -51,11 +51,13 @@ export function Bubble({ track, color, shape, title, image, x, y, side, soonest 
       {image !== undefined ? (
         <img aria-hidden="true" alt="" className="mural" src={image} draggable={false} />
       ) : (
-        <span aria-hidden="true" className={`shape ${shape} medium`} />
+        <>
+          <span aria-hidden="true" className={`shape ${shape} medium`} />
+          <span aria-hidden="true" className={shape === 'square' ? 'title goal-name' : 'title'}>
+            {title}
+          </span>
+        </>
       )}
-      <span aria-hidden="true" className={shape === 'square' ? 'title goal-name' : 'title'}>
-        {title}
-      </span>
     </button>
   );
 }

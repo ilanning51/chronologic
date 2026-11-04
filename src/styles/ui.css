@@ -632,13 +632,21 @@ button:focus-visible {
   background: var(--track-color);
 }
 
-/* The goal's picture in its bubble, where its shape would be. */
+/* A picture bubble is no pill: the goal's picture centred in a square of the line's colour, the
+   colour showing as a frame of --frame around it, and no words. Picture and frame together meet
+   the 44 px rule. */
+.bubble.picture {
+  padding: var(--frame);
+  border-radius: 0;
+  background: var(--track-color);
+  gap: 0;
+}
+
 .bubble .mural {
   display: block;
   flex: none;
   width: var(--mural-small);
   height: var(--mural-small);
-  margin-left: -0.375rem;
   object-fit: cover;
   image-rendering: pixelated;
 }
@@ -647,6 +655,11 @@ button:focus-visible {
 .bubble.soonest {
   background: var(--track-color);
   color: var(--paper);
+}
+
+/* The soonest line's picture wears a wider frame: the fill the pill would have had. */
+.bubble.picture.soonest {
+  padding: var(--frame-soonest);
 }
 
 .bubble.soonest .shape {

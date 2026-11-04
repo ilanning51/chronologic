@@ -32,9 +32,12 @@
   --square-small: 13px;
   --square-medium: 20px;
   --square-large: 28px;
-  /* A goal's picture: the mural above its square, and the small one in its bubble. */
+  /* A goal's picture: the mural above its square, and the small one in its bubble, where the
+     line's colour frames it; the soonest line's frame is wider. 36 + 2 * 4 = 44, the tap rule. */
   --mural: 72px;
-  --mural-small: 32px;
+  --mural-small: 36px;
+  --frame: 4px;
+  --frame-soonest: 8px;
 
   /* HUD sizes, in rem so the browser text size scales them. */
   --hit: 2.75rem;
