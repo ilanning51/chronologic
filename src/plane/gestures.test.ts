@@ -259,3 +259,42 @@ test('a short press on the marquee or the selection is a tap', () => {
   r.up({ id: 1, x: 2, y: 0, t: 100 });
   expect(gestures()).toEqual([{ type: 'tap', target: selection, at: { x: 0, y: 0 } }]);
 });
+
+const brush: Target = { kind: 'brush' };
+
+test('a brush press drags instead of panning', () => {
+  const { r, gestures } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, brush);
+  r.move({ id: 1, x: 30, y: 0, t: 10 });
+  expect(gestures()).toEqual([
+    { type: 'dragStart', target: brush, at: { x: 0, y: 0 } },
+    { type: 'dragMove', target: brush, at: { x: 30, y: 0 } },
+  ]);
+});
+
+test('a brush press that never moves is a tap', () => {
+  const { r, gestures } = rig();
+  r.down({ id: 1, x: 5, y: 5, t: 0 }, brush);
+  r.up({ id: 1, x: 5, y: 5, t: 10 });
+  expect(gestures()).toEqual([{ type: 'tap', target: brush, at: { x: 5, y: 5 } }]);
+});
+
+test('a second finger on a brush stroke ends it cancelled', () => {
+  const { r, gestures, types } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, brush);
+  r.move({ id: 1, x: 30, y: 0, t: 10 });
+  r.down({ id: 2, x: 100, y: 0, t: 20 }, paper);
+  expect(gestures()[2]).toEqual({ type: 'dragEnd', target: brush, at: { x: 30, y: 0 }, cancelled: true });
+  r.move({ id: 2, x: 150, y: 0, t: 30 });
+  expect(types()[3]).toBe('pinch');
+});
+
+test('a second finger on a stop drag still ends it plainly', () => {
+  const { r, gestures } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, stopA);
+  r.move({ id: 1, x: 30, y: 0, t: 10 });
+  r.down({ id: 2, x: 100, y: 0, t: 20 }, paper);
+  const end = gestures()[2];
+  expect(end.type).toBe('dragEnd');
+  expect('cancelled' in end).toBe(false);
+});
