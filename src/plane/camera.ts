@@ -48,6 +48,31 @@ export function centerOn(_c: Camera, world: Point, viewport: { w: number; h: num
   return { x: viewport.w / 2 - world.x * s, y: viewport.h / 2 - world.y * s, scale: s };
 }
 
+/** The paper left around a line fitted to the view, in px on every side. */
+export const FIT_PAD_PX = 80;
+
+/**
+ * A camera showing every point at once: centred on them and zoomed out until they all fit with
+ * the pad around them, kept inside the zoom range. It never zooms in, so a line that already
+ * fits at this scale is only brought to the middle. No points, and the camera stays as it is.
+ */
+export function fitPoints(c: Camera, points: Point[], viewport: { w: number; h: number }, padPx = FIT_PAD_PX): Camera {
+  if (points.length === 0) return c;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const room = { w: Math.max(1, viewport.w - 2 * padPx), h: Math.max(1, viewport.h - 2 * padPx) };
+  const fit = Math.min(maxX > minX ? room.w / (maxX - minX) : Infinity, maxY > minY ? room.h / (maxY - minY) : Infinity);
+  return centerOn(c, { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }, viewport, Math.min(c.scale, fit));
+}
+
 /** How much of the viewport width a leg should fill, as a scale, kept inside the zoom range. */
 export function fitLeg(legSeconds: number, viewportW: number, fraction = 1 / 3): number {
   if (legSeconds === 0) return MAX_SCALE;
