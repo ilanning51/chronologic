@@ -95,8 +95,11 @@ test('a goal with a picture carries it as a mural, and its bubble shows it in pl
   expect(mural).toBeInTheDocument();
   expect(mural.getAttribute('src')).toBe(PICTURE);
   expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('img.mural')).toBeNull();
-  // The mural paints only: the press goes to the stop.
-  expect(/\.stop \.mural\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/pointer-events:\s*none/);
+  // The mural paints only: the press goes to the stop. Its blocks scale up with hard edges.
+  const rule = /\.stop \.mural\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(rule).toMatch(/pointer-events:\s*none/);
+  expect(rule).toMatch(/image-rendering:\s*pixelated/);
+  expect(/\.bubble \.mural\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/image-rendering:\s*pixelated/);
 
   // The goal off screen: its bubble carries the picture, not the square.
   const far = farGoal();
