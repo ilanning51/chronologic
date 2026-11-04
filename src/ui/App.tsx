@@ -6,7 +6,7 @@ import { dayTrack, isDayEnd } from '../model/day';
 import { dayOf } from '../model/days';
 import { newId } from '../model/ids';
 import { DEFAULT_GOAL_SECONDS, tracksOf, undoable, type GoalDragStart } from '../model/reducer';
-import type { World } from '../model/types';
+import type { Size, World } from '../model/types';
 import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
@@ -139,9 +139,14 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
   /** Whether the tray of tiles is open. */
   const [trayOpen, setTrayOpen] = useState(false);
   /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
-  const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; x: number; y: number; snapped: boolean } | null>(null);
+  const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; size?: Size; x: number; y: number; snapped: boolean } | null>(null);
   /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
   const dragTile = useRef<{ shape: 'circle' | 'triangle'; hits: ReturnType<typeof snapToAll> } | null>(null);
+  /**
+   * The step being split off a stop under the secondary button: its shape and size, the lines
+   * it may land on, and the snaps in reach, nearest first.
+   */
+  const splitDrag = useRef<{ shape: 'circle' | 'triangle'; size: Size; tracks: string[]; hits: ReturnType<typeof snapToAll> } | null>(null);
   /** The sun drag in flight: where it was picked up on screen and the stops gathered, in order. */
   const drawing = useRef<{ from: Point; ids: string[] } | null>(null);
   /** The ghost ink line of the day being drawn, in screen points. */
@@ -274,10 +279,15 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
     endDrag.current = null;
     originDrag.current = null;
     groupDrag.current = null;
+    splitDrag.current = null;
     const target = g.target;
     if (target.kind === 'marquee') {
       marquee.current = { from: g.at, to: g.at };
       setMarqueeBox(rectOf(g.at, g.at));
+      return;
+    }
+    if (target.kind === 'split') {
+      startSplit(target.id, g.at);
       return;
     }
     // Anything the box holds drags the whole box; a stop or a start outside it drags alone.
@@ -483,22 +493,65 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
   };
 
   /**
-   * Dropping on a line adds a stop exactly there, so the track's total never changes. Where
-   * other lines are in reach too, the same stop joins each, staying at the nearest's point.
+   * Puts a carried shape down. On a line it is a stop exactly there, so the track's total never
+   * changes; where other lines are in reach too, the same stop joins each, staying at the
+   * nearest's point; its name field opens. On paper it is nothing.
    */
-  const dropTile = () => {
-    const d = dragTile.current;
-    dragTile.current = null;
+  const placeCarried = (shape: 'circle' | 'triangle', size: Size, hits: ReturnType<typeof snapToAll>) => {
     setGhost(null);
     setLegTime(null);
-    const [first, ...rest] = d?.hits ?? [];
-    if (!d || !first) return;
+    const [first, ...rest] = hits;
+    if (!first) return;
     const id = newId();
     const { x, y } = first.at;
-    store.dispatch({ type: 'addStop', trackId: first.trackId, id, shape: d.shape, leg: first.leg, x, y, now: now() });
+    store.dispatch({ type: 'addStop', trackId: first.trackId, id, shape, size, leg: first.leg, x, y, now: now() });
     for (const hit of rest) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: id, leg: hit.leg, x, y, now: now() });
     pinned.current.add(id);
     setNaming({ id, kind: 'stop', trackId: first.trackId });
+  };
+
+  /** Lets go of a tile from the tray: a medium stop where the ghost sat. */
+  const dropTile = () => {
+    const d = dragTile.current;
+    dragTile.current = null;
+    placeCarried(d?.shape ?? 'circle', 'medium', d?.hits ?? []);
+  };
+
+  /**
+   * Picks up a step split off a stop under the secondary button. The step is one shape down the
+   * ladder, a square giving a triangle and a triangle or a circle giving a circle, at the stop's
+   * own size; the stop itself is as it was. It may land only on the lines the stop is on, ahead
+   * of their trains. A dot, and the day's-end square, split nothing.
+   */
+  const startSplit = (stopId: string, at: Point) => {
+    const state = store.getState();
+    const stop = state.stops.find((s) => s.id === stopId);
+    if (!stop || stop.done || isDayEnd(state, stopId)) return;
+    const tracks = tracksOf(state, stopId)
+      .filter(({ track }) => !track.day)
+      .map(({ track }) => track.id);
+    if (tracks.length === 0) return;
+    splitDrag.current = { shape: stop.shape === 'square' ? 'triangle' : 'circle', size: stop.size, tracks, hits: [] };
+    carrySplit(at);
+  };
+
+  /** Carries the split step along its stop's lines: the ghost sits on the nearest in reach, or follows the pointer. */
+  const carrySplit = (at: Point) => {
+    const d = splitDrag.current;
+    if (!d) return;
+    const cam = cameraRef.current;
+    d.hits = snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale).filter((h) => d.tracks.includes(h.trackId));
+    const snap = d.hits[0];
+    const shown = snap ? worldToScreen(cam, snap.at) : at;
+    setGhost({ shape: d.shape, size: d.size, x: shown.x, y: shown.y, snapped: snap !== undefined });
+    setLegTime(snap ? { x: shown.x, y: shown.y, seconds: snap.offset } : null);
+  };
+
+  /** Lets go of the split step: a stop of its shape and size where the ghost sat. */
+  const dropSplit = () => {
+    const d = splitDrag.current;
+    splitDrag.current = null;
+    placeCarried(d?.shape ?? 'circle', d?.size ?? 'medium', d?.hits ?? []);
   };
 
   /**
@@ -634,6 +687,7 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
       case 'tap':
         if (g.target.kind === 'train') motionZoom(g.target.track);
         else if (g.target.kind === 'stop') complete(g.target.track, g.target.id);
+        else if (g.target.kind === 'split') openEditor(g.target.id); // a secondary click that never moved
         else if (g.target.kind === 'bubble') store.dispatch({ type: 'cycleTarget', trackId: g.target.track });
         else if (g.target.kind === 'tile') {
           if (g.target.tile === 'line') newLine();
@@ -678,8 +732,9 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
         else if (drawing.current) drawSun(g.at);
         else if (endDrag.current) dragDayEnd(g.at);
         else if (originDrag.current) dragOriginTo(g.at);
+        else if (splitDrag.current) carrySplit(g.at);
         else if (g.target.kind === 'tile') carryTile(g.at);
-        else dragTo(g.at);
+        else if (g.target.kind !== 'split') dragTo(g.at);
         return;
       case 'dragEnd':
         if (marquee.current) {
@@ -708,6 +763,11 @@ export function App({ store, now = Date.now, picture = shrink }: AppProps) {
         if (g.target.kind === 'tile') {
           carryTile(g.at);
           dropTile();
+          return;
+        }
+        if (g.target.kind === 'split') {
+          carrySplit(g.at);
+          dropSplit();
           return;
         }
         dragTo(g.at);

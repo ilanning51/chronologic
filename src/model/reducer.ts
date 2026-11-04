@@ -26,7 +26,7 @@ export interface GoalDragStart {
  */
 export type Action =
   | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; now: number }
-  | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; leg: number; x: number; y: number; now: number; keep?: number }
+  | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
   | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
@@ -173,13 +173,13 @@ function apply(world: World, action: Action): World {
     }
 
     case 'addStop': {
-      const { trackId, id, shape, leg, x, y, now, keep } = action;
+      const { trackId, id, shape, size = 'medium', leg, x, y, now, keep } = action;
       const track = world.tracks.find((t) => t.id === trackId);
       if (!track || world.stops.some((s) => s.id === id)) return world;
       // Against the derived train: a stop slipped in behind where it really is would shift its leg.
       const state = trainState(track, stopsById(world), now);
       if (state.parked || leg < state.leg || leg >= track.stops.length) return world;
-      const stop: Stop = { id, title: '', shape, size: 'medium', x, y, done: false };
+      const stop: Stop = { id, title: '', shape, size, x, y, done: false };
       const stops = [...track.stops.slice(0, leg), id, ...track.stops.slice(leg)];
       const after: World = {
         tracks: withTrack(world, { ...track, stops }),

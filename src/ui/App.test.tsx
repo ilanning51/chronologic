@@ -659,6 +659,53 @@ test('dragging the goal through the train and beyond never collapses the stops a
   expect(stopNamed(store, 'dentist').x - at.x).toBeCloseTo(k * (1000 - at.x), 6);
 });
 
+/** A secondary-button press on a stop, dragged to a screen point and let go. */
+function splitFrom(name: RegExp, to: { x: number; y: number }) {
+  const el = screen.getByRole('button', { name });
+  const from = { clientX: parseFloat(el.style.left), clientY: parseFloat(el.style.top) };
+  fireEvent.pointerDown(el, { pointerId: 1, button: 2, ...from });
+  fireEvent.pointerMove(el, { pointerId: 1, clientX: to.x, clientY: to.y });
+  fireEvent.pointerUp(el, { pointerId: 1, button: 2, clientX: to.x, clientY: to.y });
+}
+
+test('dragging the goal with the secondary button splits a step off it, placed where it is let go on its line', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  act(() => splitFrom(/^Wristband/, midLeg()));
+  const state = store.getState();
+  expect(state.tracks[0].stops).toHaveLength(3);
+  const added = state.stops.find((s) => s.id === state.tracks[0].stops[1])!;
+  // A large square gives a large triangle; the square itself is as it was.
+  expect(added).toMatchObject({ shape: 'triangle', size: 'large', title: '', done: false });
+  expect(added.x).toBeCloseTo(2000, 3);
+  expect(stopNamed(store, 'wristband')).toMatchObject({ shape: 'square', size: 'large', x: 3000 });
+  expect(screen.getByRole('textbox', { name: 'Stop title' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Edit stop' })).not.toBeInTheDocument();
+});
+
+test('a step split off a circle is a circle of its size, and one let go on paper is nothing', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  act(() => splitFrom(/^Dentist/, midLeg()));
+  const state = store.getState();
+  expect(state.tracks[0].stops).toHaveLength(3);
+  expect(state.stops.find((s) => s.id === state.tracks[0].stops[1])).toMatchObject({ shape: 'circle', size: 'medium' });
+  act(() => splitFrom(/^Wristband/, { x: 500, y: 100 }));
+  expect(store.getState().tracks[0].stops).toHaveLength(3);
+  expect(document.querySelector('.ghost')).not.toBeInTheDocument();
+});
+
+test('a done dot splits nothing', () => {
+  const world = running();
+  world.stops[0].done = true;
+  world.tracks[0].train = { leg: 1, departedAt: 0 };
+  const store = createStore(world);
+  render(<App store={store} now={() => 500_000} />);
+  const before = store.getState();
+  act(() => splitFrom(/^Dentist/, midLeg()));
+  expect(store.getState()).toBe(before);
+});
+
 test('a right click on a pending stop is a long press: the editor opens and nothing completes', () => {
   const store = createStore(running());
   render(<App store={store} now={() => WAITING} />);
