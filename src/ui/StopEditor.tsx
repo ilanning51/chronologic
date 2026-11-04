@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type ChangeEvent, type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { colorVar } from '../model/palette';
 import type { Size, Stop } from '../model/types';
 
@@ -16,7 +16,9 @@ interface StopEditorProps {
    * is the line's: its goal's title, or "today" for the day.
    */
   lines: { trackId: string; color: number | null; name: string }[];
-  onEdit: (change: { title?: string; shape?: 'circle' | 'triangle'; size?: Size }) => void;
+  onEdit: (change: { title?: string; shape?: 'circle' | 'triangle'; size?: Size; image?: string | null }) => void;
+  /** A picture for the goal was chosen from the device. */
+  onPicture?: (file: File) => void;
   onDelete: () => void;
   onUndo: () => void;
   onClose: () => void;
@@ -52,7 +54,8 @@ function HoldToDelete({ holding, what }: { holding: boolean; what: 'line' | 'day
  * Opens on a long press, as an ink pill in the HUD. On a done dot it offers "Not done" and,
  * on the goal, a hold-to-delete that removes the line. A pending stop gets its title field,
  * its shape (not the goal's) and size, a chip per line it can leave, and Delete: at once for a
- * stop, held for the goal. The day's-end square has nothing to name or shape: only the hold,
+ * stop, held for the goal. The goal also takes a picture of what it is for, chosen from the
+ * device, and lets it go again. The day's-end square has nothing to name or shape: only the hold,
  * which deletes the day, and "Not done" once it is done.
  */
 export function StopEditor({
@@ -63,6 +66,7 @@ export function StopEditor({
   holding,
   lines,
   onEdit,
+  onPicture,
   onDelete,
   onUndo,
   onClose,
@@ -70,6 +74,13 @@ export function StopEditor({
 }: StopEditorProps) {
   const [title, setTitle] = useState(stop.title);
   const input = useRef<HTMLInputElement>(null);
+  const file = useRef<HTMLInputElement>(null);
+
+  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const chosen = e.target.files?.[0];
+    e.target.value = '';
+    if (chosen) onPicture?.(chosen);
+  };
 
   useEffect(() => {
     if (!done && !dayEnd) input.current?.focus();
@@ -155,6 +166,19 @@ export function StopEditor({
             />
           ))}
         </div>
+      )}
+      {goal && (
+        <>
+          <button type="button" className="pill-text" aria-label="Picture" onClick={() => file.current?.click()}>
+            Picture
+          </button>
+          <input ref={file} type="file" accept="image/*" aria-label="Choose a picture" className="file" onChange={onFile} />
+          {stop.image !== undefined && (
+            <button type="button" className="pill-text" aria-label="No picture" onClick={() => onEdit({ image: null })}>
+              No picture
+            </button>
+          )}
+        </>
       )}
       {goal ? (
         <HoldToDelete holding={holding} what="line" />

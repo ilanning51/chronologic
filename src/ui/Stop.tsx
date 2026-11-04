@@ -24,7 +24,8 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
  * One task on the plane: a solid shape for its kind and size, a dot once done, a label
  * beneath when there is room. A project's goal's name is set in bold capitals, and once done it
  * stays as a terminus, a large ink dot with its name, the way a system map keeps its
- * termini. The shape's centre sits on the stop's screen point. The next
+ * termini. A goal with a picture carries it as a mural above the square, the thing the line is
+ * for. The shape's centre sits on the stop's screen point. The next
  * stop is raised above the rest, so where hit targets crowd it is the one a tap finds. A stop
  * on two or more lines is a ring: its own shape in ink around a paper centre. Where a train has
  * long waited, a small crowd of muted dots gathers beside it.
@@ -58,6 +59,7 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
       aria-label={name}
       style={{ left: stop.x, top: stop.y, ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
     >
+      {stop.image !== undefined && <img aria-hidden="true" alt="" className="mural" src={stop.image} draggable={false} />}
       <span aria-hidden="true" className={stop.done ? 'shape dot' : ['shape', stop.ring && 'ring', stop.shape, stop.size].filter(Boolean).join(' ')} />
       {stop.crowd > 0 && !stop.done && (
         // A look, not news: the name says nothing of it, and it carries no count.

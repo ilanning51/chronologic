@@ -31,7 +31,7 @@ export type Action =
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
   | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
   | { type: 'moveGroup'; stops: Record<string, Point>; origins: Record<string, Point>; now: number; keep?: Record<string, number> } // by stop id and track id, to their new points
-  | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size }
+  | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size; image?: string | null } // image null takes the picture away
   | { type: 'delete'; id: string; now: number } // deleting the goal deletes the track
   | { type: 'join'; trackId: string; stopId: string; leg: number; x: number; y: number; now: number }
   | { type: 'leave'; trackId: string; stopId: string; now: number }
@@ -264,15 +264,19 @@ function apply(world: World, action: Action): World {
     }
 
     case 'edit': {
-      const { id, title, shape, size } = action;
+      const { id, title, shape, size, image } = action;
       const found = tracksOf(world, id);
       if (found.length === 0) return world;
       return {
         ...world,
         stops: world.stops.map((s) => {
           if (s.id !== id) return s;
+          // Only a square holds a picture; null takes it away, key and all.
+          const { image: had, ...rest } = s;
+          const picture = image === undefined || s.shape !== 'square' ? had : image === null ? undefined : image;
           return {
-            ...s,
+            ...rest,
+            ...(picture !== undefined ? { image: picture } : {}),
             ...(title !== undefined ? { title } : {}),
             ...(shape !== undefined && s.shape !== 'square' ? { shape } : {}),
             ...(size !== undefined ? { size } : {}),

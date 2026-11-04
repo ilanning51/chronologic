@@ -40,6 +40,7 @@ import { Grid } from './Grid';
 import { Legend } from './Legend';
 import { LegTime } from './LegTime';
 import { NameField } from './NameField';
+import { shrink } from './picture';
 import { Plane } from './Plane';
 import { SelectionBox } from './SelectionBox';
 import { Stop } from './Stop';
@@ -52,6 +53,8 @@ export interface AppProps {
   store: Store;
   /** The clock the app reads, injectable for tests. */
   now?: () => number;
+  /** Turns a chosen image into the small data URL a goal keeps; injectable for tests. */
+  picture?: (file: Blob) => Promise<string>;
 }
 
 /**
@@ -103,7 +106,7 @@ function useFly(setCamera: (c: Camera) => void) {
 }
 
 /** The v2 plane: every track and stop in screen space, redrawn as the clock ticks. */
-export function App({ store, now = Date.now }: AppProps) {
+export function App({ store, now = Date.now, picture = shrink }: AppProps) {
   const world = useWorld(store);
   const [camera, setCamera] = useState(HOME);
   const cameraRef = useRef(camera);
@@ -803,6 +806,13 @@ export function App({ store, now = Date.now }: AppProps) {
         holding={holding}
         lines={lines}
         onEdit={(change) => store.dispatch({ type: 'edit', id: editedStop.id, ...change })}
+        onPicture={(file) => {
+          const id = editedStop.id;
+          // A file the browser cannot read as an image leaves the goal as it was.
+          picture(file)
+            .then((image) => store.dispatch({ type: 'edit', id, image }))
+            .catch(() => undefined);
+        }}
         onDelete={() => {
           store.dispatch({ type: 'delete', id: editedStop.id, now: now() });
           setEditing(null);
@@ -859,6 +869,7 @@ export function App({ store, now = Date.now }: AppProps) {
             soonest={v.id === soonest?.id}
             shape={target.shape}
             title={target.title}
+            image={target.image}
             {...at}
           />,
         ]

@@ -1,7 +1,7 @@
 import uiCss from '../styles/ui.css?raw';
 import tokensCss from '../styles/tokens.css?raw';
 import { StrictMode } from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { dayOf } from '../model/days';
 import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
@@ -82,6 +82,46 @@ test('the paper takes the tint of the hour: dusk is warm, and leaving gives the 
   expect(paperAt(19)).not.toBe(DAY_PAPER);
   unmount();
   expect(root.style.getPropertyValue('--paper')).toBe('');
+});
+
+const PICTURE = 'data:image/jpeg;base64,AAAA';
+
+test('a goal with a picture carries it as a mural, and its bubble shows it in place of the shape', () => {
+  const world = running();
+  world.stops[1].image = PICTURE;
+  render(<App store={createStore(world)} now={() => WAITING} />);
+  const goal = screen.getByRole('button', { name: /^Wristband/ });
+  const mural = goal.querySelector('img.mural') as HTMLImageElement;
+  expect(mural).toBeInTheDocument();
+  expect(mural.getAttribute('src')).toBe(PICTURE);
+  expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('img.mural')).toBeNull();
+  // The mural paints only: the press goes to the stop.
+  expect(/\.stop \.mural\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/pointer-events:\s*none/);
+
+  // The goal off screen: its bubble carries the picture, not the square.
+  const far = farGoal();
+  far.stops[1].image = PICTURE;
+  cleanup();
+  render(<App store={createStore(far)} now={() => 500_000} />);
+  const bubble = document.querySelector('[data-target="bubble"]')!;
+  expect((bubble.querySelector('img.mural') as HTMLImageElement).getAttribute('src')).toBe(PICTURE);
+  expect(bubble.querySelector('.shape')).toBeNull();
+});
+
+test("choosing a picture in the goal's editor keeps the shrunk one on the goal", async () => {
+  vi.useFakeTimers();
+  const store = createStore(running());
+  const picture = vi.fn(async () => PICTURE);
+  render(<App store={store} now={() => WAITING} picture={picture} />);
+  openEditorOn(/^Wristband/);
+  const file = new File(['x'], 'ship.jpg', { type: 'image/jpeg' });
+  fireEvent.change(screen.getByLabelText('Choose a picture'), { target: { files: [file] } });
+  expect(picture).toHaveBeenCalledWith(file);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(store.getState().stops.find((s) => s.id === 'wristband')!.image).toBe(PICTURE);
+  expect(screen.getByRole('button', { name: /^Wristband/ }).querySelector('img.mural')).toBeInTheDocument();
 });
 
 test('every stop has a centered 44 px hit target that paints nothing', () => {

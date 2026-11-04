@@ -123,3 +123,46 @@ test("a done day's-end square offers Not done and the hold", () => {
   expect(onUndo).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button', { name: 'Hold to delete the day' })).toBeInTheDocument();
 });
+
+/** A pending goal's editor with every handler a spy, re-renderable with a picture. */
+function goalEditor(image?: string) {
+  const onPicture = vi.fn();
+  const onEdit = vi.fn();
+  const editor = (picture?: string) => (
+    <StopEditor
+      stop={{ ...stop, shape: 'square', done: false, ...(picture !== undefined ? { image: picture } : {}) }}
+      goal
+      done={false}
+      holding={false}
+      lines={[]}
+      onEdit={onEdit}
+      onPicture={onPicture}
+      onDelete={vi.fn()}
+      onUndo={vi.fn()}
+      onClose={vi.fn()}
+      onLeave={vi.fn()}
+    />
+  );
+  const { rerender } = render(editor(image));
+  return { onPicture, onEdit, rerender: (picture?: string) => rerender(editor(picture)) };
+}
+
+test('a pending goal offers a picture from the device, and lets one go again', () => {
+  const { onPicture, onEdit, rerender } = goalEditor();
+  expect(screen.getByRole('button', { name: 'Picture' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'No picture' })).not.toBeInTheDocument();
+  const chooser = screen.getByLabelText('Choose a picture') as HTMLInputElement;
+  expect(chooser).toHaveAttribute('accept', 'image/*');
+  const file = new File(['x'], 'ship.jpg', { type: 'image/jpeg' });
+  fireEvent.change(chooser, { target: { files: [file] } });
+  expect(onPicture).toHaveBeenCalledWith(file);
+
+  rerender('data:image/jpeg;base64,AAAA');
+  fireEvent.click(screen.getByRole('button', { name: 'No picture' }));
+  expect(onEdit).toHaveBeenCalledWith({ image: null });
+});
+
+test('a plain stop offers no picture', () => {
+  setup({ goal: false, done: false });
+  expect(screen.queryByRole('button', { name: 'Picture' })).not.toBeInTheDocument();
+});

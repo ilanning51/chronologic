@@ -18,6 +18,8 @@ export interface StopView {
   size: Size;
   done: boolean;
   title: string;
+  /** A goal's picture, drawn as its mural. */
+  image?: string;
   label: boolean;
   next: boolean;
   goal: boolean;
@@ -129,6 +131,7 @@ export function layoutTrack(
     size: stop.size,
     done: stop.done,
     title: stop.title,
+    ...(stop.image !== undefined ? { image: stop.image } : {}),
     label: labeled.has(stop.id),
     next: index === next,
     goal: index === goalIndex,
