@@ -48,6 +48,13 @@ function stateOf(world: World) {
 const stopOf = (world: World, id: string) => world.stops.find((s) => s.id === id)!;
 
 describe('newTrack', () => {
+  test('a goal point puts the goal there', () => {
+    const w = reduce(EMPTY, { type: 'newTrack', id: 't', goalId: 'g', title: '', origin: { x: 0, y: 0 }, goal: { x: 500, y: -200 }, now });
+    expect(stopOf(w, 'g')).toMatchObject({ x: 500, y: -200, shape: 'square', size: 'large' });
+    expect(w.tracks[0].origin).toEqual({ x: 0, y: 0 });
+    expect(w.tracks[0].train).toEqual({ leg: 0, departedAt: now });
+  });
+
   test('makes a large square goal a month out, a train about to leave, and cycles colours', () => {
     const one = reduce(EMPTY, { type: 'newTrack', id: 't1', goalId: 'g1', title: 'Book', origin: { x: 10, y: 20 }, now });
     expect(one.tracks[0]).toEqual({

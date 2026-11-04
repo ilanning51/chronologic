@@ -25,7 +25,7 @@ export interface GoalDragStart {
  * track the record does not name keeps what it has now.
  */
 export type Action =
-  | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; now: number }
+  | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; goal?: Point; now: number } // goal: a month out, unless drawn
   | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
@@ -151,14 +151,15 @@ function apply(world: World, action: Action): World {
   switch (action.type) {
     case 'newTrack': {
       const { id, goalId, title, origin, now } = action;
+      const at = action.goal ?? { x: origin.x + DEFAULT_GOAL_SECONDS, y: origin.y };
       if (world.tracks.some((t) => t.id === id) || world.stops.some((s) => s.id === goalId)) return world;
       const goal: Stop = {
         id: goalId,
         title,
         shape: 'square',
         size: 'large',
-        x: origin.x + DEFAULT_GOAL_SECONDS,
-        y: origin.y,
+        x: at.x,
+        y: at.y,
         done: false,
       };
       const track: Track = {
