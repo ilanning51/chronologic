@@ -29,6 +29,8 @@ export type Action =
   | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
+  | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
+  | { type: 'moveGroup'; stops: Record<string, Point>; origins: Record<string, Point>; now: number; keep?: Record<string, number> } // by stop id and track id, to their new points
   | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size }
   | { type: 'delete'; id: string; now: number } // deleting the goal deletes the track
   | { type: 'join'; trackId: string; stopId: string; leg: number; x: number; y: number; now: number }
@@ -231,6 +233,33 @@ function apply(world: World, action: Action): World {
       // A shared stop is one point, so every line through anything that moved re-routes.
       const moved = new Set([goalId, ...ahead]);
       const touched = world.tracks.filter((t) => t.stops.some((id) => moved.has(id)));
+      return touched.reduce((w, t) => keepTrain(world, w, t.id, now, keep?.[t.id]), after);
+    }
+
+    case 'moveOrigin': {
+      const { trackId, x, y, now, keep } = action;
+      const track = world.tracks.find((t) => t.id === trackId);
+      if (!track) return world;
+      // The first leg may change length under its train; any later leg is history and keeps its time.
+      const after: World = { ...world, tracks: withTrack(world, { ...track, origin: { x, y } }), lastTouched: trackId };
+      return keepTrain(world, after, trackId, now, keep);
+    }
+
+    case 'moveGroup': {
+      const { now, keep } = action;
+      // Only what the world knows; a stop moves done or not, as the whole picture slides together.
+      const stops = Object.entries(action.stops).filter(([id]) => world.stops.some((s) => s.id === id));
+      const origins = Object.entries(action.origins).filter(([id]) => world.tracks.some((t) => t.id === id));
+      if (stops.length === 0 && origins.length === 0) return world;
+      const stopAt = new Map(stops);
+      const originAt = new Map(origins);
+      // Every line whose start moved or that lists a moved stop re-routes, and each train keeps its place.
+      const touched = world.tracks.filter((t) => originAt.has(t.id) || t.stops.some((id) => stopAt.has(id)));
+      const after: World = {
+        tracks: world.tracks.map((t) => (originAt.has(t.id) ? { ...t, origin: { ...originAt.get(t.id)! } } : t)),
+        stops: world.stops.map((s) => (stopAt.has(s.id) ? { ...s, ...stopAt.get(s.id)! } : s)),
+        lastTouched: touched[0]?.id ?? world.lastTouched,
+      };
       return touched.reduce((w, t) => keepTrain(world, w, t.id, now, keep?.[t.id]), after);
     }
 

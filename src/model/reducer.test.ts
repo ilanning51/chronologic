@@ -901,3 +901,92 @@ describe('the day line', () => {
     expect(reduce(noDay, { type: 'moveDayEnd', x: 0, y: 0, now })).toBe(noDay);
   });
 });
+
+describe('moveOrigin', () => {
+  test('moves the start, and a train on the first leg keeps its seconds', () => {
+    const before = running();
+    const was = trainState(before.tracks[0], byId(before), now);
+    const after = reduce(before, { type: 'moveOrigin', trackId, x: -1000, y: 0, now });
+    expect(after.tracks[0].origin).toEqual({ x: -1000, y: 0 });
+    expect(after.stops).toEqual(before.stops);
+    const is = trainState(after.tracks[0], byId(after), now);
+    expect(is.leg).toBe(0);
+    expect(is.seconds).toBeCloseTo(was.seconds, 6);
+    expect(legSeconds(trackRoute(after.tracks[0], byId(after)), 0)).toBe(2000);
+  });
+
+  test('past the first stop the start is history: it moves and nothing else changes', () => {
+    const before = running();
+    before.stops[0].done = true;
+    before.tracks[0].train = { leg: 1, departedAt: 0 };
+    const after = reduce(before, { type: 'moveOrigin', trackId, x: 0, y: -500, now });
+    expect(after.tracks[0].origin).toEqual({ x: 0, y: -500 });
+    expect(after.tracks[0].train).toEqual(before.tracks[0].train);
+  });
+
+  test('an unknown track is ignored', () => {
+    const before = running();
+    expect(reduce(before, { type: 'moveOrigin', trackId: 'nope', x: 1, y: 1, now })).toBe(before);
+  });
+});
+
+describe('moveGroup', () => {
+  test('a whole line moves as a picture: every leg keeps its time and the train its place', () => {
+    const before = running();
+    const was = trainState(before.tracks[0], byId(before), now);
+    const shift = (p: { x: number; y: number }) => ({ x: p.x + 100, y: p.y - 50 });
+    const after = reduce(before, {
+      type: 'moveGroup',
+      stops: Object.fromEntries(before.stops.map((s) => [s.id, shift(s)])),
+      origins: { [trackId]: shift(before.tracks[0].origin) },
+      now,
+    });
+    expect(after.tracks[0].origin).toEqual({ x: 100, y: -50 });
+    expect(after.stops.map((s) => [s.x, s.y])).toEqual([
+      [1100, -50],
+      [1100, 950],
+      [3100, 950],
+    ]);
+    expect(total(after)).toBeCloseTo(total(before), 6);
+    const is = trainState(after.tracks[0], byId(after), now);
+    expect(is.seconds).toBeCloseTo(was.seconds, 6);
+    expect(is.at).toEqual(shift(was.at));
+  });
+
+  test('a goal in the group translates and never scales, and a leg half in stretches with the train kept', () => {
+    const before = running();
+    const was = trainState(before.tracks[0], byId(before), now);
+    const after = reduce(before, {
+      type: 'moveGroup',
+      stops: { b: { x: 1000, y: 2000 }, g: { x: 3000, y: 2000 } },
+      origins: {},
+      now,
+    });
+    expect(after.stops.find((s) => s.id === 'a')).toMatchObject({ x: 1000, y: 0 });
+    expect(after.stops.find((s) => s.id === 'g')).toMatchObject({ x: 3000, y: 2000 });
+    expect(trainState(after.tracks[0], byId(after), now).seconds).toBeCloseTo(was.seconds, 6);
+  });
+
+  test('a done stop moves too, and the train behind a moved leg keeps its place on every line', () => {
+    const before = twoLines();
+    before.stops[0].done = true;
+    before.tracks[0].train = { leg: 1, departedAt: 0 };
+    const was = before.tracks.map((t) => trainState(t, byId(before), now));
+    const after = reduce(before, {
+      type: 'moveGroup',
+      stops: { dentist: { x: 1000, y: 300 }, shared: { x: 1500, y: 900 } },
+      origins: {},
+      now,
+    });
+    expect(after.stops.find((s) => s.id === 'dentist')).toMatchObject({ x: 1000, y: 300, done: true });
+    after.tracks.forEach((t, i) => expect(trainState(t, byId(after), now).seconds).toBeCloseTo(was[i].seconds, 6));
+  });
+
+  test('ids the world does not know are ignored, and an empty group is no change', () => {
+    const before = running();
+    expect(reduce(before, { type: 'moveGroup', stops: {}, origins: {}, now })).toBe(before);
+    expect(
+      reduce(before, { type: 'moveGroup', stops: { nope: { x: 0, y: 0 } }, origins: { nope: { x: 0, y: 0 } }, now }),
+    ).toBe(before);
+  });
+});
