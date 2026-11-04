@@ -8,7 +8,9 @@ interface TrackProps {
 
 /**
  * One track as thick opaque lines and its train. The svg is a single pixel at the origin
- * that draws outside its own box, since the segments are already in screen pixels. It is
+ * that draws outside its own box, since the segments are already in screen pixels. The road
+ * behind the train is muted and the road ahead is the line's colour, so the picture says how far
+ * along the line is; the train covers the join. It is
  * drawn before the stops, so a train waiting at a stop sits beneath it and the stop takes
  * the tap. Only a rolling train is a target of its own, and it carries an unpainted 44 px square
  * beneath it so the 30 by 20 body is not all a finger has to find. The start of the line has the
@@ -25,6 +27,17 @@ export function Track({ view }: TrackProps) {
   const place = `translate(${train.x}px, ${train.y}px) rotate(${train.angle}deg)`;
   return (
     <svg className="track" aria-hidden="true" width={1} height={1}>
+      {view.behind.map(([a, b], i) => (
+        <line
+          key={`behind-${i}`}
+          className="behind"
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          style={{ stroke: 'var(--muted)', strokeWidth: width, strokeLinecap: 'round' }}
+        />
+      ))}
       {view.segments.map(([a, b], i) => (
         <line
           key={i}

@@ -201,6 +201,15 @@ describe('moveGoal', () => {
 });
 
 describe('edit', () => {
+  test('a picture on a goal is a change, so the no-op rule never swallows it', () => {
+    const w = running();
+    const goal = w.tracks[0].stops[w.tracks[0].stops.length - 1];
+    const next = reduce(w, { type: 'edit', id: goal, image: 'data:image/png;base64,AAAA' });
+    expect(next).not.toBe(w);
+    expect(stopOf(next, goal).image).toBe('data:image/png;base64,AAAA');
+    expect(reduce(w, { type: 'edit', id: goal, image: null })).toBe(w); // no picture to take away
+  });
+
   test('an edit that changes nothing returns the same world', () => {
     const w = running();
     const title = stopOf(w, 'a').title;
@@ -1002,5 +1011,20 @@ describe('moveGroup', () => {
     expect(
       reduce(before, { type: 'moveGroup', stops: { nope: { x: 0, y: 0 } }, origins: { nope: { x: 0, y: 0 } }, now }),
     ).toBe(before);
+  });
+});
+
+describe('a goal picture', () => {
+  test('edit sets a picture on a square, null takes it away key and all, and a circle never holds one', () => {
+    const world = running();
+    const withPicture = reduce(world, { type: 'edit', id: 'g', image: 'data:image/jpeg;base64,AAAA' });
+    expect(withPicture.stops.find((s) => s.id === 'g')!.image).toBe('data:image/jpeg;base64,AAAA');
+    // An edit that says nothing of the picture keeps it.
+    const renamed = reduce(withPicture, { type: 'edit', id: 'g', title: 'Ship' });
+    expect(renamed.stops.find((s) => s.id === 'g')).toMatchObject({ title: 'Ship', image: 'data:image/jpeg;base64,AAAA' });
+    const without = reduce(renamed, { type: 'edit', id: 'g', image: null });
+    expect('image' in without.stops.find((s) => s.id === 'g')!).toBe(false);
+    const circle = reduce(world, { type: 'edit', id: 'a', image: 'data:image/jpeg;base64,AAAA' });
+    expect('image' in circle.stops.find((s) => s.id === 'a')!).toBe(false);
   });
 });

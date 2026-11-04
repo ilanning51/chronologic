@@ -32,6 +32,9 @@
   --square-small: 13px;
   --square-medium: 20px;
   --square-large: 28px;
+  /* A goal's picture: the mural above its square, and the small one in its bubble. */
+  --mural: 72px;
+  --mural-small: 32px;
 
   /* HUD sizes, in rem so the browser text size scales them. */
   --hit: 2.75rem;

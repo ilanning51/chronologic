@@ -192,6 +192,19 @@
   background: var(--muted);
 }
 
+/* A goal's mural: its picture, a square tile above the shape, opaque and unframed. It paints
+   only; the stop's hit target and the shape take every press. */
+.stop .mural {
+  position: absolute;
+  left: 0;
+  top: calc(-1 * (var(--square-large) / 2 + 6px));
+  width: var(--mural);
+  height: var(--mural);
+  transform: translate(-50%, -100%);
+  object-fit: cover;
+  pointer-events: none;
+}
+
 /* The label hangs beneath the shape, centered on the stop's point. */
 .stop .label {
   position: absolute;
@@ -205,6 +218,25 @@
 
 .stop.done .label {
   color: var(--muted);
+}
+
+/* A goal's name, on the plane or in a bubble: bold capitals, the way the system map sets the
+   end of a line. */
+.goal-name {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* A done goal stays on the map as a large ink dot with its name in ink, however its line dims. */
+.stop.terminus .shape.dot {
+  width: var(--square-large);
+  height: var(--square-large);
+  background: var(--ink);
+}
+
+.stop.terminus .label {
+  color: var(--ink);
 }
 
 /* Focus and press are the shape filling with the track color, never a ring. */
@@ -333,6 +365,18 @@ button:focus-visible {
   outline: none;
   user-select: text;
   -webkit-user-select: text;
+}
+
+/* The file chooser behind the Picture button: the button is the control, this is its plumbing. */
+.hud-editor input.file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .shape-button {
@@ -579,6 +623,16 @@ button:focus-visible {
   display: block;
   flex: none;
   background: var(--track-color);
+}
+
+/* The goal's picture in its bubble, where its shape would be. */
+.bubble .mural {
+  display: block;
+  flex: none;
+  width: var(--mural-small);
+  height: var(--mural-small);
+  margin-left: -0.375rem;
+  object-fit: cover;
 }
 
 /* The soonest line's bubble is filled with its colour, its words and shape in paper. */

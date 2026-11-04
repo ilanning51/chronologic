@@ -27,7 +27,8 @@ function isStop(v: unknown): v is Stop {
     SIZES.includes(v.size as Size) &&
     isNumber(v.x) &&
     isNumber(v.y) &&
-    typeof v.done === 'boolean'
+    typeof v.done === 'boolean' &&
+    (v.image === undefined || (typeof v.image === 'string' && v.image.startsWith('data:image/')))
   );
 }
 

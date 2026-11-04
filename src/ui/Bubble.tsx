@@ -17,6 +17,8 @@ interface BubbleProps {
   color: number;
   shape: Shape;
   title: string;
+  /** The goal's picture, shown in place of its shape. */
+  image?: string;
   /** Where the bubble's centre sits on screen. */
   x: number;
   y: number;
@@ -30,8 +32,13 @@ interface BubbleProps {
 
 const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal', square: 'goal' };
 
-/** A paper pill on the window edge naming what a line points at, off screen in that direction. */
-export function Bubble({ track, color, shape, title, x, y, side, soonest = false, day = false }: BubbleProps) {
+/**
+ * A paper pill on the window edge naming what a line points at, off screen in that direction. A
+ * square is a goal, and a goal's name is set in bold capitals, as a terminus is on the map. A
+ * goal with a picture shows it in place of its shape, so the thing the line is for is a glance
+ * away from anywhere.
+ */
+export function Bubble({ track, color, shape, title, image, x, y, side, soonest = false, day = false }: BubbleProps) {
   return (
     <button
       type="button"
@@ -41,8 +48,12 @@ export function Bubble({ track, color, shape, title, x, y, side, soonest = false
       aria-label={`${title || 'Unnamed'}, ${SHAPE_WORDS[shape]}. Tap to change what this line points at.`}
       style={{ left: x, top: y, transform: ANCHOR[side], ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
     >
-      <span aria-hidden="true" className={`shape ${shape} medium`} />
-      <span aria-hidden="true" className="title">
+      {image !== undefined ? (
+        <img aria-hidden="true" alt="" className="mural" src={image} draggable={false} />
+      ) : (
+        <span aria-hidden="true" className={`shape ${shape} medium`} />
+      )}
+      <span aria-hidden="true" className={shape === 'square' ? 'title goal-name' : 'title'}>
         {title}
       </span>
     </button>

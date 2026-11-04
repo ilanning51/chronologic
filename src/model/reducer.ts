@@ -26,12 +26,12 @@ export interface GoalDragStart {
  */
 export type Action =
   | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; goal?: Point; now: number } // goal: a month out, unless drawn
-  | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; leg: number; x: number; y: number; now: number; keep?: number }
+  | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
   | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
   | { type: 'moveGroup'; stops: Record<string, Point>; origins: Record<string, Point>; now: number; keep?: Record<string, number> } // by stop id and track id, to their new points
-  | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size }
+  | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size; image?: string | null } // image null takes the picture away
   | { type: 'delete'; id: string; now: number } // deleting the goal deletes the track
   | { type: 'join'; trackId: string; stopId: string; leg: number; x: number; y: number; now: number }
   | { type: 'leave'; trackId: string; stopId: string; now: number }
@@ -174,13 +174,13 @@ function apply(world: World, action: Action): World {
     }
 
     case 'addStop': {
-      const { trackId, id, shape, leg, x, y, now, keep } = action;
+      const { trackId, id, shape, size = 'medium', leg, x, y, now, keep } = action;
       const track = world.tracks.find((t) => t.id === trackId);
       if (!track || world.stops.some((s) => s.id === id)) return world;
       // Against the derived train: a stop slipped in behind where it really is would shift its leg.
       const state = trainState(track, stopsById(world), now);
       if (state.parked || leg < state.leg || leg >= track.stops.length) return world;
-      const stop: Stop = { id, title: '', shape, size: 'medium', x, y, done: false };
+      const stop: Stop = { id, title: '', shape, size, x, y, done: false };
       const stops = [...track.stops.slice(0, leg), id, ...track.stops.slice(leg)];
       const after: World = {
         tracks: withTrack(world, { ...track, stops }),
@@ -265,7 +265,7 @@ function apply(world: World, action: Action): World {
     }
 
     case 'edit': {
-      const { id, title, shape, size } = action;
+      const { id, title, shape, size, image } = action;
       const found = tracksOf(world, id);
       const stop = world.stops.find((s) => s.id === id);
       if (found.length === 0 || !stop) return world;
@@ -273,14 +273,19 @@ function apply(world: World, action: Action): World {
       const same =
         (title === undefined || title === stop.title) &&
         (shape === undefined || shape === stop.shape || stop.shape === 'square') &&
-        (size === undefined || size === stop.size);
+        (size === undefined || size === stop.size) &&
+        (image === undefined || stop.shape !== 'square' || image === (stop.image ?? null));
       if (same) return world;
       return {
         ...world,
         stops: world.stops.map((s) => {
           if (s.id !== id) return s;
+          // Only a square holds a picture; null takes it away, key and all.
+          const { image: had, ...rest } = s;
+          const picture = image === undefined || s.shape !== 'square' ? had : image === null ? undefined : image;
           return {
-            ...s,
+            ...rest,
+            ...(picture !== undefined ? { image: picture } : {}),
             ...(title !== undefined ? { title } : {}),
             ...(shape !== undefined && s.shape !== 'square' ? { shape } : {}),
             ...(size !== undefined ? { size } : {}),

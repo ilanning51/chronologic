@@ -1,11 +1,12 @@
 import uiCss from '../styles/ui.css?raw';
 import tokensCss from '../styles/tokens.css?raw';
 import { StrictMode } from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { dayOf } from '../model/days';
 import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
+import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
 import { TRACK_WIDTH } from '../plane/world';
@@ -41,6 +42,85 @@ test('a done stop is a dot and a finished track is muted', () => {
   for (const line of lines) expect((line as SVGLineElement).style.stroke).toBe('var(--muted)');
   expect(document.querySelector('[data-train]')).not.toHaveAttribute('data-target');
   expect(document.querySelector('[data-target="train"]')).not.toBeInTheDocument();
+});
+
+test('a done goal stays as a terminus: a large ink dot that keeps its name in ink', () => {
+  const world = running();
+  world.stops = world.stops.map((s) => ({ ...s, done: true }));
+  world.tracks[0].train = { leg: 2, departedAt: 0 };
+  render(<App store={createStore(world)} now={() => 500_000} />);
+  const goal = screen.getByRole('button', { name: /^Wristband.*done/ });
+  expect(goal).toHaveClass('terminus');
+  expect(goal.querySelector('.shape.dot')).toBeInTheDocument();
+  // A passed step is an ordinary dot.
+  expect(screen.getByRole('button', { name: /^Dentist/ })).not.toHaveClass('terminus');
+  const dot = /\.stop\.terminus \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(dot).toMatch(/width:\s*var\(--square-large\)/);
+  expect(dot).toMatch(/background:\s*var\(--ink\)/);
+  expect(/\.stop\.terminus \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
+  // The terminus rules come after the finished and done ones, so they win at equal weight.
+  expect(uiCss.indexOf('.stop.terminus .shape.dot')).toBeGreaterThan(uiCss.indexOf('.stop.finished .shape.dot'));
+  expect(uiCss.indexOf('.stop.terminus .label')).toBeGreaterThan(uiCss.indexOf('.stop.done .label'));
+});
+
+test("a goal's name is set in bold capitals on the plane and in its bubble", () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  expect(screen.getByText('Wristband')).toHaveClass('label', 'goal-name');
+  expect(screen.getByText('Dentist')).not.toHaveClass('goal-name');
+  const rule = /\.goal-name\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(rule).toMatch(/font-weight:\s*700/);
+  expect(rule).toMatch(/text-transform:\s*uppercase/);
+});
+
+test('the paper takes the tint of the hour: dusk is warm, and leaving gives the day paper back', () => {
+  const dusk = new Date(2026, 10, 3, 19, 0).getTime();
+  const { unmount } = render(<App store={createStore(running())} now={() => dusk} />);
+  const root = document.documentElement;
+  expect(root.style.getPropertyValue('--paper')).toBe(paperAt(19));
+  expect(root.style.getPropertyValue('--grid')).toBe(gridTint(paperAt(19)));
+  expect(paperAt(19)).not.toBe(DAY_PAPER);
+  unmount();
+  expect(root.style.getPropertyValue('--paper')).toBe('');
+});
+
+const PICTURE = 'data:image/jpeg;base64,AAAA';
+
+test('a goal with a picture carries it as a mural, and its bubble shows it in place of the shape', () => {
+  const world = running();
+  world.stops[1].image = PICTURE;
+  render(<App store={createStore(world)} now={() => WAITING} />);
+  const goal = screen.getByRole('button', { name: /^Wristband/ });
+  const mural = goal.querySelector('img.mural') as HTMLImageElement;
+  expect(mural).toBeInTheDocument();
+  expect(mural.getAttribute('src')).toBe(PICTURE);
+  expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('img.mural')).toBeNull();
+  // The mural paints only: the press goes to the stop.
+  expect(/\.stop \.mural\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/pointer-events:\s*none/);
+
+  // The goal off screen: its bubble carries the picture, not the square.
+  const far = farGoal();
+  far.stops[1].image = PICTURE;
+  cleanup();
+  render(<App store={createStore(far)} now={() => 500_000} />);
+  const bubble = document.querySelector('[data-target="bubble"]')!;
+  expect((bubble.querySelector('img.mural') as HTMLImageElement).getAttribute('src')).toBe(PICTURE);
+  expect(bubble.querySelector('.shape')).toBeNull();
+});
+
+test("choosing a picture in the goal's editor keeps the shrunk one on the goal", async () => {
+  vi.useFakeTimers();
+  const store = createStore(running());
+  const picture = vi.fn(async () => PICTURE);
+  render(<App store={store} now={() => WAITING} picture={picture} />);
+  openEditorOn(/^Wristband/);
+  const file = new File(['x'], 'ship.jpg', { type: 'image/jpeg' });
+  fireEvent.change(screen.getByLabelText('Choose a picture'), { target: { files: [file] } });
+  expect(picture).toHaveBeenCalledWith(file);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(store.getState().stops.find((s) => s.id === 'wristband')!.image).toBe(PICTURE);
+  expect(screen.getByRole('button', { name: /^Wristband/ }).querySelector('img.mural')).toBeInTheDocument();
 });
 
 test('every stop has a centered 44 px hit target that paints nothing', () => {
@@ -479,6 +559,8 @@ test('a track whose goal is off screen shows a bubble naming it, and a tap cycle
   const bubble = document.querySelector('[data-target="bubble"]')!;
   expect(bubble).toHaveAccessibleName(/^Wristband, goal/);
   expect((bubble as HTMLElement).style.transform).toContain('-100%');
+  // The goal's name in the bubble is set as it is on the plane.
+  expect(bubble.querySelector('.title')).toHaveClass('goal-name');
   act(() => tapOn(bubble));
   expect(store.getState().tracks[0].target).toBe('next');
   expect(document.querySelector('[data-target="bubble"]')).not.toBeInTheDocument();
@@ -593,6 +675,53 @@ test('dragging the goal through the train and beyond never collapses the stops a
   const k = (goal.x - at.x) / (1300 - at.x);
   expect(k).toBeGreaterThan(1);
   expect(stopNamed(store, 'dentist').x - at.x).toBeCloseTo(k * (1000 - at.x), 6);
+});
+
+/** A secondary-button press on a stop, dragged to a screen point and let go. */
+function splitFrom(name: RegExp, to: { x: number; y: number }) {
+  const el = screen.getByRole('button', { name });
+  const from = { clientX: parseFloat(el.style.left), clientY: parseFloat(el.style.top) };
+  fireEvent.pointerDown(el, { pointerId: 1, button: 2, ...from });
+  fireEvent.pointerMove(el, { pointerId: 1, clientX: to.x, clientY: to.y });
+  fireEvent.pointerUp(el, { pointerId: 1, button: 2, clientX: to.x, clientY: to.y });
+}
+
+test('dragging the goal with the secondary button splits a step off it, placed where it is let go on its line', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  act(() => splitFrom(/^Wristband/, midLeg()));
+  const state = store.getState();
+  expect(state.tracks[0].stops).toHaveLength(3);
+  const added = state.stops.find((s) => s.id === state.tracks[0].stops[1])!;
+  // A large square gives a large triangle; the square itself is as it was.
+  expect(added).toMatchObject({ shape: 'triangle', size: 'large', title: '', done: false });
+  expect(added.x).toBeCloseTo(2000, 3);
+  expect(stopNamed(store, 'wristband')).toMatchObject({ shape: 'square', size: 'large', x: 3000 });
+  expect(screen.getByRole('textbox', { name: 'Stop title' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Edit stop' })).not.toBeInTheDocument();
+});
+
+test('a step split off a circle is a circle of its size, and one let go on paper is nothing', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  act(() => splitFrom(/^Dentist/, midLeg()));
+  const state = store.getState();
+  expect(state.tracks[0].stops).toHaveLength(3);
+  expect(state.stops.find((s) => s.id === state.tracks[0].stops[1])).toMatchObject({ shape: 'circle', size: 'medium' });
+  act(() => splitFrom(/^Wristband/, { x: 500, y: 100 }));
+  expect(store.getState().tracks[0].stops).toHaveLength(3);
+  expect(document.querySelector('.ghost')).not.toBeInTheDocument();
+});
+
+test('a done dot splits nothing', () => {
+  const world = running();
+  world.stops[0].done = true;
+  world.tracks[0].train = { leg: 1, departedAt: 0 };
+  const store = createStore(world);
+  render(<App store={store} now={() => 500_000} />);
+  const before = store.getState();
+  act(() => splitFrom(/^Dentist/, midLeg()));
+  expect(store.getState()).toBe(before);
 });
 
 test('a right click on a pending stop is a long press: the editor opens and nothing completes', () => {
@@ -757,8 +886,20 @@ test('a tile carried onto a line shows the time of the leg it would end, and not
 
 /** The track svgs come in the order of the world's tracks. */
 const trackSvg = (i: number) => document.querySelectorAll('svg.track')[i] as SVGSVGElement;
+/** The strokes of the road ahead of the train, which carry the line's colour. */
 const strokes = (svg: SVGSVGElement) =>
-  [...svg.querySelectorAll('line')].map((l) => [l.style.stroke, parseFloat(l.style.strokeWidth)]);
+  [...svg.querySelectorAll<SVGLineElement>('line:not(.behind)')].map((l) => [l.style.stroke, parseFloat(l.style.strokeWidth)]);
+/** The strokes of the road behind the train. */
+const behindStrokes = (svg: SVGSVGElement) => [...svg.querySelectorAll<SVGLineElement>('line.behind')].map((l) => l.style.stroke);
+
+test('the road behind the train is muted and the road ahead keeps the colour', () => {
+  render(<App store={createStore(running())} now={() => 500_000} />);
+  const svg = trackSvg(0);
+  expect(behindStrokes(svg).length).toBeGreaterThan(0);
+  for (const s of behindStrokes(svg)) expect(s).toBe('var(--muted)');
+  expect(strokes(svg).length).toBeGreaterThan(0);
+  for (const s of strokes(svg)) expect(s[0]).toBe('var(--track-blue)');
+});
 const trainFill = (svg: SVGSVGElement) => (svg.querySelector('[data-train]') as SVGElement).style.fill;
 /** The body of the first rule whose selector is exactly this one. */
 const cssRule = (selector: string) =>
