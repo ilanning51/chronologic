@@ -7,6 +7,7 @@ import { dayOf } from '../model/days';
 import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
 import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
+import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
 import { TRACK_WIDTH } from '../plane/world';
@@ -70,6 +71,17 @@ test("a goal's name is set in bold capitals on the plane and in its bubble", () 
   const rule = /\.goal-name\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
   expect(rule).toMatch(/font-weight:\s*700/);
   expect(rule).toMatch(/text-transform:\s*uppercase/);
+});
+
+test('the paper takes the tint of the hour: dusk is warm, and leaving gives the day paper back', () => {
+  const dusk = new Date(2026, 10, 3, 19, 0).getTime();
+  const { unmount } = render(<App store={createStore(running())} now={() => dusk} />);
+  const root = document.documentElement;
+  expect(root.style.getPropertyValue('--paper')).toBe(paperAt(19));
+  expect(root.style.getPropertyValue('--grid')).toBe(gridTint(paperAt(19)));
+  expect(paperAt(19)).not.toBe(DAY_PAPER);
+  unmount();
+  expect(root.style.getPropertyValue('--paper')).toBe('');
 });
 
 test('every stop has a centered 44 px hit target that paints nothing', () => {

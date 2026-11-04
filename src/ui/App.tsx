@@ -23,6 +23,7 @@ import {
 import type { Gesture } from '../plane/gestures';
 import { distance, type Point } from '../plane/geometry';
 import { bubbleFor } from '../plane/bubbles';
+import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
 import { placeClear } from '../plane/placement';
@@ -66,6 +67,9 @@ const DAY_GAP_PX = 120;
 
 /** How long the camera takes to fly between two views. */
 const FLY_MS = 400;
+
+/** How often the paper is asked what time it is. */
+const DAYLIGHT_MS = 60_000;
 
 /**
  * Flies the camera to a view over FLY_MS, easing out. A new flight cancels the one in the
@@ -186,6 +190,20 @@ export function App({ store, now = Date.now }: AppProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // The paper takes the hour's tint on open and once a minute after; on close it gives the
+  // tokens back their day paper.
+  useEffect(() => {
+    const root = document.documentElement;
+    const tint = () => applyDaylight(root, new Date(now()));
+    tint();
+    const id = window.setInterval(tint, DAYLIGHT_MS);
+    return () => {
+      window.clearInterval(id);
+      root.style.removeProperty('--paper');
+      root.style.removeProperty('--grid');
+    };
+  }, [now]);
 
   // The camera starts on the soonest train, once; after that the hand moves it. Yesterday's day
   // goes first, so the camera never opens on it.
