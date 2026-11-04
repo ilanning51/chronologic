@@ -35,3 +35,11 @@ test('a field with room stays where it was asked to be', () => {
   expect(field().style.left).toBe('300px');
   expect(field().style.top).toBe('200px');
 });
+
+test('the field takes focus without scrolling the plane under it', () => {
+  // A browser scrolls even an overflow-hidden plane to show a focused field near its edge.
+  const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+  render(<NameField x={990} y={10} viewport={{ w: 1000, h: 800 }} label="Stop title" onCommit={() => {}} onCancel={() => {}} />);
+  expect(screen.getByRole('textbox', { name: 'Stop title' })).toHaveFocus();
+  expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+});

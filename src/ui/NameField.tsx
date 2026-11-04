@@ -36,6 +36,12 @@ export function NameField({ x, y, viewport, label, onCommit, onCancel }: NameFie
     act();
   };
 
+  // Focused by hand rather than autoFocus: a browser scrolls even an overflow-hidden plane to
+  // show a focused field, and on its first paint the field may still hang off the edge.
+  useEffect(() => {
+    input.current?.focus({ preventScroll: true });
+  }, []);
+
   useEffect(() => {
     const el = input.current;
     return () => {
@@ -61,7 +67,6 @@ export function NameField({ x, y, viewport, label, onCommit, onCancel }: NameFie
         ref={input}
         type="text"
         aria-label={label}
-        autoFocus
         autoComplete="off"
         enterKeyHint="done"
         onKeyDown={onKeyDown}

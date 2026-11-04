@@ -5,13 +5,12 @@ import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayTrack, isDayEnd } from '../model/day';
 import { dayOf } from '../model/days';
 import { newId } from '../model/ids';
-import { DEFAULT_GOAL_SECONDS, tracksOf, undoable, type GoalDragStart } from '../model/reducer';
+import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { World } from '../model/types';
 import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
-  fitLeg,
   HOME,
   interpolate,
   MOTION_SCALE,
@@ -20,12 +19,12 @@ import {
   worldToScreen,
   zoomAt,
 } from '../plane/camera';
-import type { Gesture } from '../plane/gestures';
+import type { Gesture, Tile } from '../plane/gestures';
 import { distance, type Point } from '../plane/geometry';
 import { bubbleFor } from '../plane/bubbles';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
-import { placeClear } from '../plane/placement';
+import { pathLength, routeThrough } from '../plane/routing';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
 import { nearestStop, snapToAll } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
@@ -132,6 +131,12 @@ export function App({ store, now = Date.now }: AppProps) {
 
   /** Whether the tray of tiles is open. */
   const [trayOpen, setTrayOpen] = useState(false);
+  /** The tile whose brush is on, if any. App state only: never saved, off at start. */
+  const [brush, setBrush] = useState<Tile | null>(null);
+  const brushRef = useRef(brush);
+  brushRef.current = brush;
+  /** The line being drawn with the brush: where on screen the press went down. */
+  const lineDraw = useRef<{ from: Point } | null>(null);
   /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
   const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; x: number; y: number; snapped: boolean } | null>(null);
   /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
@@ -188,6 +193,7 @@ export function App({ store, now = Date.now }: AppProps) {
       if (e.defaultPrevented) return;
       if (e.key === 'Escape') {
         setSelection(null);
+        setBrush(null);
         return;
       }
       const el = e.target;
@@ -274,7 +280,14 @@ export function App({ store, now = Date.now }: AppProps) {
     endDrag.current = null;
     originDrag.current = null;
     groupDrag.current = null;
+    lineDraw.current = null;
     const target = g.target;
+    if (target.kind === 'brush') {
+      // A line or the day is drawn from where the press went down; the step brushes only tap.
+      if (brushRef.current === 'line') lineDraw.current = { from: g.at };
+      else if (brushRef.current === 'sun') drawing.current = { from: g.at, ids: [] };
+      return;
+    }
     if (target.kind === 'marquee') {
       marquee.current = { from: g.at, to: g.at };
       setMarqueeBox(rectOf(g.at, g.at));
@@ -482,23 +495,63 @@ export function App({ store, now = Date.now }: AppProps) {
     setLegTime(snap ? { x: shown.x, y: shown.y, seconds: snap.offset } : null);
   };
 
-  /**
-   * Dropping on a line adds a stop exactly there, so the track's total never changes. Where
-   * other lines are in reach too, the same stop joins each, staying at the nearest's point.
-   */
-  const dropTile = () => {
+  /** Lets go of a carried tile: it places its stop where its ghost last sat, if on a line. */
+  const dropTile = (at: Point) => {
     const d = dragTile.current;
     dragTile.current = null;
     setGhost(null);
     setLegTime(null);
-    const [first, ...rest] = d?.hits ?? [];
-    if (!d || !first) return;
+    if (d) placeStop(d.shape, at);
+  };
+
+  /**
+   * Places a stop of this shape on the line nearest a screen point, exactly at the snap point, so
+   * the track's total never changes. Where other lines are in reach too, the same stop joins each,
+   * staying at the nearest's point. Off every line, nothing happens.
+   */
+  const placeStop = (shape: 'circle' | 'triangle', at: Point) => {
+    const cam = cameraRef.current;
+    const [first, ...rest] = snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale);
+    if (!first) return;
     const id = newId();
     const { x, y } = first.at;
-    store.dispatch({ type: 'addStop', trackId: first.trackId, id, shape: d.shape, leg: first.leg, x, y, now: now() });
+    store.dispatch({ type: 'addStop', trackId: first.trackId, id, shape, leg: first.leg, x, y, now: now() });
     for (const hit of rest) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: id, leg: hit.leg, x, y, now: now() });
     pinned.current.add(id);
     setNaming({ id, kind: 'stop', trackId: first.trackId });
+  };
+
+  /** The line brush in flight: the routed ghost from the press to the pointer, and its time. */
+  const drawLineTo = (at: Point) => {
+    const d = lineDraw.current;
+    if (!d) return;
+    const cam = cameraRef.current;
+    const route = routeThrough([screenToWorld(cam, d.from), screenToWorld(cam, at)]);
+    setDayGhost(route.vertices.map((p) => worldToScreen(cam, p)));
+    setLegTime({ x: at.x, y: at.y, seconds: pathLength(route.vertices, 0, route.vertices.length - 1) });
+  };
+
+  /** Lifting the line brush makes the line: its start at the press, its goal under the pointer. */
+  const dropLine = (at: Point) => {
+    const d = lineDraw.current;
+    lineDraw.current = null;
+    setDayGhost(null);
+    setLegTime(null);
+    if (!d) return;
+    const cam = cameraRef.current;
+    const id = newId();
+    const goalId = newId();
+    const origin = screenToWorld(cam, d.from);
+    store.dispatch({ type: 'newTrack', id, goalId, title: '', origin, goal: screenToWorld(cam, at), now: now() });
+    setNaming({ id: goalId, kind: 'goal', trackId: id });
+  };
+
+  /** A stroke a second finger or the browser took over: whatever it was drawing is thrown away. */
+  const dropStroke = () => {
+    lineDraw.current = null;
+    drawing.current = null;
+    setDayGhost(null);
+    setLegTime(null);
   };
 
   /**
@@ -599,20 +652,6 @@ export function App({ store, now = Date.now }: AppProps) {
     if (d?.added) store.dispatch({ type: 'moveDayEnd', x: d.start.x, y: d.start.y, now: now() });
   };
 
-  /** A new line starts clear of everything at the centre of the view, its goal thirty days out. */
-  const newLine = () => {
-    const cam = cameraRef.current;
-    const state = store.getState();
-    const taken = [...state.stops, ...state.tracks.map((t) => t.origin)];
-    const origin = placeClear(screenToWorld(cam, { x: viewport.w / 2, y: viewport.h / 2 }), taken, 48 / cam.scale);
-    const id = newId();
-    const goalId = newId();
-    store.dispatch({ type: 'newTrack', id, goalId, title: '', origin, now: now() });
-    setNaming({ id: goalId, kind: 'goal', trackId: id });
-    const middle = { x: origin.x + DEFAULT_GOAL_SECONDS / 2, y: origin.y };
-    setCamera(centerOn(cam, middle, viewport, fitLeg(DEFAULT_GOAL_SECONDS, viewport.w, 1 / 2)));
-  };
-
   /**
    * Deletes every stop the box holds, as one step. Goals go first, each taking its line and every
    * stop only that line had; what is left goes one by one. A line's start is not a stop and stays
@@ -639,6 +678,9 @@ export function App({ store, now = Date.now }: AppProps) {
     if (n?.kind === 'goal') store.dispatch({ type: 'delete', id: n.id, now: now() });
   };
 
+  /** A tap on a tile: its brush on, or off if it was on; another tile's brush goes off. */
+  const toggleBrush = (tile: Tile) => setBrush((b) => (b === tile ? null : tile));
+
   const onGesture = (g: Gesture) => {
     switch (g.type) {
       case 'pan':
@@ -654,14 +696,25 @@ export function App({ store, now = Date.now }: AppProps) {
         if (g.target.kind === 'train') motionZoom(g.target.track);
         else if (g.target.kind === 'stop') complete(g.target.track, g.target.id);
         else if (g.target.kind === 'bubble') store.dispatch({ type: 'cycleTarget', trackId: g.target.track });
-        else if (g.target.kind === 'tile') {
-          if (g.target.tile === 'line') newLine();
-        } else if (g.target.kind === 'paper' || g.target.kind === 'marquee' || g.target.kind === 'selection') {
+        else if (g.target.kind === 'tile') toggleBrush(g.target.tile);
+        else if (
+          g.target.kind === 'paper' ||
+          g.target.kind === 'marquee' ||
+          g.target.kind === 'selection' ||
+          g.target.kind === 'brush'
+        ) {
           setSelection(null);
           setEditing(null);
-          setTrayOpen(false);
           // A tap elsewhere commits an open name. A touchscreen blurs only after this tap, so blur now.
           (document.activeElement as HTMLElement | null)?.blur();
+          // A brush keeps the tray open; the step brushes place a stop where the tap fell.
+          if (g.target.kind !== 'brush') setTrayOpen(false);
+          const b = brushRef.current;
+          if (g.target.kind === 'brush' && (b === 'circle' || b === 'triangle')) {
+            store.begin();
+            placeStop(b, g.at);
+            store.end();
+          }
         }
         return;
       case 'longPress':
@@ -694,7 +747,8 @@ export function App({ store, now = Date.now }: AppProps) {
         startDrag(g);
         return;
       case 'dragMove':
-        if (marquee.current) drawMarquee(g.at);
+        if (lineDraw.current) drawLineTo(g.at);
+        else if (marquee.current) drawMarquee(g.at);
         else if (groupDrag.current) dragGroupTo(g.at);
         else if (drawing.current) drawSun(g.at);
         else if (endDrag.current) dragDayEnd(g.at);
@@ -716,6 +770,14 @@ export function App({ store, now = Date.now }: AppProps) {
 
   /** Lets go of whatever the drag was carrying. */
   const endDragGesture = (g: Extract<Gesture, { type: 'dragEnd' }>) => {
+    if (g.cancelled) {
+      dropStroke();
+      return;
+    }
+    if (lineDraw.current) {
+      dropLine(g.at);
+      return;
+    }
     if (marquee.current) {
       dropMarquee(g.at);
       return;
@@ -741,7 +803,7 @@ export function App({ store, now = Date.now }: AppProps) {
     }
     if (g.target.kind === 'tile') {
       carryTile(g.at);
-      dropTile();
+      dropTile(g.at);
       return;
     }
     dragTo(g.at);
@@ -904,13 +966,22 @@ export function App({ store, now = Date.now }: AppProps) {
       {editor}
       <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={store.undo} onRedo={store.redo} />
       <Legend camera={camera} />
-      <Tray open={trayOpen} onToggle={() => setTrayOpen((o) => !o)} />
+      <Tray
+        open={trayOpen}
+        brush={brush}
+        onToggle={() => {
+          // Closing the tray puts the brush down with it.
+          if (trayOpen) setBrush(null);
+          setTrayOpen(!trayOpen);
+        }}
+        onBrushKey={toggleBrush}
+      />
       {nameField}
     </>
   );
 
   return (
-    <Plane onGesture={onGesture} onZoom={onZoom} hud={hud}>
+    <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
       <Grid camera={camera} />
       {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
       {views.map((v) => (

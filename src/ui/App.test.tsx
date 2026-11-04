@@ -4,7 +4,6 @@ import { StrictMode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { dayOf } from '../model/days';
-import { DEFAULT_GOAL_SECONDS } from '../model/reducer';
 import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
@@ -296,6 +295,26 @@ test('a dot does not move', () => {
 /** Opens the tray with the plus. */
 const openTray = () => act(() => screen.getByRole('button', { name: 'Add' }).click());
 
+/** Turns a tray brush on or off with a tap on its tile; the tray must be open. */
+const tapTile = (name: string) => act(() => tapOn(screen.getByRole('button', { name })));
+
+/** Strokes the paper from one screen point to another, in a few moves. */
+function stroke(from: { x: number; y: number }, to: { x: number; y: number }) {
+  const plane = screen.getByRole('main', { name: 'The plane' });
+  fireEvent.pointerDown(plane, { pointerId: 1, clientX: from.x, clientY: from.y });
+  for (const k of [0.25, 0.5, 1]) {
+    fireEvent.pointerMove(plane, { pointerId: 1, clientX: from.x + (to.x - from.x) * k, clientY: from.y + (to.y - from.y) * k });
+  }
+  fireEvent.pointerUp(plane, { pointerId: 1, clientX: to.x, clientY: to.y });
+}
+
+/** Opens the tray if it is shut, turns the line brush on, and draws a line on empty paper. */
+function drawLine(from = { x: 150, y: 650 }, to = { x: 450, y: 700 }) {
+  if (!screen.queryByRole('button', { name: 'New line' })) openTray();
+  if (screen.getByRole('button', { name: 'New line' }).getAttribute('aria-pressed') !== 'true') tapTile('New line');
+  act(() => stroke(from, to));
+}
+
 /** Drags a tile to a screen point and lets go. */
 function dragTile(name: string, to: { x: number; y: number }) {
   const tile = screen.getByRole('button', { name });
@@ -346,32 +365,33 @@ test('dropping a tile on empty paper adds nothing', () => {
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });
 
-test('the new line tile makes a track with a goal thirty days out and names it', () => {
+test('the line brush draws a track from press to release and names it', () => {
   const store = createStore(running());
   render(<App store={store} now={() => WAITING} />);
-  openTray();
-  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  const scale = scaleOnScreen();
+  const before = left(/^Dentist/);
+  drawLine({ x: 150, y: 650 }, { x: 450, y: 700 });
   const { tracks, stops } = store.getState();
   expect(tracks).toHaveLength(2);
   const made = tracks[1];
   const goal = stops.find((s) => s.id === made.stops[0])!;
-  expect(goal.x - made.origin.x).toBe(DEFAULT_GOAL_SECONDS);
-  expect(goal.y).toBe(made.origin.y);
+  expect(goal.x - made.origin.x).toBeCloseTo(300 / scale, 6);
+  expect(goal.y - made.origin.y).toBeCloseTo(50 / scale, 6);
+  expect(left(/^Dentist/)).toBe(before); // the camera stays where it was
   const field = screen.getByRole('textbox', { name: 'Line name' });
   act(() => {
     fireEvent.change(field, { target: { value: 'Thesis' } });
     fireEvent.keyDown(field, { key: 'Enter' });
   });
   expect(store.getState().stops.find((s) => s.id === goal.id)?.title).toBe('Thesis');
-  // The tray stays open.
-  expect(screen.getByRole('button', { name: 'Step' })).toBeInTheDocument();
+  // The tray stays open, and the brush stays on.
+  expect(screen.getByRole('button', { name: 'New line' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('Escape on a new goal name removes the track', () => {
   const store = createStore(running());
   render(<App store={store} now={() => WAITING} />);
-  openTray();
-  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  drawLine();
   expect(store.getState().tracks).toHaveLength(2);
   act(() => {
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Line name' }), { key: 'Escape' });
@@ -483,8 +503,7 @@ const paper = () => screen.getByRole('main', { name: 'The plane' });
 test('a tap on paper while naming a new line keeps the line and saves what was typed', () => {
   const store = createStore(running());
   render(<App store={store} now={() => WAITING} />);
-  openTray();
-  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  drawLine();
   const goalId = store.getState().tracks[1].stops[0];
   fireEvent.change(screen.getByRole('textbox', { name: 'Line name' }), { target: { value: 'Thesis' } });
   // On a touchscreen the pointerup arrives before the browser blurs the field: no blur event here.
@@ -516,8 +535,7 @@ test('under strict mode a new name field stays open until it is answered', () =>
       <App store={store} now={() => WAITING} />
     </StrictMode>,
   );
-  openTray();
-  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  drawLine();
   const field = screen.getByRole('textbox', { name: 'Line name' });
   act(() => {
     fireEvent.change(field, { target: { value: 'Thesis' } });
@@ -1745,8 +1763,7 @@ test('Escape in an open name field cancels the name and keeps the selection', ()
   const y = parseFloat(screen.getByRole('button', { name: /^Dentist/ }).style.top);
   act(() => drawBox(dx - 30, y - 30, dx + 30, y + 30));
   expect(box()).not.toBeNull();
-  openTray();
-  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  drawLine();
   act(() => {
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Line name' }), { key: 'Escape' });
   });
@@ -1882,8 +1899,7 @@ test('Backspace with no box, or typed in a name field, deletes nothing', () => {
   });
   expect(store.getState()).toBe(before);
   boxAround(/^Dentist/);
-  openTray();
-  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  drawLine();
   const field = screen.getByRole('textbox', { name: 'Line name' });
   const stops = store.getState().stops.length;
   act(() => {
@@ -1907,4 +1923,173 @@ test('a whole drag is one step for Undo', () => {
   act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
   expect(stopNamed(store, 'dentist').x).toBe(x);
   expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+});
+
+const pressed = (name: string) => screen.getByRole('button', { name }).getAttribute('aria-pressed');
+
+test('a tap on a tile turns its brush on, a second tap turns it off, and another tile switches', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  openTray();
+  tapTile('Step');
+  expect(pressed('Step')).toBe('true');
+  expect(paper()).toHaveClass('brushing');
+  tapTile('Today');
+  expect(pressed('Step')).toBe('false');
+  expect(pressed('Today')).toBe('true');
+  tapTile('Today');
+  expect(pressed('Today')).toBe('false');
+  expect(paper()).not.toHaveClass('brushing');
+});
+
+test('drawing with the line brush shows the routed time while the stroke is in flight', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleOnScreen();
+  openTray();
+  tapTile('New line');
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 150, clientY: 650 });
+    fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 450, clientY: 700 });
+  });
+  // A 45 degree run over the short side, then straight: 50·√2 + 250 screen px.
+  const seconds = (50 * Math.SQRT2 + 250) / scale;
+  expect(document.querySelector('.leg-time')).toHaveTextContent(formatSeconds(seconds));
+  expect(document.querySelector('.day-ghost')).not.toBeNull();
+  act(() => fireEvent.pointerUp(paper(), { pointerId: 1, clientX: 450, clientY: 700 }));
+  expect(document.querySelector('.leg-time')).toBeNull();
+  expect(document.querySelector('.day-ghost')).toBeNull();
+  expect(store.getState().tracks).toHaveLength(2);
+});
+
+test('a tap with the line brush makes nothing', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  tapTile('New line');
+  act(() => tapOn(paper()));
+  expect(store.getState().tracks).toHaveLength(1);
+  expect(pressed('New line')).toBe('true'); // and the tray stays open
+});
+
+test('the step brush drops a stop on a tapped line and stays on for the next', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  tapTile('Step');
+  const at = midLeg();
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: at.x, clientY: at.y });
+    fireEvent.pointerUp(paper(), { pointerId: 1, clientX: at.x, clientY: at.y });
+  });
+  const stops = store.getState().tracks[0].stops;
+  expect(stops).toHaveLength(3);
+  const first = stops[1];
+  expect(stopNamed(store, first).shape).toBe('circle');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Stop title' }), { target: { value: 'Order parts' } });
+  const a = left(/^Dentist/);
+  const b = left(/^Wristband/);
+  const x = a + (b - a) * 0.8;
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: x, clientY: at.y });
+    fireEvent.pointerUp(paper(), { pointerId: 1, clientX: x, clientY: at.y });
+  });
+  expect(store.getState().tracks[0].stops).toHaveLength(4);
+  expect(stopNamed(store, first).title).toBe('Order parts');
+  expect(pressed('Step')).toBe('true');
+});
+
+test('a step brush tap off every line does nothing', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  tapTile('Sub-goal');
+  const before = store.getState();
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 150, clientY: 700 });
+    fireEvent.pointerUp(paper(), { pointerId: 1, clientX: 150, clientY: 700 });
+  });
+  expect(store.getState()).toBe(before);
+});
+
+test('the Today brush draws the day through the stops it is dragged across', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  tapTile('Today');
+  const d = { x: left(/^Dentist/), y: parseFloat(screen.getByRole('button', { name: /^Dentist/ }).style.top) };
+  act(() => stroke({ x: d.x - 40, y: d.y - 60 }, d));
+  const day = store.getState().tracks.find((t) => t.day);
+  expect(day?.stops[0]).toBe('dentist');
+});
+
+test('with a brush on, a drag that starts on a stop moves the stop', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  tapTile('New line');
+  const x = stopNamed(store, 'dentist').x;
+  act(() => dragStop(/^Dentist/, 40, 0));
+  expect(stopNamed(store, 'dentist').x).not.toBe(x);
+  expect(store.getState().tracks).toHaveLength(1);
+});
+
+test('shift-drag with a brush on still draws a box', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  openTray();
+  tapTile('New line');
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 100, clientY: 100, shiftKey: true });
+    fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 300, clientY: 250 });
+  });
+  expect(box()).toHaveClass('live');
+});
+
+test('Escape turns the brush off, but Escape in a name field keeps it', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  drawLine();
+  act(() => {
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Line name' }), { key: 'Escape' });
+  });
+  expect(pressed('New line')).toBe('true');
+  act(() => {
+    fireEvent.keyDown(window, { key: 'Escape' });
+  });
+  expect(pressed('New line')).toBe('false');
+});
+
+test('closing the tray turns the brush off', () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  openTray();
+  tapTile('Step');
+  openTray(); // the plus again: closes
+  openTray();
+  expect(pressed('Step')).toBe('false');
+});
+
+test('a pinch begun mid-stroke draws nothing', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  tapTile('New line');
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 150, clientY: 650 });
+    fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 190, clientY: 650 });
+    fireEvent.pointerDown(paper(), { pointerId: 2, clientX: 400, clientY: 650 });
+  });
+  expect(store.getState().tracks).toHaveLength(1);
+  expect(document.querySelector('.day-ghost')).toBeNull();
+  expect(document.querySelector('.leg-time')).toBeNull();
+});
+
+test('a drawn line is one undo step', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const before = store.getState();
+  drawLine();
+  act(() => {
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Line name' }), { key: 'Enter' });
+  });
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' }))); // the name
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Undo' }))); // the line
+  expect(store.getState()).toBe(before);
 });
