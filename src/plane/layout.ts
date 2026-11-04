@@ -8,6 +8,7 @@ import type { Point } from './geometry';
 import { gridFor } from './grid';
 import { labelsWithRoom } from './labels';
 import { showsAt } from './level';
+import { cutAt, legSpan } from './routing';
 
 export interface StopView {
   id: string;
@@ -42,7 +43,10 @@ export interface TrackView {
   day: boolean;
   /** A project line with only its goal, drawn muted and thin. A look, not a state. */
   sketch: boolean;
+  /** The road still to come, from the train to the goal, in the line's colour. */
   segments: [Point, Point][];
+  /** The road travelled, from the start to the train, drawn muted. */
+  behind: [Point, Point][];
   /** The start of the line, in screen pixels: a drag handle with nothing drawn at it. */
   origin: Point;
   stops: StopView[];
@@ -74,14 +78,29 @@ export function layoutTrack(
   };
   const inside = (p: Point) => p.x >= grown.x && p.x <= grown.x + grown.w && p.y >= grown.y && p.y <= grown.y + grown.h;
 
-  const vertices = trackRoute(track, byId).vertices.map((v) => worldToScreen(camera, v));
-  const segments: [Point, Point][] = [];
-  for (let i = 1; i < vertices.length; i++) {
-    const clipped = clipSegment(vertices[i - 1], vertices[i], grown);
-    if (clipped) segments.push(clipped);
-  }
-
+  const route = trackRoute(track, byId);
+  const vertices = route.vertices.map((v) => worldToScreen(camera, v));
   const state = stateOf(track, world, now);
+
+  // The line is cut at the train: behind it is travelled, ahead is still to come. A parked train
+  // has travelled it all.
+  const cut = state.parked
+    ? { behind: route.vertices, ahead: [] }
+    : (() => {
+        const { from, to } = legSpan(route, state.leg);
+        return cutAt(route.vertices, from, to, state.seconds);
+      })();
+  const toSegments = (points: Point[]): [Point, Point][] => {
+    const shown = points.map((p) => worldToScreen(camera, p));
+    const out: [Point, Point][] = [];
+    for (let i = 1; i < shown.length; i++) {
+      const clipped = clipSegment(shown[i - 1], shown[i], grown);
+      if (clipped) out.push(clipped);
+    }
+    return out;
+  };
+  const behind = toSegments(cut.behind);
+  const segments = toSegments(cut.ahead);
   const crowd = state.waiting ? crowdAt(track, byId, now) : 0;
 
   const next = nextIndex(track, byId);
@@ -123,9 +142,10 @@ export function layoutTrack(
     day: track.day !== undefined,
     sketch: !track.day && track.stops.length === 1,
     segments,
+    behind,
     origin: vertices[0],
     stops,
     train,
-    anyInView: segments.length > 0 || stops.length > 0 || inside(trainAt),
+    anyInView: segments.length > 0 || behind.length > 0 || stops.length > 0 || inside(trainAt),
   };
 }

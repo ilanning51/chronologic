@@ -739,8 +739,20 @@ test('a tile carried onto a line shows the time of the leg it would end, and not
 
 /** The track svgs come in the order of the world's tracks. */
 const trackSvg = (i: number) => document.querySelectorAll('svg.track')[i] as SVGSVGElement;
+/** The strokes of the road ahead of the train, which carry the line's colour. */
 const strokes = (svg: SVGSVGElement) =>
-  [...svg.querySelectorAll('line')].map((l) => [l.style.stroke, parseFloat(l.style.strokeWidth)]);
+  [...svg.querySelectorAll<SVGLineElement>('line:not(.behind)')].map((l) => [l.style.stroke, parseFloat(l.style.strokeWidth)]);
+/** The strokes of the road behind the train. */
+const behindStrokes = (svg: SVGSVGElement) => [...svg.querySelectorAll<SVGLineElement>('line.behind')].map((l) => l.style.stroke);
+
+test('the road behind the train is muted and the road ahead keeps the colour', () => {
+  render(<App store={createStore(running())} now={() => 500_000} />);
+  const svg = trackSvg(0);
+  expect(behindStrokes(svg).length).toBeGreaterThan(0);
+  for (const s of behindStrokes(svg)) expect(s).toBe('var(--muted)');
+  expect(strokes(svg).length).toBeGreaterThan(0);
+  for (const s of strokes(svg)) expect(s[0]).toBe('var(--track-blue)');
+});
 const trainFill = (svg: SVGSVGElement) => (svg.querySelector('[data-train]') as SVGElement).style.fill;
 /** The body of the first rule whose selector is exactly this one. */
 const cssRule = (selector: string) =>

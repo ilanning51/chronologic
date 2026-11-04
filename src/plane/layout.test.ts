@@ -29,9 +29,11 @@ test('a track lays out in screen space with constant shapes, a dot for done, and
   expect(v.day).toBe(false);
   expect(v.sketch).toBe(false);
   expect(v.anyInView).toBe(true);
-  // origin (100,100) -> a (200,100) -> g (200,300): the route is axis-aligned here.
+  // origin (100,100) -> a (200,100) -> g (200,300): the route is axis-aligned here. The train,
+  // halfway along the first leg, cuts it: behind it is travelled, ahead is still to come.
+  expect(v.behind).toEqual([[{ x: 100, y: 100 }, { x: 150, y: 100 }]]);
   expect(v.segments).toEqual([
-    [{ x: 100, y: 100 }, { x: 200, y: 100 }],
+    [{ x: 150, y: 100 }, { x: 200, y: 100 }],
     [{ x: 200, y: 100 }, { x: 200, y: 300 }],
   ]);
   expect(v.stops).toEqual([
@@ -189,4 +191,24 @@ test('the view carries the origin in screen pixels', () => {
   const track = trackOf(['a']);
   const v = layoutTrack(track, worldOf(track, [stop('a', 1000, 0)]), camera, 0, viewport);
   expect(v.origin).toEqual(worldToScreen(camera, { x: 0, y: 0 }));
+});
+
+test('a waiting train cuts the line at its stop, and a parked one has travelled it all', () => {
+  const a = stop('a', 1000, 0);
+  const g = stop('g', 1000, 2000, { shape: 'square', size: 'large' });
+  const camera = { x: 100, y: 100, scale: 0.1 };
+  const waiting = layoutTrack(trackOf(['a', 'g']), worldOf(trackOf(['a', 'g']), [a, g]), camera, 5_000_000, viewport);
+  expect(waiting.behind).toEqual([[{ x: 100, y: 100 }, { x: 200, y: 100 }]]);
+  expect(waiting.segments).toEqual([[{ x: 200, y: 100 }, { x: 200, y: 300 }]]);
+
+  const done = [stop('a', 1000, 0, { done: true }), stop('g', 1000, 2000, { shape: 'square', size: 'large', done: true })];
+  const parked = trackOf(['a', 'g'], 2);
+  const v = layoutTrack(parked, worldOf(parked, done), camera, 5_000_000, viewport);
+  expect(v.finished).toBe(true);
+  expect(v.segments).toEqual([]);
+  expect(v.behind).toEqual([
+    [{ x: 100, y: 100 }, { x: 200, y: 100 }],
+    [{ x: 200, y: 100 }, { x: 200, y: 300 }],
+  ]);
+  expect(v.anyInView).toBe(true);
 });

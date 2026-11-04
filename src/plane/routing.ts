@@ -62,6 +62,31 @@ export function pointAlong(vertices: Point[], from: number, to: number, fraction
   return { at: vertices[to], angle: 0 };
 }
 
+/**
+ * The route cut where a train sits: `seconds` along the leg between vertex `from` and vertex
+ * `to`. `behind` runs from the first vertex to the cut, the road travelled; `ahead` from the cut
+ * to the last, the road still to come. A cut on a vertex is not repeated, so neither half has a
+ * segment of no length.
+ */
+export function cutAt(vertices: Point[], from: number, to: number, seconds: number): { behind: Point[]; ahead: Point[] } {
+  let remaining = Math.max(0, seconds);
+  for (let i = from; i < to; i++) {
+    const length = distance(vertices[i], vertices[i + 1]);
+    if (remaining <= length || i === to - 1) {
+      const t = length === 0 ? 0 : Math.min(1, remaining / length);
+      const a = vertices[i];
+      const b = vertices[i + 1];
+      if (t === 0) return { behind: vertices.slice(0, i + 1), ahead: vertices.slice(i) };
+      if (t === 1) return { behind: vertices.slice(0, i + 2), ahead: vertices.slice(i + 1) };
+      const at = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      return { behind: [...vertices.slice(0, i + 1), at], ahead: [at, ...vertices.slice(i + 1)] };
+    }
+    remaining -= length;
+  }
+  // A leg with no road: the cut is its one vertex.
+  return { behind: vertices.slice(0, from + 1), ahead: vertices.slice(from) };
+}
+
 /** The length of the route between two vertex indices, following every segment. */
 export function pathLength(vertices: Point[], from: number, to: number): number {
   let total = 0;
