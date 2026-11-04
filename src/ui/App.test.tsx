@@ -108,6 +108,16 @@ test('a goal with a picture carries it as a mural, and its bubble shows it in pl
   const bubble = document.querySelector('[data-target="bubble"]')!;
   expect((bubble.querySelector('img.mural') as HTMLImageElement).getAttribute('src')).toBe(PICTURE);
   expect(bubble.querySelector('.shape')).toBeNull();
+  // No pill and no words: the picture centred in a square of the line's colour, which frames it.
+  expect(bubble).toHaveClass('bubble', 'picture');
+  expect(bubble.querySelector('.title')).toBeNull();
+  expect(bubble).toHaveAccessibleName(/^Wristband, goal/);
+  const frame = /\.bubble\.picture\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(frame).toMatch(/background:\s*var\(--track-color\)/);
+  expect(frame).toMatch(/border-radius:\s*0/);
+  expect(frame).toMatch(/padding:\s*var\(--frame\)/);
+  expect(tokensCss).toMatch(/--mural-small:\s*36px/);
+  expect(tokensCss).toMatch(/--frame:\s*4px/);
 });
 
 test("choosing a picture in the goal's editor keeps the shrunk one on the goal", async () => {
