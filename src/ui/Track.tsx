@@ -12,7 +12,8 @@ interface TrackProps {
  * drawn before the stops, so a train waiting at a stop sits beneath it and the stop takes
  * the tap. Only a rolling train is a target of its own, and it carries an unpainted 44 px square
  * beneath it so the 30 by 20 body is not all a finger has to find. The start of the line has the
- * same square and nothing drawn: the rounded end of the line is the handle.
+ * same square and nothing drawn: the rounded end of the line is the handle. Inside the svg, later
+ * is on top, so the hit squares come after the lines or the stroke would take the press.
  */
 export function Track({ view }: TrackProps) {
   // A sketch is a thought, not yet a plan: muted and thin, train and all.
@@ -24,6 +25,17 @@ export function Track({ view }: TrackProps) {
   const place = `translate(${train.x}px, ${train.y}px) rotate(${train.angle}deg)`;
   return (
     <svg className="track" aria-hidden="true" width={1} height={1}>
+      {view.segments.map(([a, b], i) => (
+        <line
+          key={i}
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          style={{ stroke: color, strokeWidth: width, strokeLinecap: 'round' }}
+        />
+      ))}
+      {/* After the lines, so the stroke never takes the press; before the train, so a train just departed is still a train. */}
       <rect
         className="origin-hit"
         data-target="origin"
@@ -36,16 +48,6 @@ export function Track({ view }: TrackProps) {
         pointerEvents="all"
         style={{ transform: `translate(${view.origin.x}px, ${view.origin.y}px)` }}
       />
-      {view.segments.map(([a, b], i) => (
-        <line
-          key={i}
-          x1={a.x}
-          y1={a.y}
-          x2={b.x}
-          y2={b.y}
-          style={{ stroke: color, strokeWidth: width, strokeLinecap: 'round' }}
-        />
-      ))}
       {rolling && (
         <rect
           className="train-hit"

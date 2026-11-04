@@ -1681,3 +1681,15 @@ test('deleting the one selected stop clears the box', () => {
   act(() => store.dispatch({ type: 'delete', id: 'dentist', now: WAITING }));
   expect(box()).toBeNull();
 });
+
+test("the start's hit target is drawn above the line, so a press on the rounded end is the start's", () => {
+  render(<App store={createStore(running())} now={() => WAITING} />);
+  const hit = document.querySelector('[data-target="origin"]')!;
+  const lines = [...hit.parentElement!.querySelectorAll('line')];
+  expect(lines.length).toBeGreaterThan(0);
+  // Later in the svg is on top. Every line must come before the hit rect.
+  for (const line of lines) expect(line.compareDocumentPosition(hit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The rolling train's own target stays above the start's, so a train just departed is still a train.
+  const train = document.querySelector('.train-hit');
+  if (train) expect(hit.compareDocumentPosition(train) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
