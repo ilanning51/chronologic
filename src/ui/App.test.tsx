@@ -1737,3 +1737,90 @@ test('a shift drag inside the kept box draws a new box instead of moving the gro
   expect(box()).not.toBeNull(); // the new box caught Dentist again
   expect(box()).not.toHaveClass('live');
 });
+
+test('Escape in an open name field cancels the name and keeps the selection', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const dx = left(/^Dentist/);
+  const y = parseFloat(screen.getByRole('button', { name: /^Dentist/ }).style.top);
+  act(() => drawBox(dx - 30, y - 30, dx + 30, y + 30));
+  expect(box()).not.toBeNull();
+  openTray();
+  act(() => tapOn(screen.getByRole('button', { name: 'New line' })));
+  act(() => {
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Line name' }), { key: 'Escape' });
+  });
+  expect(store.getState().tracks).toHaveLength(1); // the name was cancelled, as before
+  expect(box()).not.toBeNull(); // and the box is still there
+});
+
+test("dragging the start of a line past its first stop leaves the train's clock alone", () => {
+  let t = 500_000;
+  const world = running();
+  world.stops[0].done = true;
+  world.tracks[0].train = { leg: 1, departedAt: 0 };
+  const store = createStore(world);
+  render(<App store={store} now={() => t} />);
+  const hit = document.querySelector<SVGRectElement>('[data-target="origin"]')!;
+  const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(hit.style.transform)!;
+  const x = parseFloat(m[1]);
+  const y = parseFloat(m[2]);
+  act(() => {
+    fireEvent.pointerDown(hit, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(hit, { pointerId: 1, clientX: x - 20, clientY: y });
+  });
+  t += 10_000; // ten seconds pass mid-drag
+  act(() => {
+    fireEvent.pointerMove(hit, { pointerId: 1, clientX: x - 40, clientY: y });
+    fireEvent.pointerUp(hit, { pointerId: 1, clientX: x - 40, clientY: y });
+  });
+  // The train's leg never changed, so its departure is as it was: it was not held still.
+  expect(Math.abs(store.getState().tracks[0].train.departedAt)).toBeLessThan(100);
+});
+
+test("a group move that leaves the train's leg alone leaves its clock alone", () => {
+  let t = 500_000;
+  const world = running();
+  world.stops[1].x = 1300; // close enough that the goal is on screen mid-leg
+  const store = createStore(world);
+  render(<App store={store} now={() => t} />);
+  const gx = left(/^Wristband/);
+  const y = parseFloat(screen.getByRole('button', { name: /^Wristband/ }).style.top);
+  act(() => drawBox(gx - 30, y - 30, gx + 30, y + 30));
+  expect(box()).not.toBeNull();
+  act(() => {
+    fireEvent.pointerDown(box()!, { pointerId: 1, clientX: gx, clientY: y });
+    fireEvent.pointerMove(box()!, { pointerId: 1, clientX: gx, clientY: y + 30 });
+  });
+  t += 10_000;
+  act(() => {
+    fireEvent.pointerMove(box()!, { pointerId: 1, clientX: gx, clientY: y + 60 });
+    fireEvent.pointerUp(box()!, { pointerId: 1, clientX: gx, clientY: y + 60 });
+  });
+  expect(stopNamed(store, 'wristband').y).toBeGreaterThan(0);
+  expect(Math.abs(store.getState().tracks[0].train.departedAt)).toBeLessThan(100);
+});
+
+test("dragging the day line's start moves it with no chip, and no train moves", () => {
+  const NOW = 500_000;
+  const store = createStore(dayOn(NOW));
+  render(<App store={store} now={() => NOW} />);
+  const before = store.getState();
+  const hit = document.querySelector<SVGRectElement>('[data-target="origin"][data-track="day"]')!;
+  const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(hit.style.transform)!;
+  const x = parseFloat(m[1]);
+  const y = parseFloat(m[2]);
+  act(() => {
+    fireEvent.pointerDown(hit, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(hit, { pointerId: 1, clientX: x - 30, clientY: y - 30 });
+  });
+  expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+  act(() => fireEvent.pointerUp(hit, { pointerId: 1, clientX: x - 30, clientY: y - 30 }));
+  const after = store.getState();
+  const day = after.tracks.find((t) => t.day)!;
+  expect(day.origin.x).toBeLessThan(1000);
+  expect(day.origin.y).toBeLessThan(-400);
+  expect(day.train).toEqual(before.tracks.find((t) => t.day)!.train);
+  for (const t of after.tracks.filter((t) => !t.day)) expect(t.train).toEqual(before.tracks.find((b) => b.id === t.id)!.train);
+  expect(after.stops).toEqual(before.stops);
+});

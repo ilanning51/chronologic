@@ -177,10 +177,11 @@ export function App({ store, now = Date.now }: AppProps) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Escape lets go of the box, as a tap on paper does.
+  // Escape lets go of the box, as a tap on paper does. A field that took the key for itself,
+  // to cancel a name or close the editor, keeps the box: one key does one thing.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelection(null);
+      if (e.key === 'Escape' && !e.defaultPrevented) setSelection(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -342,12 +343,13 @@ export function App({ store, now = Date.now }: AppProps) {
     if (!track) return;
     const under = screenToWorld(cameraRef.current, at);
     const train = trainState(track, new Map(state.stops.map((s) => [s.id, s])), now());
-    const live = !track.day && !train.parked;
+    // Only a train still on the first leg has a leg that changes; any other keeps its own clock.
+    const first = !track.day && !train.parked && train.leg === 0;
     originDrag.current = {
       track: trackId,
       grip: { x: track.origin.x - under.x, y: track.origin.y - under.y },
-      keep: live ? train.seconds : undefined,
-      chip: live && train.leg === 0,
+      keep: first ? train.seconds : undefined,
+      chip: first,
     };
   };
 
@@ -361,12 +363,16 @@ export function App({ store, now = Date.now }: AppProps) {
     const origins = Object.fromEntries(
       state.tracks.filter((t) => held.origins.includes(t.id)).map((t) => [t.id, { x: t.origin.x, y: t.origin.y }]),
     );
-    // Every line whose start moves or that lists a moved stop; the day train keeps its own place.
-    const touched = state.tracks.filter((t) => !t.day && (t.id in origins || t.stops.some((id) => id in stops)));
+    // A train is held to its seconds only where its own leg changes length: one end of the leg
+    // moves and the other stays. A leg with both ends in the group, or neither, keeps its clock.
     const keep: Record<string, number> = {};
-    for (const t of touched) {
+    for (const t of state.tracks) {
+      if (t.day) continue;
       const train = trainState(t, byId, now());
-      if (!train.parked) keep[t.id] = train.seconds;
+      if (train.parked) continue;
+      const fromMoves = train.leg === 0 ? t.id in origins : t.stops[train.leg - 1] in stops;
+      const toMoves = t.stops[train.leg] in stops;
+      if (fromMoves !== toMoves) keep[t.id] = train.seconds;
     }
     groupDrag.current = { from: screenToWorld(cameraRef.current, at), stops, origins, keep };
   };
