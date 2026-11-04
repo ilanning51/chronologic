@@ -1546,3 +1546,138 @@ test('past the first stop the start drags with no chip', () => {
   expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
   act(() => up());
 });
+
+const box = () => document.querySelector<HTMLElement>('.selection-box');
+
+/** Shift-drags on the plane from (x0, y0) to (x1, y1). */
+function drawBox(x0: number, y0: number, x1: number, y1: number) {
+  fireEvent.pointerDown(paper(), { pointerId: 1, clientX: x0, clientY: y0, shiftKey: true });
+  fireEvent.pointerMove(paper(), { pointerId: 1, clientX: x1, clientY: y1 });
+  fireEvent.pointerUp(paper(), { pointerId: 1, clientX: x1, clientY: y1 });
+}
+
+/** Drags from a screen point by (dx, dy) on whatever element is given. */
+function dragOn(el: Element, x: number, y: number, dx: number, dy: number) {
+  fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+  fireEvent.pointerMove(el, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+  fireEvent.pointerUp(el, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+}
+
+test('a shift drag on paper draws a box, and a plain drag still pans', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const before = left(/^Dentist/);
+  act(() => {
+    fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 100, clientY: 100, shiftKey: true });
+    fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 300, clientY: 250 });
+  });
+  expect(box()).toHaveClass('live');
+  expect(box()!.style.left).toBe('100px');
+  expect(box()!.style.width).toBe('200px');
+  expect(left(/^Dentist/)).toBe(before);
+  act(() => fireEvent.pointerUp(paper(), { pointerId: 1, clientX: 300, clientY: 250 }));
+  expect(box()).toBeNull(); // nothing inside: no selection
+  act(() => dragOn(paper(), 100, 100, 50, 0));
+  expect(left(/^Dentist/)).toBeCloseTo(before + 50, 3);
+});
+
+test('letting go keeps a box snug around what it caught, and dragging inside moves it all', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleOnScreen();
+  const dx = left(/^Dentist/);
+  const gx = left(/^Wristband/);
+  const y = parseFloat(screen.getByRole('button', { name: /^Dentist/ }).style.top);
+  act(() => drawBox(dx - 30, y - 30, gx + 30, y + 30));
+  expect(box()).not.toHaveClass('live');
+  expect(parseFloat(box()!.style.left)).toBeCloseTo(dx - 24, 3);
+  expect(parseFloat(box()!.style.width)).toBeCloseTo(gx - dx + 48, 3);
+  const before = store.getState();
+  act(() => dragOn(box()!, (dx + gx) / 2, y, 60, 40));
+  const after = store.getState();
+  expect(stopNamed(store, 'dentist').x).toBeCloseTo(1000 + 60 / scale, 6);
+  expect(stopNamed(store, 'wristband').x).toBeCloseTo(3000 + 60 / scale, 6); // translated, not scaled
+  expect(stopNamed(store, 'wristband').y).toBeCloseTo(40 / scale, 6);
+  expect(after.tracks[0].origin).toEqual(before.tracks[0].origin); // not in the box
+  expect(document.querySelector('.leg-time')).toBeNull();
+  expect(parseFloat(box()!.style.left)).toBeCloseTo(dx + 60 - 24, 3);
+});
+
+test('dragging a selected stop moves the group, a stop outside drags alone', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const scale = scaleOnScreen();
+  const dx = left(/^Dentist/);
+  const y = parseFloat(screen.getByRole('button', { name: /^Dentist/ }).style.top);
+  // Catch the origin and Dentist, not the goal.
+  act(() => drawBox(dx - 1000 * scale - 30, y - 30, dx + 30, y + 30));
+  expect(store.getState().tracks[0].origin).toEqual({ x: 0, y: 0 });
+  act(() => dragStop(/^Dentist/, 0, 50));
+  expect(store.getState().tracks[0].origin.y).toBeCloseTo(50 / scale, 6);
+  expect(stopNamed(store, 'dentist').y).toBeCloseTo(50 / scale, 6);
+  expect(stopNamed(store, 'wristband').y).toBe(0);
+  act(() => dragStop(/^Wristband/, 0, 50));
+  expect(stopNamed(store, 'dentist').y).toBeCloseTo(50 / scale, 6); // unchanged
+  expect(box()).not.toBeNull(); // the selection survives a drag outside it
+});
+
+test('a tap on paper, a tap on the box or Escape clears the selection, and a pan keeps it', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const dx = left(/^Dentist/);
+  // Read afresh each time: the pan below moves Dentist on screen.
+  const select = () => {
+    const x = left(/^Dentist/);
+    const y = parseFloat(screen.getByRole('button', { name: /^Dentist/ }).style.top);
+    act(() => drawBox(x - 30, y - 30, x + 30, y + 30));
+  };
+  select();
+  act(() => dragOn(paper(), 100, 700, 50, 0));
+  expect(box()).not.toBeNull();
+  expect(parseFloat(box()!.style.left)).toBeCloseTo(dx + 50 - 24, 3);
+  act(() => tapOn(paper()));
+  expect(box()).toBeNull();
+  select();
+  act(() => tapOn(box()!));
+  expect(box()).toBeNull();
+  select();
+  act(() => {
+    fireEvent.keyDown(window, { key: 'Escape' });
+  });
+  expect(box()).toBeNull();
+});
+
+test('a box picks in world coordinates after a zoom, and a hidden stop moves with its group', () => {
+  reduceMotion();
+  // A small circle after the next stop: hidden once the grid is coarser than fifteen minutes.
+  const world = running();
+  world.stops.push({ id: 'tiny', title: 'Tiny', shape: 'circle', size: 'small', x: 2000, y: 0, done: false });
+  world.tracks[0].stops = ['dentist', 'tiny', 'wristband'];
+  const store = createStore(world);
+  render(<App store={store} now={() => WAITING} />);
+  // Zoom out with the wheel until Tiny is below the level.
+  let turns = 0;
+  while (screen.queryByRole('button', { name: /^Tiny/ }) && turns++ < 20) {
+    act(() => {
+      fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 500 });
+    });
+  }
+  expect(screen.queryByRole('button', { name: /^Tiny/ })).toBeNull();
+  const gx = left(/^Wristband/);
+  const y = parseFloat(screen.getByRole('button', { name: /^Wristband/ }).style.top);
+  act(() => drawBox(0, y - 30, gx + 30, y + 30));
+  act(() => dragOn(box()!, gx - 10, y, 0, 50));
+  expect(stopNamed(store, 'tiny').y).toBeGreaterThan(0);
+  expect(stopNamed(store, 'tiny').y).toBeCloseTo(stopNamed(store, 'wristband').y, 6);
+});
+
+test('deleting the one selected stop clears the box', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const dx = left(/^Dentist/);
+  const y = parseFloat(screen.getByRole('button', { name: /^Dentist/ }).style.top);
+  act(() => drawBox(dx - 30, y - 30, dx + 30, y + 30));
+  expect(parseFloat(box()!.style.width)).toBeCloseTo(48, 3);
+  act(() => store.dispatch({ type: 'delete', id: 'dentist', now: WAITING }));
+  expect(box()).toBeNull();
+});

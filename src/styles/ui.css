@@ -499,6 +499,19 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+/* The box: a tool in the hand, not part of the map, and the one dashed line in the app. Live, it
+   takes no pointer events; kept, it is the drag target for everything it holds. */
+.selection-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dashed var(--ink);
+  cursor: grab;
+}
+
+.selection-box.live {
+  pointer-events: none;
+}
+
 /* The day being drawn with the sun: like a track, a one-pixel svg drawing outside its box. */
 .day-ghost {
   position: absolute;

@@ -39,6 +39,8 @@ function targetOf(el: EventTarget | null): Target {
     }
     case 'hold':
       return { kind: 'hold', id: hit.dataset.id ?? '' };
+    case 'selection':
+      return { kind: 'selection' };
     default:
       return { kind: 'hud' };
   }
@@ -50,6 +52,7 @@ const sample = (e: ReactPointerEvent): Sample => ({ id: e.pointerId, x: e.client
  * The full-screen paper. It turns pointer events into samples for the recognizer and
  * draws the world layer in screen space (no transform), with the HUD on top in screen space.
  * A right click is a long press at once, straight to the app; the recognizer never sees it.
+ * Shift held on empty paper is the marquee: the recognizer is told so and never sees the key.
  */
 export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
   const latest = useRef(onGesture);
@@ -100,7 +103,8 @@ export function Plane({ onGesture, onZoom, hud, children }: PlaneProps) {
           return;
         }
         pointersDown.current += 1;
-        recognizer.down(sample(e), targetOf(e.target));
+        const target = targetOf(e.target);
+        recognizer.down(sample(e), target.kind === 'paper' && e.shiftKey ? { kind: 'marquee' } : target);
         startTicking();
       }}
       onPointerMove={(e) => recognizer.move(sample(e))}

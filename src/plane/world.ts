@@ -19,5 +19,7 @@ export const SHAPE_PX: Record<Shape, Record<Size, { w: number; h: number }>> = {
 
 /** How close, in screen pixels, a drawing finger has to pass a stop to pick it up. */
 export const SNAP_PX = 24;
+/** The margin, in screen pixels, a kept selection box leaves around what it caught. */
+export const BOX_PAD_PX = 24;
 /** The least horizontal space, in screen pixels, between two stop labels. */
 export const LABEL_ROOM_PX = 80;

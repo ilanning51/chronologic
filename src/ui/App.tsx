@@ -26,10 +26,11 @@ import { bubbleFor } from '../plane/bubbles';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
 import { placeClear } from '../plane/placement';
+import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
 import { nearestStop, snapToAll } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
 import { tickMsFor } from '../plane/tick';
-import { SNAP_PX } from '../plane/world';
+import { BOX_PAD_PX, SNAP_PX } from '../plane/world';
 import { type Store, useWorld } from '../store/store';
 import { Bubble } from './Bubble';
 import { DayGhost } from './DayGhost';
@@ -39,6 +40,7 @@ import { Legend } from './Legend';
 import { LegTime } from './LegTime';
 import { NameField } from './NameField';
 import { Plane } from './Plane';
+import { SelectionBox } from './SelectionBox';
 import { Stop } from './Stop';
 import { StopEditor } from './StopEditor';
 import { stopsOnce } from './stopsOnce';
@@ -144,6 +146,24 @@ export function App({ store, now = Date.now }: AppProps) {
    * whether the first leg's chip shows, as it does only while the train is still on that leg.
    */
   const originDrag = useRef<{ track: string; grip: Point; keep?: number; chip: boolean } | null>(null);
+  /** The marquee being drawn: its corners in screen pixels, the ref for the drag, the state to draw. */
+  const marquee = useRef<{ from: Point; to: Point } | null>(null);
+  const [marqueeBox, setMarqueeBox] = useState<Rect | null>(null);
+  /** What the last box caught. App state only: it is never part of the saved world. */
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  /**
+   * The group drag in flight: the world point under the pointer when it began, where every
+   * selected stop and line start was then, and the seconds each touched train had covered. Every
+   * move adds the pointer's whole travel to the start points, so the path never matters.
+   */
+  const groupDrag = useRef<{
+    from: Point;
+    stops: Record<string, Point>;
+    origins: Record<string, Point>;
+    keep: Record<string, number>;
+  } | null>(null);
   /** The leg being set by a drag: where its stop is on screen and its planned seconds. */
   const [legTime, setLegTime] = useState<{ x: number; y: number; seconds: number } | null>(null);
   /** The stop or goal whose name field is open. */
@@ -155,6 +175,15 @@ export function App({ store, now = Date.now }: AppProps) {
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Escape lets go of the box, as a tap on paper does.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelection(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   // The camera starts on the soonest train, once; after that the hand moves it. Yesterday's day
@@ -222,7 +251,23 @@ export function App({ store, now = Date.now }: AppProps) {
     drawing.current = null;
     endDrag.current = null;
     originDrag.current = null;
+    groupDrag.current = null;
     const target = g.target;
+    if (target.kind === 'marquee') {
+      marquee.current = { from: g.at, to: g.at };
+      setMarqueeBox(rectOf(g.at, g.at));
+      return;
+    }
+    // Anything the box holds drags the whole box; a stop or a start outside it drags alone.
+    const held = selectionRef.current && prune(store.getState(), selectionRef.current);
+    const grouped =
+      target.kind === 'selection' ||
+      (target.kind === 'stop' && held?.stops.includes(target.id)) ||
+      (target.kind === 'origin' && held?.origins.includes(target.track));
+    if (grouped) {
+      if (held) startGroupDrag(held, g.at);
+      return;
+    }
     if (target.kind === 'origin') {
       startOriginDrag(target.track, g.at);
       return;
@@ -295,6 +340,54 @@ export function App({ store, now = Date.now }: AppProps) {
       keep: live ? train.seconds : undefined,
       chip: live && train.leg === 0,
     };
+  };
+
+  /** Picks up everything the box holds, done or not, and notes where each train is. */
+  const startGroupDrag = (held: Selection, at: Point) => {
+    const state = store.getState();
+    const byId = new Map(state.stops.map((s) => [s.id, s]));
+    const stops = Object.fromEntries(
+      state.stops.filter((s) => held.stops.includes(s.id)).map((s) => [s.id, { x: s.x, y: s.y }]),
+    );
+    const origins = Object.fromEntries(
+      state.tracks.filter((t) => held.origins.includes(t.id)).map((t) => [t.id, { x: t.origin.x, y: t.origin.y }]),
+    );
+    // Every line whose start moves or that lists a moved stop; the day train keeps its own place.
+    const touched = state.tracks.filter((t) => !t.day && (t.id in origins || t.stops.some((id) => id in stops)));
+    const keep: Record<string, number> = {};
+    for (const t of touched) {
+      const train = trainState(t, byId, now());
+      if (!train.parked) keep[t.id] = train.seconds;
+    }
+    groupDrag.current = { from: screenToWorld(cameraRef.current, at), stops, origins, keep };
+  };
+
+  /** Slides the whole group by the pointer's travel since the drag began. Nothing scales. */
+  const dragGroupTo = (at: Point) => {
+    const d = groupDrag.current;
+    if (!d) return;
+    const under = screenToWorld(cameraRef.current, at);
+    const dx = under.x - d.from.x;
+    const dy = under.y - d.from.y;
+    const moved = (points: Record<string, Point>) =>
+      Object.fromEntries(Object.entries(points).map(([id, p]) => [id, { x: p.x + dx, y: p.y + dy }]));
+    store.dispatch({ type: 'moveGroup', stops: moved(d.stops), origins: moved(d.origins), now: now(), keep: d.keep });
+  };
+
+  /** The marquee follows the mouse; letting go keeps what it caught, or nothing. */
+  const drawMarquee = (at: Point) => {
+    const m = marquee.current;
+    if (!m) return;
+    m.to = at;
+    setMarqueeBox(rectOf(m.from, m.to));
+  };
+  const dropMarquee = (at: Point) => {
+    const m = marquee.current;
+    marquee.current = null;
+    setMarqueeBox(null);
+    if (!m) return;
+    const cam = cameraRef.current;
+    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at))));
   };
 
   /** Moves the start of the line under the finger, grip and all, and reads back the first leg. */
@@ -508,7 +601,8 @@ export function App({ store, now = Date.now }: AppProps) {
         else if (g.target.kind === 'bubble') store.dispatch({ type: 'cycleTarget', trackId: g.target.track });
         else if (g.target.kind === 'tile') {
           if (g.target.tile === 'line') newLine();
-        } else if (g.target.kind === 'paper') {
+        } else if (g.target.kind === 'paper' || g.target.kind === 'marquee' || g.target.kind === 'selection') {
+          setSelection(null);
           setEditing(null);
           setTrayOpen(false);
           // A tap elsewhere commits an open name. A touchscreen blurs only after this tap, so blur now.
@@ -543,13 +637,24 @@ export function App({ store, now = Date.now }: AppProps) {
         startDrag(g);
         return;
       case 'dragMove':
-        if (drawing.current) drawSun(g.at);
+        if (marquee.current) drawMarquee(g.at);
+        else if (groupDrag.current) dragGroupTo(g.at);
+        else if (drawing.current) drawSun(g.at);
         else if (endDrag.current) dragDayEnd(g.at);
         else if (originDrag.current) dragOriginTo(g.at);
         else if (g.target.kind === 'tile') carryTile(g.at);
         else dragTo(g.at);
         return;
       case 'dragEnd':
+        if (marquee.current) {
+          dropMarquee(g.at);
+          return;
+        }
+        if (groupDrag.current) {
+          dragGroupTo(g.at);
+          groupDrag.current = null;
+          return;
+        }
         if (drawing.current) {
           dropSun(g.at);
           return;
@@ -612,6 +717,16 @@ export function App({ store, now = Date.now }: AppProps) {
   };
 
   const byId = new Map(world.stops.map((s) => [s.id, s]));
+  // The kept box wraps what the selection still names, with its margin, and follows the camera.
+  const held = selection && bounds(world, selection);
+  const keptBox =
+    held &&
+    (() => {
+      const a = worldToScreen(camera, held);
+      const b = worldToScreen(camera, { x: held.x + held.w, y: held.y + held.h });
+      const r = rectOf(a, b);
+      return { x: r.x - BOX_PAD_PX, y: r.y - BOX_PAD_PX, w: r.w + 2 * BOX_PAD_PX, h: r.h + 2 * BOX_PAD_PX };
+    })();
   // The stop being named is kept too, so a zoom with its field open leaves the field a place to be.
   const shown = naming ? new Set([...pinned.current, naming.id]) : pinned.current;
   const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport, shown));
@@ -730,6 +845,7 @@ export function App({ store, now = Date.now }: AppProps) {
   return (
     <Plane onGesture={onGesture} onZoom={onZoom} hud={hud}>
       <Grid camera={camera} />
+      {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
       {views.map((v) => (
         <Track key={v.id} view={v} />
       ))}
