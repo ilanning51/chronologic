@@ -220,12 +220,42 @@ test('holding a bubble fires a long press with the bubble as its target', () => 
   expect(gestures()).toEqual([{ type: 'longPress', target: bubble, at: { x: 5, y: 5 } }]);
 });
 
-test('a drag starting on a bubble or a train emits nothing', () => {
+test('a drag starting on a bubble emits nothing', () => {
   const { r, emit } = rig();
-  for (const target of [bubble, train]) {
-    r.down({ id: 1, x: 0, y: 0, t: 0 }, target);
-    r.move({ id: 1, x: 50, y: 50, t: 10 });
-    r.up({ id: 1, x: 50, y: 50, t: 20 });
-  }
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, bubble);
+  r.move({ id: 1, x: 50, y: 50, t: 10 });
+  r.up({ id: 1, x: 50, y: 50, t: 20 });
   expect(emit).not.toHaveBeenCalled();
+});
+
+test('a drag starting on a train is a drag, for the app to read as the start of its line', () => {
+  const { r, types } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, train);
+  r.move({ id: 1, x: 50, y: 50, t: 10 });
+  r.up({ id: 1, x: 50, y: 50, t: 20 });
+  expect(types()).toEqual(['dragStart', 'dragMove', 'dragEnd']);
+});
+
+const origin: Target = { kind: 'origin', track: 't' };
+const marquee: Target = { kind: 'marquee' };
+const selection: Target = { kind: 'selection' };
+
+test.each([origin, marquee, selection])('%o drags like a stop and never long presses', (target) => {
+  const { r, gestures } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, target);
+  r.tick(LONG_PRESS_MS + 1);
+  r.move({ id: 1, x: 20, y: 0, t: 600 });
+  r.up({ id: 1, x: 30, y: 0, t: 700 });
+  expect(gestures()).toEqual([
+    { type: 'dragStart', target, at: { x: 0, y: 0 } },
+    { type: 'dragMove', target, at: { x: 20, y: 0 } },
+    { type: 'dragEnd', target, at: { x: 30, y: 0 } },
+  ]);
+});
+
+test('a short press on the marquee or the selection is a tap', () => {
+  const { r, gestures } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, selection);
+  r.up({ id: 1, x: 2, y: 0, t: 100 });
+  expect(gestures()).toEqual([{ type: 'tap', target: selection, at: { x: 0, y: 0 } }]);
 });

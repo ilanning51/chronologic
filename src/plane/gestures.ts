@@ -8,7 +8,16 @@ export type Target =
   | { kind: 'bubble'; track: string }
   | { kind: 'tile'; tile: 'circle' | 'triangle' | 'line' | 'sun' }
   | { kind: 'hold'; id: string }
-  | { kind: 'hud' };
+  | { kind: 'hud' }
+  | { kind: 'origin'; track: string } // the start of a line
+  | { kind: 'marquee' } // empty paper with the select key held: a box is drawn, not a pan
+  | { kind: 'selection' }; // the drawn box: dragging it moves what it holds
+
+/**
+ * The targets a moving pointer drags. A tap on any of them is still a tap. A train drags so the
+ * app can hand a press on a train sitting at its line's start to the start; the app drops the rest.
+ */
+const DRAGS = new Set<Target['kind']>(['stop', 'tile', 'origin', 'marquee', 'selection', 'train']);
 
 /** One pointer event, in screen pixels and milliseconds. */
 export interface Sample {
@@ -115,7 +124,7 @@ export class Recognizer {
           t.mode = 'pan';
           this.emit({ type: 'pan', dx: p.x - t.anchor.x, dy: p.y - t.anchor.y });
           t.anchor = p;
-        } else if (t.target.kind === 'stop' || t.target.kind === 'tile') {
+        } else if (DRAGS.has(t.target.kind)) {
           t.mode = 'drag';
           this.emit({ type: 'dragStart', target: t.target, at: t.start });
           this.emit({ type: 'dragMove', target: t.target, at: p });
