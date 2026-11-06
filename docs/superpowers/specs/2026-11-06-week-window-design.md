@@ -68,6 +68,16 @@ plan: a block on a day is a stop, and the block ends when that stop's train pull
   it, and a box cannot pick up the start or the end square of a day the map does not draw.
 - Block times read on the twelve-hour clock without am or pm ("9:00 – 10:00"), as in the Figma
   screen; the hour rows say AM and PM.
+- While the window is open the map behind it holds still, drawn as it stood when the window
+  opened. When the window closes, by any path, each stop and line start it moved slides from there
+  to where it stands now, over half a second, easing out. A day line made while it was open is
+  drawn once the slide ends; a stop deleted is gone at once. Under reduced motion, or when nothing
+  moved, the map is simply in place.
+- A drag on the map while the window is open only closes the window, and one while the map slides
+  does nothing; neither records an undo step. A tap on a stop still completes it.
+- While a block or next stop is held, the day plane hatches, in muted ink, the hours its end cannot
+  reach: before its line's earliest arrival and after its latest. A goal, which can run on without
+  end, is hatched only before its earliest. The hatching goes with the drop.
 
 ## Assumptions for Ian to check
 
