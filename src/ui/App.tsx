@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
-import { dayTrack, isDayEnd } from '../model/day';
-import { dayOf } from '../model/days';
+import { dayWith, drawnOnPlane, isDayEnd } from '../model/day';
+import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
@@ -49,6 +49,8 @@ import { StopEditor } from './StopEditor';
 import { stopsOnce } from './stopsOnce';
 import { Track } from './Track';
 import { Tray } from './Tray';
+import { WeekButton } from './WeekButton';
+import { WeekWindow } from './WeekWindow';
 
 export interface AppProps {
   store: Store;
@@ -64,6 +66,14 @@ export interface AppProps {
  */
 function homeOf(world: World, stopId: string) {
   return tracksOf(world, stopId).find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** A day line's name on a chip: today's is "today", any other's is its weekday. */
+function dayName(date: string, now: number): string {
+  if (date === dayOf(now)) return 'today';
+  return WEEKDAYS[parseDate(date).getDay()];
 }
 
 /** How far above its first stop a drawn day starts, and below its last the end square sits, in px. */
@@ -106,6 +116,9 @@ function useFly(setCamera: (c: Camera) => void) {
   );
 }
 
+/** How often the open week window reads the clock when nothing else does. */
+const WEEK_TICK_MS = 30_000;
+
 /** The v2 plane: every track and stop in screen space, redrawn as the clock ticks. */
 export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const world = useWorld(store);
@@ -139,6 +152,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   /** Whether the tray of tiles is open. */
   const [trayOpen, setTrayOpen] = useState(false);
+  /** Whether the week window is open over the plane. App state only: it opens closed. */
+  const [weekOpen, setWeekOpen] = useState(false);
+  const weekOpenRef = useRef(weekOpen);
+  weekOpenRef.current = weekOpen;
   /** The tile whose brush is on, if any. App state only: never saved, off at start. */
   const [brush, setBrush] = useState<Tile | null>(null);
   const brushRef = useRef(brush);
@@ -158,8 +175,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const drawing = useRef<{ from: Point; ids: string[] } | null>(null);
   /** The ghost ink line of the day being drawn, in screen points. */
   const [dayGhost, setDayGhost] = useState<Point[] | null>(null);
-  /** The day's-end drag in flight: where the square started, the grip, and whether it added a stop. */
-  const endDrag = useRef<{ start: Point; grip: Point; added: boolean } | null>(null);
+  /** The day's-end drag in flight: its day, where the square started, the grip, and whether it added a stop. */
+  const endDrag = useRef<{ day: string; start: Point; grip: Point; added: boolean } | null>(null);
   /**
    * The drag of a line's start: its track, the grip, the seconds its train had covered, and
    * whether the first leg's chip shows, as it does only while the train is still on that leg.
@@ -205,6 +222,11 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.key === 'Escape') {
+        // With the week window open, Escape closes it and nothing else.
+        if (weekOpenRef.current) {
+          setWeekOpen(false);
+          return;
+        }
         setSelection(null);
         setBrush(null);
         dropStroke();
@@ -218,7 +240,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         history(key === 'y' || e.shiftKey ? 'redo' : 'undo');
         return;
       }
-      if ((e.key === 'Backspace' || e.key === 'Delete') && selectionRef.current) {
+      if ((e.key === 'Backspace' || e.key === 'Delete') && selectionRef.current && !weekOpenRef.current) {
         e.preventDefault();
         deleteSelected();
       }
@@ -366,7 +388,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const under = screenToWorld(cameraRef.current, g.at);
     if (isDayEnd(state, stop.id)) {
       const grip = { x: stop.x - under.x, y: stop.y - under.y };
-      endDrag.current = { start: { x: stop.x, y: stop.y }, grip, added: false };
+      endDrag.current = { day: dayWith(state, stop.id)!.id, start: { x: stop.x, y: stop.y }, grip, added: false };
       return;
     }
     // A goal drags as its line's goal whichever line its button speaks for, the day's included.
@@ -468,7 +490,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     setMarqueeBox(null);
     if (!m) return;
     const cam = cameraRef.current;
-    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at))));
+    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at)), dayOf(now())));
   };
 
   /** Moves the start of the line under the finger, grip and all, and reads back the first leg. */
@@ -710,12 +732,12 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const cam = cameraRef.current;
     const under = screenToWorld(cam, at);
     const p = { x: under.x + d.grip.x, y: under.y + d.grip.y };
-    store.dispatch({ type: 'moveDayEnd', x: p.x, y: p.y, now: now() });
-    const day = dayTrack(store.getState());
+    store.dispatch({ type: 'moveDayEnd', dayId: d.day, x: p.x, y: p.y, now: now() });
+    const day = store.getState().tracks.find((t) => t.id === d.day);
     const hit = day ? nearestStop(dayCandidates(day.stops), p, SNAP_PX / cam.scale) : null;
     if (!hit) return;
-    store.dispatch({ type: 'addToDay', stopId: hit.id, now: now() });
-    if (dayTrack(store.getState())?.stops.includes(hit.id)) d.added = true;
+    store.dispatch({ type: 'addToDay', dayId: d.day, stopId: hit.id, now: now() });
+    if (store.getState().tracks.find((t) => t.id === d.day)?.stops.includes(hit.id)) d.added = true;
   };
 
   /** A square that added a stop goes back where it was; otherwise it stays where it was let go. */
@@ -723,7 +745,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     dragDayEnd(at);
     const d = endDrag.current;
     endDrag.current = null;
-    if (d?.added) store.dispatch({ type: 'moveDayEnd', x: d.start.x, y: d.start.y, now: now() });
+    if (d?.added) store.dispatch({ type: 'moveDayEnd', dayId: d.day, x: d.start.x, y: d.start.y, now: now() });
   };
 
   /**
@@ -787,8 +809,20 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (n && !store.getState().stops.some((s) => s.id === n.id)) setNaming(null);
   };
 
-  /** A tap on a tile: its brush on, or off if it was on; another tile's brush goes off. */
-  const toggleBrush = (tile: Tile) => setBrush((b) => (b === tile ? null : tile));
+  /**
+   * A tap on a tile: its brush on, or off if it was on; another tile's brush goes off. A brush and
+   * the week window are never on together: taking up a brush closes the window.
+   */
+  const toggleBrush = (tile: Tile) => {
+    setWeekOpen(false);
+    setBrush((b) => (b === tile ? null : tile));
+  };
+
+  /** Opening the week window puts any brush down, so a press on the plane behind it is a plain one. */
+  const toggleWeek = () => {
+    if (!weekOpen) setBrush(null);
+    setWeekOpen(!weekOpen);
+  };
 
   const onGesture = (g: Gesture) => {
     endTitleStep();
@@ -816,6 +850,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         ) {
           setSelection(null);
           setEditing(null);
+          setWeekOpen(false);
           // A tap elsewhere commits an open name. A touchscreen blurs only after this tap, so blur now.
           (document.activeElement as HTMLElement | null)?.blur();
           // A brush keeps the tray open; the step brushes place a stop where the tap fell.
@@ -846,7 +881,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             store.dispatch({ type: 'delete', id: open, now: now() });
             setEditing(null);
           } else if (isDayEnd(state, open)) {
-            store.dispatch({ type: 'clearDay', now: now() });
+            store.dispatch({ type: 'clearDay', dayId: dayWith(state, open)!.id, now: now() });
             setEditing(null);
           }
         }
@@ -1004,7 +1039,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     })();
   // The stop being named is kept too, so a zoom with its field open leaves the field a place to be.
   const shown = naming ? new Set([...pinned.current, naming.id]) : pinned.current;
-  const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport, shown));
+  // Days after tomorrow live only in the week window.
+  const views = world.tracks
+    .filter((t) => drawnOnPlane(t, dayOf(time)))
+    .map((t) => layoutTrack(t, world, camera, time, viewport, shown));
   const rolling = views.some((v) => !v.train.parked);
 
   useEffect(() => {
@@ -1016,6 +1054,24 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     }, tickMsFor(camera.scale));
     return () => window.clearInterval(id);
   }, [rolling, camera.scale, now, store]);
+
+  // The open week window keeps its now line and its blocks current even when every train is parked.
+  useEffect(() => {
+    if (!weekOpen) return;
+    const id = window.setInterval(() => setTime(now()), WEEK_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [weekOpen, now]);
+
+  // Midnight turns the day over even when every train is parked and nothing else ticks.
+  const [midnight, setMidnight] = useState(0);
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      store.dispatch({ type: 'tick', now: now() });
+      setTime(now());
+      setMidnight((n) => n + 1);
+    }, Math.max(0, nextMidnight(now()) - now()));
+    return () => window.clearTimeout(id);
+  }, [midnight, now, store]);
 
   // A goal is a goal whichever line its button spoke for; the day's end is neither stop nor goal.
   const editedStop = editing ? byId.get(editing) : undefined;
@@ -1031,7 +1087,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             trackId: track.id,
             color: track.day ? null : track.color,
             // A chip is named by its line, so chips the same shape can be told apart by ear.
-            name: track.day ? 'today' : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
+            name: track.day ? dayName(track.day.date, time) : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
           }))
       : [];
   const editor =
@@ -1115,8 +1171,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             key={v.id}
             track={v.id}
             color={v.color}
-            day={v.day}
-            sketch={v.sketch}
+            day={v.day && !v.tomorrow}
+            sketch={v.sketch || v.tomorrow}
             soonest={v.id === soonest?.id}
             shape={target.shape}
             title={target.title}
@@ -1148,18 +1204,24 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     </>
   );
 
+  // The week window and its button sit beside the plane, not in it, so neither a press nor a wheel
+  // on them ever reaches the map.
   return (
-    <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
-      <Grid camera={camera} />
-      {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
-      {views.map((v) => (
-        <Track key={v.id} view={v} />
-      ))}
-      {stopsOnce(views).map((p) => (
-        <Stop key={p.stop.id} {...p} />
-      ))}
-      {ghost && <Ghost {...ghost} />}
-      {dayGhost && <DayGhost points={dayGhost} />}
-    </Plane>
+    <>
+      <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
+        <Grid camera={camera} />
+        {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
+        {views.map((v) => (
+          <Track key={v.id} view={v} />
+        ))}
+        {stopsOnce(views).map((p) => (
+          <Stop key={p.stop.id} {...p} />
+        ))}
+        {ghost && <Ghost {...ghost} />}
+        {dayGhost && <DayGhost points={dayGhost} />}
+      </Plane>
+      {weekOpen && <WeekWindow store={store} now={time} clock={now} />}
+      <WeekButton open={weekOpen} onToggle={toggleWeek} />
+    </>
   );
 }

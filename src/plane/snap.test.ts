@@ -55,7 +55,7 @@ test('snapToAll lists every line within radius nearest first and skips lines the
 
 test('snapToAll never offers the day line', () => {
   const world = parallel();
-  world.tracks[1].day = { date: '2026-11-01', budgets: [3600] };
+  world.tracks[1].day = { date: '2026-11-01', budgets: [3600], lengths: [3600] };
   expect(snapToAll(world, { x: 700, y: 45 }, NOW, 50).map((h) => h.trackId)).toEqual(['t1']);
   expect(snapToTracks(world, { x: 700, y: 58 }, NOW, 50)).toBeNull();
 });

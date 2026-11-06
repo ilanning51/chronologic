@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
 import type { Stop, Track, World } from '../model/types';
+import { addDays, dayOf } from '../model/days';
 import { twoLines, withDay } from '../test/fixtures';
 import { fitLeg, HOME, MIN_SCALE } from './camera';
 import { openingCamera } from './opening';
@@ -73,7 +74,7 @@ test('a leg too long for the zoom range is clamped', () => {
 
 test('the camera opens on the day train when there is a day', () => {
   // At 0 s Dentist is a whole budget away, so the day train sits at its origin (1000, -400).
-  const world = withDay();
+  const world = withDay(dayOf(0));
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const day = world.tracks.find((t) => t.day)!;
   const route = trackRoute(day, byId);
@@ -97,6 +98,12 @@ test('the camera opens on the day train when there is a day', () => {
 
   // A parked day is nothing to follow: the camera opens on the soonest project instead.
   day.train = { leg: day.stops.length, departedAt: 0 };
+  const withoutDay = { ...world, tracks: world.tracks.filter((t) => !t.day) };
+  expect(openingCamera(world, 500_000, viewport)).toEqual(openingCamera(withoutDay, 500_000, viewport));
+});
+
+test("tomorrow's day line is not today's: the camera opens as if there were none", () => {
+  const world = withDay(addDays(dayOf(0), 1));
   const withoutDay = { ...world, tracks: world.tracks.filter((t) => !t.day) };
   expect(openingCamera(world, 500_000, viewport)).toEqual(openingCamera(withoutDay, 500_000, viewport));
 });

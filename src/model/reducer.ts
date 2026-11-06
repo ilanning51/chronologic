@@ -1,7 +1,23 @@
 import { distance, type Point } from '../plane/geometry';
 import { PALETTE } from './palette';
-import { clearDay, dayBackTo, dayTrack, dayWithout, freshDayBudget, isDayEnd, settleDay } from './day';
+import {
+  clearDay,
+  dayBackTo,
+  dayFor,
+  days,
+  dayWith,
+  dayWithout,
+  defaultLength,
+  freshDayBudget,
+  isDayEnd,
+  offOtherDays,
+  settleDay,
+  startDay,
+  withStopBeforeEnd,
+} from './day';
 import { dayOf } from './days';
+import { moveBlock, place, unplace, type PlaceAction } from './blocks';
+import { keepTrain } from './relocate';
 import { legSeconds, nextIndex, rebase, timeLeftAny, trackRoute, trainState } from './train';
 import type { BubbleTarget, Size, Stop, Track, World } from './types';
 
@@ -39,10 +55,13 @@ export type Action =
   | { type: 'undo'; stopId: string; now: number } // by stop, so Not done puts back the one pressed
   | { type: 'cycleTarget'; trackId: string }
   | { type: 'newDay'; id: string; endId: string; origin: Point; stops: string[]; end: Point; now: number; date: string }
-  | { type: 'addToDay'; stopId: string; now: number } // appends before the day's-end square
-  | { type: 'moveDayEnd'; x: number; y: number; now: number }
-  | { type: 'clearDay'; now: number }
-  | { type: 'tick'; now: number }; // clears a day whose date has passed
+  | { type: 'addToDay'; dayId: string; stopId: string; now: number } // appends before the day's-end square
+  | { type: 'moveDayEnd'; dayId: string; x: number; y: number; now: number }
+  | { type: 'clearDay'; dayId: string; now: number }
+  | ({ type: 'place' } & PlaceAction) // a stop onto a date as a block ending at `end`
+  | { type: 'moveBlock'; stopId: string; end: number; length: number; now: number }
+  | { type: 'unplace'; stopId: string; now: number }
+  | { type: 'tick'; now: number }; // clears every day whose date has passed and begins today's
 
 export const EMPTY: World = { tracks: [], stops: [], lastTouched: null };
 
@@ -67,26 +86,6 @@ function withTrack(world: World, track: Track): Track[] {
 }
 
 /**
- * The one rule everything rests on: an edit never moves the train. `after` is the world with the
- * change applied at or ahead of the train, so its leg index still holds; this keeps the seconds the
- * train had covered in `before` (or `keep`, when the caller knows better) and re-derives its
- * departure time against the leg's new length. It reads the derived train, not the stored one:
- * a train that passed through a stop done elsewhere is on a later leg than it says. A parked
- * train has no leg to cover and is left alone.
- */
-function keepTrain(before: World, after: World, trackId: string, now: number, keep?: number): World {
-  const was = before.tracks.find((t) => t.id === trackId);
-  const track = after.tracks.find((t) => t.id === trackId);
-  // The day train shadows the projects and keeps its own leg; a drag never rebases it.
-  if (!was || !track || track.day) return after;
-  const state = trainState(was, stopsById(before), now);
-  if (state.parked) return after;
-  const seconds = keep ?? state.seconds;
-  const length = legSeconds(trackRoute(track, stopsById(after)), state.leg);
-  return { ...after, tracks: withTrack(after, { ...track, train: rebase(state.leg, seconds, length, now) }) };
-}
-
-/**
  * Takes a stop off every track that lists it and out of the world, or, given `only`, off that one
  * track and nowhere else. On each track the legs either side of it merge, read from the derived
  * train: the dot just behind the train joins its leg to the train's, and the train has covered
@@ -96,13 +95,13 @@ function keepTrain(before: World, after: World, trackId: string, now: number, ke
 function withoutStop(world: World, id: string, now: number, only?: string): World {
   const byId = stopsById(world);
   const kept = new Map<string, { leg: number; seconds: number }>();
-  let fresh = false;
+  const fresh: string[] = [];
   const tracks = world.tracks.map((track) => {
     const index = track.stops.indexOf(id);
     if (index < 0 || (only !== undefined && track.id !== only)) return track;
     if (track.day) {
       const off = dayWithout(track, index);
-      fresh = off.fresh;
+      if (off.fresh) fresh.push(track.id);
       return off.track;
     }
     const state = trainState(track, byId, now);
@@ -124,7 +123,7 @@ function withoutStop(world: World, id: string, now: number, only?: string): Worl
     }),
   };
   // Read against the rebased project trains: the day's budget is their time left from now.
-  return fresh ? freshDayBudget(merged, now) : merged;
+  return fresh.reduce((w, dayId) => freshDayBudget(w, dayId, now), merged);
 }
 
 /**
@@ -140,7 +139,7 @@ export function undoable(world: World, stopId: string, now: number): boolean {
 }
 
 /** The actions that can change the day's next stop; each ends by settling the day. */
-const SETTLES = new Set<Action['type']>(['newDay', 'addToDay', 'complete', 'undo', 'leave', 'delete']);
+const SETTLES = new Set<Action['type']>(['newDay', 'addToDay', 'complete', 'undo', 'leave', 'delete', 'place', 'moveBlock', 'unplace']);
 
 export function reduce(world: World, action: Action): World {
   const next = apply(world, action);
@@ -299,7 +298,7 @@ function apply(world: World, action: Action): World {
       const { id, now } = action;
       const found = tracksOf(world, id);
       if (found.length === 0) return world;
-      if (isDayEnd(world, id)) return clearDay(world);
+      if (isDayEnd(world, id)) return clearDay(world, dayWith(world, id)!.id);
       // A goal's home is a project: a stop last on the day line is only the day's last errand.
       const home = found.find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
       if (home) {
@@ -366,7 +365,7 @@ function apply(world: World, action: Action): World {
       });
       return {
         tracks,
-        stops: world.stops.map((s) => (s.id === doneId ? { ...s, done: true } : s)),
+        stops: world.stops.map((s) => (s.id === doneId ? { ...s, done: true, doneAt: now } : s)),
         lastTouched: trackId,
       };
     }
@@ -375,7 +374,12 @@ function apply(world: World, action: Action): World {
       const { stopId: id, now } = action;
       if (!undoable(world, id, now)) return world;
       const byId = stopsById(world);
-      const stops = world.stops.map((s) => (s.id === id ? { ...s, done: false } : s));
+      // Not done any more, so no time it was done either.
+      const stops = world.stops.map((s) => {
+        if (s.id !== id) return s;
+        const { doneAt: _, ...rest } = s;
+        return { ...rest, done: false };
+      });
       const after = stopsById({ ...world, stops });
       // Each project train past the stop goes back to wait at it; one still short of it is left
       // alone. Legs are the derived trains': a train that rolled through it has it just behind.
@@ -405,17 +409,22 @@ function apply(world: World, action: Action): World {
 
     case 'newDay': {
       const { id, endId, origin, end, now, date } = action;
-      const rest = clearDay(world);
-      if (rest.tracks.some((t) => t.id === id) || rest.stops.some((s) => s.id === endId)) return world;
-      const byId = stopsById(rest);
+      // The day drawn for a date replaces that date's day and no other.
+      const old = dayFor(world, date);
+      const cleared = old ? clearDay(world, old.id) : world;
+      if (cleared.tracks.some((t) => t.id === id) || cleared.stops.some((s) => s.id === endId)) return world;
+      const byId = stopsById(cleared);
       // Pending stops some project lists, each once, in the order drawn. The old end square is gone.
       const picked = [...new Set(action.stops)].filter(
-        (s) => byId.get(s)?.done === false && rest.tracks.some((t) => t.stops.includes(s)),
+        (s) => byId.get(s)?.done === false && cleared.tracks.some((t) => !t.day && t.stops.includes(s)),
       );
       if (picked.length === 0) return world;
+      // A stop sits on one day at most: drawn onto this one, it comes off any other.
+      const rest = offOtherDays(cleared, picked, now);
       const square: Stop = { id: endId, title: '', shape: 'square', size: 'small', x: end.x, y: end.y, done: false };
       // Only the first leg's budget is known now; each later one is written as the train sets off.
       const budgets = [timeLeftAny(rest, picked[0], now), ...picked.map(() => 0)];
+      const lengths = [...picked.map((s) => defaultLength(byId.get(s))), defaultLength(square)];
       const day: Track = {
         id,
         color: 0,
@@ -423,42 +432,56 @@ function apply(world: World, action: Action): World {
         stops: [...picked, endId],
         train: { leg: 0, departedAt: now },
         target: 'goal',
-        day: { date, budgets },
+        day: { date, budgets, lengths },
       };
       return { tracks: [...rest.tracks, day], stops: [...rest.stops, square], lastTouched: id };
     }
 
     case 'addToDay': {
-      const { stopId, now } = action;
-      const day = dayTrack(world);
+      const { dayId, stopId, now } = action;
+      const day = world.tracks.find((t) => t.id === dayId);
       const stop = world.stops.find((s) => s.id === stopId);
       if (!day?.day || !stop || stop.done || day.stops.includes(stopId)) return world;
       if (!world.tracks.some((t) => !t.day && t.stops.includes(stopId))) return world;
       // A finished day has parked past its end square: nothing goes behind it.
-      const last = day.stops.length - 1;
-      if (day.train.leg > last) return world;
-      const stops = [...day.stops.slice(0, last), stopId, day.stops[last]];
-      const budgets = [...day.day.budgets.slice(0, last), 0, ...day.day.budgets.slice(last)];
-      const after: World = { ...world, tracks: withTrack(world, { ...day, stops, day: { ...day.day, budgets } }), lastTouched: day.id };
+      if (day.train.leg > day.stops.length - 1) return world;
+      // A stop sits on one day at most: added to this one, it comes off any other.
+      const rest = offOtherDays(world, [stopId], now, dayId);
+      const here = rest.tracks.find((t) => t.id === dayId)!;
+      const added = withStopBeforeEnd(here, stopId, defaultLength(stop));
+      const after: World = { ...rest, tracks: withTrack(rest, added), lastTouched: dayId };
       // Waiting at the end square, the day train now heads for this stop instead.
-      return day.train.leg === last ? freshDayBudget(after, now) : after;
+      return here.train.leg === here.stops.length - 1 ? freshDayBudget(after, dayId, now) : after;
     }
 
     case 'moveDayEnd': {
-      const { x, y } = action;
-      const day = dayTrack(world);
+      const { dayId, x, y } = action;
+      const day = world.tracks.find((t) => t.id === dayId && t.day);
       const end = day?.stops[day.stops.length - 1];
       if (!day || end === undefined || !isDayEnd(world, end)) return world;
       return { ...world, stops: world.stops.map((s) => (s.id === end ? { ...s, x, y } : s)), lastTouched: day.id };
     }
 
     case 'clearDay':
-      return clearDay(world);
+      return clearDay(world, action.dayId);
+
+    case 'place':
+      return place(world, action);
+
+    case 'moveBlock':
+      return moveBlock(world, action);
+
+    case 'unplace':
+      return unplace(world, action);
 
     case 'tick': {
-      const day = dayTrack(world);
+      // Days before today go, unfinished stops and all; today's day, if it was waiting, begins.
       // The store skips notifying on the same world, so a tick that changes nothing returns it.
-      return day?.day && day.day.date !== dayOf(action.now) ? clearDay(world) : world;
+      const today = dayOf(action.now);
+      const past = days(world).filter((t) => t.day!.date < today);
+      const cleared = past.reduce((w, t) => clearDay(w, t.id), world);
+      const begun = dayFor(cleared, today);
+      return begun?.day?.held ? startDay(cleared, begun.id, action.now) : cleared;
     }
   }
 }

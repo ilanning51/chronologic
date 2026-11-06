@@ -1,7 +1,9 @@
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { drawnOnPlane } from '../model/day';
+import { dayOf } from '../model/days';
 import { dayState, trainState } from '../model/train';
 import type { Stop, Track, World } from '../model/types';
-import { running, twoLines, withDay } from '../test/fixtures';
+import { running, twoLines, withDay, withWeek } from '../test/fixtures';
 import { MAX_SCALE, worldToScreen } from './camera';
 import { layoutTrack } from './layout';
 
@@ -85,7 +87,7 @@ test('a stop on two lines is a ring, and a done one is a dot', () => {
   expect(ringOf(layoutTrack(w.tracks[0], w, wide, 0, viewport), 'shared')).toBe(false);
 
   // The day line counts as a line: Dentist is a ring once a day goes through it.
-  const d = withDay();
+  const d = withDay(dayOf(0));
   expect(ringOf(layoutTrack(d.tracks[0], d, wide, 0, viewport), 'dentist')).toBe(true);
 });
 
@@ -211,4 +213,32 @@ test('a waiting train cuts the line at its stop, and a parked one has travelled 
     [{ x: 200, y: 100 }, { x: 200, y: 300 }],
   ]);
   expect(v.anyInView).toBe(true);
+});
+
+describe('day lines on the plane', () => {
+  const noon = new Date(2026, 10, 1, 12).getTime();
+  const later = (w: World) => {
+    const moved = structuredClone(w);
+    moved.tracks.find((t) => t.id === 'day2')!.day!.date = '2026-11-03';
+    return moved;
+  };
+
+  test("today's is drawn as now, tomorrow's muted and thin with its train at its start, and later ones not at all", () => {
+    const w = withWeek('2026-11-01');
+    const view = (id: string) => layoutTrack(w.tracks.find((t) => t.id === id)!, w, wide, noon, viewport);
+    expect(view('day')).toMatchObject({ day: true, tomorrow: false });
+    expect(view('day2')).toMatchObject({ day: true, tomorrow: true });
+    expect(view('t1')).toMatchObject({ day: false, tomorrow: false });
+    expect({ x: view('day2').train.x, y: view('day2').train.y }).toEqual(view('day2').origin);
+    expect(w.tracks.map((t) => drawnOnPlane(t, '2026-11-01'))).toEqual([true, true, true, true]);
+    expect(later(w).tracks.map((t) => drawnOnPlane(t, '2026-11-01'))).toEqual([true, true, true, false]);
+  });
+
+  test('a stop is a ring only for the lines drawn through it', () => {
+    // Goal 2 ends its project and starts tomorrow's day line.
+    const w = withWeek('2026-11-01');
+    const t2 = (world: World) => layoutTrack(world.tracks[1], world, wide, noon, viewport);
+    expect(t2(w).stops.find((s) => s.id === 'goal2')?.ring).toBe(true);
+    expect(t2(later(w)).stops.find((s) => s.id === 'goal2')?.ring).toBe(false);
+  });
 });

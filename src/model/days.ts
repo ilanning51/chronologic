@@ -1,17 +1,43 @@
-/** The local hour a day turns over. Up past midnight still counts as the day before. */
-export const DAY_TURNS_AT = 4;
-
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+function dateOf(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** A YYYY-MM-DD date as its local midnight. */
+export function parseDate(date: string): Date {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /**
- * The local date, as YYYY-MM-DD, of the day that now falls in. A day runs from DAY_TURNS_AT
- * local to DAY_TURNS_AT local. Reads the local hour rather than subtracting a fixed span of
- * milliseconds, so a clock change in the small hours doesn't shift the turnover by an hour.
+ * The local date, as YYYY-MM-DD, of the day that now falls in. A day runs from midnight to
+ * midnight, the same rule on the map and in the week window.
  */
 export function dayOf(now: number): string {
+  return dateOf(new Date(now));
+}
+
+/** The moment, in ms, a date begins: its local midnight. */
+export function startOfDate(date: string): number {
+  return parseDate(date).getTime();
+}
+
+/** The moment, in ms, a date ends: the next date's midnight. */
+export function endOfDate(date: string): number {
+  return startOfDate(addDays(date, 1));
+}
+
+/** The next local midnight after now. Built from the date, so a clock change never shifts it by an hour. */
+export function nextMidnight(now: number): number {
   const t = new Date(now);
-  const day = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (t.getHours() < DAY_TURNS_AT ? 1 : 0));
-  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1).getTime();
+}
+
+/** The date n days after (or before, when n is negative) this one. */
+export function addDays(date: string, n: number): string {
+  const d = parseDate(date);
+  return dateOf(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
 }
