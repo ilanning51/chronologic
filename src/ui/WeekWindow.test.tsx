@@ -245,6 +245,7 @@ describe('dragging', () => {
     w.stops = w.stops.map((s) => (s.id === 'alpha' ? { ...s, done: true, doneAt: at(7, 10, 30) } : s));
     const store = open(w);
     expect(block('alpha')).toHaveClass('done');
+    expect(block('alpha').querySelector('.shape')).toHaveClass('dot');
     expect(document.querySelector('[data-handle]')).toBeNull();
     drag(block('alpha'), rowY(10) + 5, { el: dayPlane(), y: rowY(14) });
     expect(store.getState()).toBe(w);

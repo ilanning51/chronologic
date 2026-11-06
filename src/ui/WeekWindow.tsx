@@ -446,7 +446,7 @@ function Block({ block: b, lifted, onPress }: BlockProps) {
       }}
       onPointerDown={b.done ? undefined : (e) => onPress(e, false)}
     >
-      <span aria-hidden="true" className={`shape ${b.shape} small`} />
+      <span aria-hidden="true" className={b.done ? 'shape dot' : `shape ${b.shape} small`} />
       <span className="week-block-text">
         <span className={b.shape === 'square' ? 'goal-name' : undefined}>{b.title || 'Unnamed'}</span>
         {b.height >= TIMES_AT_PX && (
