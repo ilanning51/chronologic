@@ -111,7 +111,7 @@ export function dayState(day: Track, world: World, now: number): TrainState {
   if (day.day?.held) return { leg, parked: false, waiting: true, seconds: 0, fraction: 0, departedAt, at: route.vertices[0], angle: 0 };
   const budget = day.day?.budgets[leg] ?? 0;
   const left = timeLeftAny(world, day.stops[leg], now);
-  const fraction = budget === 0 ? 1 : Math.min(1, Math.max(0, 1 - left / budget));
+  const fraction = shadowFraction(budget, left);
   const { from, to } = legSpan(route, leg);
   const length = pathLength(route.vertices, from, to);
   return {
@@ -123,6 +123,11 @@ export function dayState(day: Track, world: World, now: number): TrainState {
     departedAt,
     ...pointAlong(route.vertices, from, to, fraction),
   };
+}
+
+/** The share of a leg's budget the project time has run down, from 0 to 1; a leg with no budget is run. */
+function shadowFraction(budget: number, left: number): number {
+  return budget === 0 ? 1 : Math.min(1, Math.max(0, 1 - left / budget));
 }
 
 /**
@@ -142,7 +147,7 @@ export function lifeState(life: Track, world: World, now: number): TrainState {
   let waiting: boolean;
   if (isRing(world, stopId)) {
     const budget = life.life?.budgets[leg] ?? 0;
-    fraction = budget === 0 ? 1 : Math.min(1, Math.max(0, 1 - timeLeftAny(world, stopId, now) / budget));
+    fraction = shadowFraction(budget, timeLeftAny(world, stopId, now));
     waiting = fraction === 1;
   } else {
     const tau = length === 0 ? 1 : (now - departedAt) / 1000 / length;

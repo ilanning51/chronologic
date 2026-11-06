@@ -1,11 +1,14 @@
 import { routeThrough, type Route } from '../plane/routing';
 import { isProject } from './day';
 import { legSeconds, lifeState, rebase, timeLeftAny } from './train';
-import type { Stop, Track, World } from './types';
+import type { LifePlan, Stop, Track, World } from './types';
+
+/** A track that is the life line. */
+export type LifeTrack = Track & { life: LifePlan };
 
 /** The life line, if the world has one. */
-export function lifeOf(world: World): Track | undefined {
-  return world.tracks.find((t) => t.life);
+export function lifeOf(world: World): LifeTrack | undefined {
+  return world.tracks.find((t): t is LifeTrack => t.life !== undefined);
 }
 
 /** Whether the life line lists this stop. */
@@ -46,9 +49,8 @@ export function lastDoneX(world: World, life: Track): number | null {
 }
 
 /** The life train sets off now toward `leg`, on these budgets. */
-function departLife(world: World, life: Track, leg: number, budgets: number[], now: number): World {
-  const moved: Track = { ...life, train: { leg, departedAt: now }, life: life.life && { ...life.life, budgets } };
-  return { ...world, tracks: world.tracks.map((t) => (t.id === life.id ? moved : t)) };
+function departLife(world: World, life: LifeTrack, leg: number, budgets: number[], now: number): World {
+  return replaceLife(world, { ...life, train: { leg, departedAt: now }, life: { ...life.life, budgets } });
 }
 
 /**
@@ -58,7 +60,7 @@ function departLife(world: World, life: Track, leg: number, budgets: number[], n
  */
 export function settleLife(world: World, now: number): World {
   const life = lifeOf(world);
-  if (!life?.life) return world;
+  if (!life) return world;
   const done = new Set(world.stops.filter((s) => s.done).map((s) => s.id));
   let { leg } = life.train;
   if (leg >= life.stops.length || !done.has(life.stops[leg])) return world;
@@ -81,8 +83,8 @@ export function settleLife(world: World, now: number): World {
 export function keepLife(before: World, after: World, now: number): World {
   const was = lifeOf(before);
   const track = lifeOf(after);
-  if (!was?.life || !track?.life) return after;
-  const carried = new Map(was.stops.map((id, i) => [id, was.life!.budgets[i] ?? 0]));
+  if (!was || !track) return after;
+  const carried = new Map(was.stops.map((id, i) => [id, was.life.budgets[i] ?? 0]));
   const budgets = track.stops.map((id) => carried.get(id) ?? 0);
   const parked = was.train.leg >= was.stops.length;
   if (parked) {
@@ -93,7 +95,7 @@ export function keepLife(before: World, after: World, now: number): World {
   }
   const done = new Set(after.stops.filter((s) => s.done).map((s) => s.id));
   const afterById = new Map(after.stops.map((s) => [s.id, s]));
-  const trainX = lifeState(was, before, now).at.x;
+  const trainX = lifeTrainX(before, was, now);
   const heading = was.stops[was.train.leg];
   // The first undone square right of where the train stood, or the one it was heading for.
   const nearest = track.stops.findIndex((id) => !done.has(id) && (id === heading || afterById.get(id)!.x > trainX));
@@ -138,7 +140,7 @@ export function lifeWithout(life: Track, index: number): { track: Track; fresh: 
 /** The life train sets off now for the square at its leg, on the project time left to it. */
 export function freshLifeBudget(world: World, now: number): World {
   const life = lifeOf(world);
-  if (!life?.life) return world;
+  if (!life) return world;
   const { leg } = life.train;
   if (leg >= life.stops.length) return world;
   const budgets = [...life.life.budgets];
@@ -153,7 +155,7 @@ export function freshLifeBudget(world: World, now: number): World {
 export function lifeBackTo(world: World, stopId: string, now: number): World {
   const life = lifeOf(world);
   const index = life ? life.stops.indexOf(stopId) : -1;
-  if (!life?.life || index < 0 || index >= life.train.leg) return world;
+  if (!life || index < 0 || index >= life.train.leg) return world;
   const budgets = [...life.life.budgets];
   budgets[index] = timeLeftAny(world, stopId, now);
   return departLife(world, life, index, budgets, now);

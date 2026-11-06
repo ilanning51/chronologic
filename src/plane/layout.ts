@@ -171,10 +171,10 @@ export function layoutTrack(
   };
   const linesAt = (id: string) => tracksOf(world, id).filter(({ track: t }) => drawnOnPlane(t, today)).length;
   const placed = track.stops.flatMap((id, index) => {
-    const stop = byId.get(id)!;
-    const at = linesAt(id) >= 2 ? worldToScreen(camera, stop) : line.points[line.stationAt[index + 1]];
     if (hidden) return [];
+    const stop = byId.get(id)!;
     if (track.life && gridSeconds >= RINGS_HIDDEN_FROM && !stop.done && tracksOf(world, id).some(({ track: t }) => isProject(t))) return [];
+    const at = linesAt(id) >= 2 ? worldToScreen(camera, stop) : line.points[line.stationAt[index + 1]];
     const shown = index === next || index === goalIndex || pinned.has(id) || showsAt(stop.shape, stop.size, gridSeconds);
     return inside(at) && shown ? [{ stop, at, index }] : [];
   });

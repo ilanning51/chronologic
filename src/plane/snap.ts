@@ -49,7 +49,7 @@ export function snapToAll(world: World, p: Point, now: number, radius: number, i
  */
 export function snapToLife(world: World, p: Point, now: number, radius: number, ignore?: string): Snap | null {
   const life = lifeOf(world);
-  if (!life?.life || Math.abs(p.y - life.life.y) > radius || p.x <= lifeTrainX(world, life, now)) return null;
+  if (!life || Math.abs(p.y - life.life.y) > radius || p.x <= lifeTrainX(world, life, now)) return null;
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const others = life.stops.filter((id) => id !== ignore);
   if (others.some((id) => Math.abs(byId.get(id)!.x - p.x) <= radius)) return null;

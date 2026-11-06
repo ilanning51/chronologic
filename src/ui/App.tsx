@@ -1022,8 +1022,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
    * The squares the life line does not draw at the current zoom, which its bubble never points at:
    * from the 1-year unit up, the rings.
    */
-  const hiddenOnLife = (state: World, scale = cameraRef.current.scale) => (id: string) =>
-    gridFor(scale).seconds >= RINGS_HIDDEN_FROM && isRing(state, id);
+  const hiddenOnLife = (state: World, scale = cameraRef.current.scale) => {
+    const ringsHidden = gridFor(scale).seconds >= RINGS_HIDDEN_FROM;
+    return (id: string) => ringsHidden && isRing(state, id);
+  };
 
   /** Flies to a life marker without ever landing wider than the 1-year unit, so the marker is drawn. */
   const flyToMarker = (marker: Point) => {

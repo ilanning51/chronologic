@@ -1,4 +1,5 @@
 import { defaultLength } from '../model/day';
+import { lifeOf } from '../model/life';
 import { EMPTY } from '../model/reducer';
 import { DAY } from '../plane/grid';
 import type { BubbleTarget, Shape, Size, Stop, Track, World } from '../model/types';
@@ -150,7 +151,7 @@ function withLengths(world: World): World {
  * in the reducer, which would re-run it after undo.
  */
 export function ensureLife(world: World, now: number): World {
-  if (world.tracks.some((t) => t.life)) return world;
+  if (lifeOf(world)) return world;
   const ys = world.stops.map((s) => s.y);
   const y = ys.length === 0 ? 0 : Math.max(...ys) + DAY;
   const x = world.stops.length === 0 ? 0 : Math.min(...world.stops.map((s) => s.x));

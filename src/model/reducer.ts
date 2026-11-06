@@ -35,7 +35,7 @@ import {
 } from './life';
 import { keepTrain } from './relocate';
 import { legSeconds, nextIndex, rebase, timeLeftAny, trackRoute, trainState } from './train';
-import type { BubbleTarget, Size, Stop, Track, World } from './types';
+import type { BubbleTarget, Shape, Size, Stop, Track, World } from './types';
 
 /** A new goal starts thirty days out along the x axis: one world unit is one second. */
 export const DEFAULT_GOAL_SECONDS = 2_592_000;
@@ -58,7 +58,7 @@ export interface GoalDragStart {
  */
 export type Action =
   | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; goal?: Point; now: number } // goal: a month out, unless drawn
-  | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle' | 'square'; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
+  | { type: 'addStop'; trackId: string; id: string; shape: Shape; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
   | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
@@ -232,7 +232,7 @@ function apply(world: World, action: Action): World {
       if (life?.stops.includes(id)) {
         const doneX = lastDoneX(world, life);
         if (x <= lifeTrainX(world, life, now) || (doneX !== null && x < doneX)) return world;
-        const slid: World = { ...world, stops: world.stops.map((s) => (s.id === id ? { ...s, x, y: life.life!.y } : s)), lastTouched: life.id };
+        const slid: World = { ...world, stops: world.stops.map((s) => (s.id === id ? { ...s, x, y: life.life.y } : s)), lastTouched: life.id };
         const sorted: World = { ...slid, tracks: withTrack(slid, { ...life, stops: sortedByX(life.stops, stopsById(slid)) }) };
         const rerouted = found
           .filter(({ track }) => !track.life)
