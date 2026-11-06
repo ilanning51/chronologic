@@ -150,7 +150,7 @@ test("a sketch's bubble is muted, like its line", () => {
   world.tracks[0].stops = ['wristband'];
   world.stops = world.stops.filter((s) => s.id === 'wristband');
   // Far enough to be off screen even when the leg is fitted at the smallest zoom.
-  world.stops[0].x = 1e8;
+  world.stops[0].x = 1e11;
   render(<App store={createStore(world)} now={() => 500_000} />);
   const bubble = document.querySelector('[data-target="bubble"]') as HTMLElement;
   expect(bubble).toBeInTheDocument();

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { DAY, HOUR, MINUTE, WEEK } from './grid';
-import { showsAt } from './level';
+import { PROJECTS_HIDDEN_FROM, RINGS_HIDDEN_FROM, showsAt } from './level';
 
 test('a square and a large triangle show at every grid unit', () => {
   expect(showsAt('square', 'small', 30 * DAY)).toBe(true);
@@ -23,4 +23,9 @@ test('each shape and size has a grid unit at or below which it shows', () => {
 test('zooming in past a shape\'s unit keeps it shown', () => {
   expect(showsAt('circle', 'small', 1)).toBe(true);
   expect(showsAt('triangle', 'medium', 5)).toBe(true);
+});
+
+test('projects go at the 3-month unit and rings at the 1-year unit', () => {
+  expect(PROJECTS_HIDDEN_FROM).toBe(90 * DAY);
+  expect(RINGS_HIDDEN_FROM).toBe(365 * DAY);
 });

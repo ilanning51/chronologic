@@ -9,7 +9,7 @@ import { CLIP_MARGIN_PX, clipSegment } from './clip';
 import type { Point } from './geometry';
 import { gridFor } from './grid';
 import { labelsWithRoom } from './labels';
-import { showsAt } from './level';
+import { PROJECTS_HIDDEN_FROM, RINGS_HIDDEN_FROM, showsAt } from './level';
 import { cutAt, legSpan } from './routing';
 
 export interface StopView {
@@ -70,6 +70,8 @@ export interface TrackView {
  * outside it are left out, so a month of track at full zoom never reaches the renderer.
  * Stops below the grid's level are left out too, as a map leaves out streets from far away,
  * except the next stop, the goal and any id in `pinned`; the line still routes through them.
+ * Wide enough, whole lines go: a project line draws nothing from the 3-month unit up, and the
+ * life line drops its rings from the 1-year unit up, keeping bare markers and done squares.
  */
 export function layoutTrack(
   track: Track,
@@ -110,16 +112,19 @@ export function layoutTrack(
     }
     return out;
   };
-  const behind = toSegments(cut.behind);
-  const segments = toSegments(cut.ahead);
+  const gridSeconds = gridFor(camera.scale).seconds;
+  const hidden = isProject(track) && gridSeconds >= PROJECTS_HIDDEN_FROM;
+  const behind = hidden ? [] : toSegments(cut.behind);
+  const segments = hidden ? [] : toSegments(cut.ahead);
   const crowd = state.waiting ? crowdAt(track, byId, now) : 0;
 
   const next = nextIndex(track, byId);
   const goalIndex = track.stops.length - 1;
-  const gridSeconds = gridFor(camera.scale).seconds;
   const placed = track.stops.flatMap((id, index) => {
     const stop = byId.get(id)!;
     const at = worldToScreen(camera, stop);
+    if (hidden) return [];
+    if (track.life && gridSeconds >= RINGS_HIDDEN_FROM && !stop.done && tracksOf(world, id).some(({ track: t }) => isProject(t))) return [];
     const shown = index === next || index === goalIndex || pinned.has(id) || showsAt(stop.shape, stop.size, gridSeconds);
     return inside(at) && shown ? [{ stop, at, index }] : [];
   });
@@ -161,6 +166,6 @@ export function layoutTrack(
     origin: vertices[0],
     stops,
     train,
-    anyInView: segments.length > 0 || behind.length > 0 || stops.length > 0 || inside(trainAt),
+    anyInView: segments.length > 0 || behind.length > 0 || stops.length > 0 || !hidden && inside(trainAt),
   };
 }

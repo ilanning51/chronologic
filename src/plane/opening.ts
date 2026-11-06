@@ -1,7 +1,9 @@
+import { isProject } from '../model/day';
 import { dayOf } from '../model/days';
 import { legSeconds, stateOf, trackRoute, type TrainState } from '../model/train';
 import type { Track, World } from '../model/types';
 import { type Camera, centerOn, fitLeg, HOME } from './camera';
+import { PROJECT_MIN_SCALE } from './level';
 import { soonestTrack } from './soonest';
 
 /**
@@ -25,6 +27,7 @@ export function openingCamera(world: World, now: number, viewport: { w: number; 
     // A waiting train is about to set off on the next leg; at the last stop there is none.
     const leg = state.waiting && state.leg + 1 < track.stops.length ? state.leg + 1 : state.leg;
     const scale = fitLeg(legSeconds(trackRoute(track, byId), leg), viewport.w);
-    return centerOn(HOME, state.at, viewport, scale);
+    // A project is not drawn past the 30-day unit, so a years-long leg frames at that zoom instead.
+    return centerOn(HOME, state.at, viewport, isProject(track) ? Math.max(scale, PROJECT_MIN_SCALE) : scale);
   }
 }

@@ -3,7 +3,7 @@ import { drawnOnPlane } from '../model/day';
 import { dayOf } from '../model/days';
 import { dayState, trainState } from '../model/train';
 import type { Stop, Track, World } from '../model/types';
-import { running, twoLines, withDay, withWeek } from '../test/fixtures';
+import { running, twoLines, withDay, withLife, withWeek } from '../test/fixtures';
 import { MAX_SCALE, worldToScreen } from './camera';
 import { layoutTrack } from './layout';
 
@@ -240,5 +240,34 @@ describe('day lines on the plane', () => {
     const t2 = (world: World) => layoutTrack(world.tracks[1], world, wide, noon, viewport);
     expect(t2(w).stops.find((s) => s.id === 'goal2')?.ring).toBe(true);
     expect(t2(later(w)).stops.find((s) => s.id === 'goal2')?.ring).toBe(false);
+  });
+});
+
+describe('the widest zooms draw only the life line', () => {
+  // 3e-6 px per second puts the grid at 3 months, 1e-6 at 1 year, 1e-4 at 1 hour.
+  const at = (scale: number) => ({ x: 100, y: 400, scale });
+  const ids = (v: ReturnType<typeof layoutTrack>) => v.stops.map((x) => x.id);
+
+  test('at 3 months a project line lays out to nothing, even with a pinned stop, and the life line keeps its squares', () => {
+    const w = withLife();
+    const project = layoutTrack(w.tracks[0], w, at(3e-6), 0, viewport, new Set(['dentist']));
+    expect(project).toMatchObject({ stops: [], segments: [], behind: [], anyInView: false });
+    const life = layoutTrack(w.tracks[1], w, at(3e-6), 0, viewport);
+    expect(ids(life)).toEqual(['start', 'wristband', 'far']);
+    expect(life.segments.length + life.behind.length).toBeGreaterThan(0);
+  });
+
+  test('at 1 year the life line drops its rings and keeps bare markers and done squares', () => {
+    const w = withLife();
+    expect(ids(layoutTrack(w.tracks[1], w, at(1e-6), 0, viewport))).toEqual(['start', 'far']);
+    w.stops.find((x) => x.id === 'wristband')!.done = true;
+    w.stops.find((x) => x.id === 'start')!.done = true;
+    expect(ids(layoutTrack(w.tracks[1], w, at(1e-6), 0, viewport))).toEqual(['start', 'wristband', 'far']);
+  });
+
+  test('below 3 months every line lays out as before', () => {
+    const w = withLife();
+    expect(ids(layoutTrack(w.tracks[0], w, at(1e-4), 0, viewport))).toEqual(['dentist', 'wristband']);
+    expect(ids(layoutTrack(w.tracks[1], w, at(1e-4), 0, viewport))).toEqual(['start', 'wristband', 'far']);
   });
 });

@@ -6,8 +6,8 @@ test('distance is euclidean', () => {
   expect(distance({ x: 0, y: 0 }, { x: 3, y: 4 })).toBe(5);
 });
 
-test('the zoom range is pixels per second, from a month across a screen to twenty pixels a second', () => {
-  expect(MIN_SCALE).toBe(0.0002);
+test('the zoom range is pixels per second, from fifty years across a screen to twenty pixels a second', () => {
+  expect(MIN_SCALE).toBe(5e-7);
   expect(MAX_SCALE).toBe(20);
   expect(MOTION_SCALE).toBe(MAX_SCALE);
   expect(HOME).toEqual({ x: 0, y: 0, scale: 0.01 });

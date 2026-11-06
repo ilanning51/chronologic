@@ -4,6 +4,7 @@ import type { Stop, Track, World } from '../model/types';
 import { addDays, dayOf } from '../model/days';
 import { twoLines, withDay } from '../test/fixtures';
 import { fitLeg, HOME, MIN_SCALE } from './camera';
+import { PROJECT_MIN_SCALE } from './level';
 import { openingCamera } from './opening';
 
 const viewport = { w: 900, h: 600 };
@@ -66,10 +67,11 @@ test('no unparked track leaves the camera at home', () => {
   expect(openingCamera(parked, 0, viewport)).toEqual(HOME);
 });
 
-test('a leg too long for the zoom range is clamped', () => {
-  const far = [stop('a', 1e7)];
+test('a project leg too long to fit opens at the widest zoom that still draws the project', () => {
+  const far = [stop('a', 1e10)];
   const world: World = { tracks: [track('t', ['a'], 0, 0)], stops: far, lastTouched: null };
-  expect(openingCamera(world, 1000, viewport).scale).toBe(MIN_SCALE);
+  expect(PROJECT_MIN_SCALE).toBeGreaterThan(MIN_SCALE);
+  expect(openingCamera(world, 1000, viewport).scale).toBe(PROJECT_MIN_SCALE);
 });
 
 test('the camera opens on the day train when there is a day', () => {
