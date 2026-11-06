@@ -27,6 +27,21 @@ export interface Train {
   departedAt: number;
 }
 
+/**
+ * What makes a track a day line. `date` is the local day it belongs to. `budgets` and `lengths`
+ * run alongside `stops`: the project time the day train shadows on each leg, and how long each
+ * stop's block is, in seconds. A day after today is `held`: its train waits at its start until
+ * the day begins. `placed` marks a day the week window made, whose start and end square it keeps
+ * just above its first stop and just below its last.
+ */
+export interface DayPlan {
+  date: string;
+  budgets: number[];
+  lengths: number[];
+  held?: true;
+  placed?: true;
+}
+
 export interface Track {
   id: string;
   /** Index into the palette. */
@@ -36,8 +51,8 @@ export interface Track {
   stops: string[];
   train: Train;
   target: BubbleTarget;
-  /** Set on the one day track. `date` is the local day it belongs to. It never keeps a stop alive. */
-  day?: { date: string; budgets: number[] };
+  /** Set on a day track, one per date. It never keeps a stop alive. */
+  day?: DayPlan;
 }
 
 export interface World {

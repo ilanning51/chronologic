@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_GOAL_SECONDS, EMPTY, reduce, undoable } from './reducer';
 import { dayState, legSeconds, timeLeftAny, trackRoute, trainState } from './train';
-import { running as fixtureRunning, twoLines, withDay as fixtureDay } from '../test/fixtures';
+import { running as fixtureRunning, twoLines, withDay as fixtureDay, withWeek } from '../test/fixtures';
 import type { Stop, World } from './types';
 
 function stop(id: string, shape: Stop['shape'], x: number, y: number, done = false): Stop {
@@ -531,7 +531,7 @@ describe('join and leave', () => {
       stops: ['dentist', 'wristband'],
       train: { leg: 0, departedAt: 0 },
       target: 'next',
-      day: { date: '2026-11-01', budgets: [3600, 3600] },
+      day: { date: '2026-11-01', budgets: [3600, 3600], lengths: [3600, 7200] },
     });
     return w;
   }
@@ -668,7 +668,7 @@ describe('the day line', () => {
       stops: ['shared', 'dentist', 'e'],
       train: { leg: 0, departedAt: now },
       target: 'goal',
-      day: { date: '2026-11-01', budgets: [budget, 0, 0] },
+      day: { date: '2026-11-01', budgets: [budget, 0, 0], lengths: [3600, 3600, 1800] },
     });
     expect(stopOf(next, 'e')).toEqual({ id: 'e', title: '', shape: 'square', size: 'small', x: 2000, y: -500, done: false });
     expect(next.lastTouched).toBe('d');
@@ -741,20 +741,20 @@ describe('the day line', () => {
 
   test('addToDay appends before the end and refuses done or repeated stops', () => {
     const w = fixtureDay();
-    const next = reduce(w, { type: 'addToDay', stopId: 'goal2', now });
+    const next = reduce(w, { type: 'addToDay', dayId: 'day', stopId: 'goal2', now });
     expect(day(next).stops).toEqual(['dentist', 'shared', 'goal2', 'dayEnd']);
     expect(day(next).day!.budgets).toEqual([1000, 0, 0, 0]);
     expect(day(next).train).toEqual({ leg: 0, departedAt: 0 });
-    expect(reduce(w, { type: 'addToDay', stopId: 'shared', now })).toBe(w);
-    expect(reduce(w, { type: 'addToDay', stopId: 'dayEnd', now })).toBe(w);
-    expect(reduce(w, { type: 'addToDay', stopId: 'nope', now })).toBe(w);
+    expect(reduce(w, { type: 'addToDay', dayId: 'day', stopId: 'shared', now })).toBe(w);
+    expect(reduce(w, { type: 'addToDay', dayId: 'day', stopId: 'dayEnd', now })).toBe(w);
+    expect(reduce(w, { type: 'addToDay', dayId: 'day', stopId: 'nope', now })).toBe(w);
     const doneGoal = { ...w, stops: w.stops.map((s) => (s.id === 'goal2' ? { ...s, done: true } : s)) };
-    expect(reduce(doneGoal, { type: 'addToDay', stopId: 'goal2', now })).toBe(doneGoal);
+    expect(reduce(doneGoal, { type: 'addToDay', dayId: 'day', stopId: 'goal2', now })).toBe(doneGoal);
     const noDay = twoLines();
-    expect(reduce(noDay, { type: 'addToDay', stopId: 'goal2', now })).toBe(noDay);
+    expect(reduce(noDay, { type: 'addToDay', dayId: 'day', stopId: 'goal2', now })).toBe(noDay);
     // Added while the day train waits at the end square, it is the day's next stop: budget now.
     const atEnd = complete(complete(w, 'day'), 'day');
-    const added = reduce(atEnd, { type: 'addToDay', stopId: 'goal2', now: later });
+    const added = reduce(atEnd, { type: 'addToDay', dayId: 'day', stopId: 'goal2', now: later });
     expect(day(added).stops).toEqual(['dentist', 'shared', 'goal2', 'dayEnd']);
     expect(day(added).train).toEqual({ leg: 2, departedAt: later });
     const budget = timeLeftAny(added, 'goal2', later);
@@ -762,7 +762,7 @@ describe('the day line', () => {
     expect(day(added).day!.budgets).toEqual([1000, timeLeftAny(complete(w, 'day'), 'shared', now), budget, 0]);
     // A finished day takes nothing more.
     const finished = complete(atEnd, 'day');
-    expect(reduce(finished, { type: 'addToDay', stopId: 'goal2', now })).toBe(finished);
+    expect(reduce(finished, { type: 'addToDay', dayId: 'day', stopId: 'goal2', now })).toBe(finished);
   });
 
   test('tick clears a day whose date has passed and leaves the projects alone', () => {
@@ -778,8 +778,9 @@ describe('the day line', () => {
   test('tick returns the same world when nothing changes', () => {
     const w = fixtureDay();
     expect(reduce(w, { type: 'tick', now: new Date(2026, 10, 1, 12).getTime() })).toBe(w);
-    // Up past midnight still counts as the day before.
-    expect(reduce(w, { type: 'tick', now: new Date(2026, 10, 2, 3).getTime() })).toBe(w);
+    expect(reduce(w, { type: 'tick', now: new Date(2026, 10, 1, 23, 59).getTime() })).toBe(w);
+    // Midnight is the turn of the day.
+    expect(reduce(w, { type: 'tick', now: new Date(2026, 10, 2, 0, 0).getTime() })).not.toBe(w);
     const noDay = twoLines();
     expect(reduce(noDay, { type: 'tick', now: new Date(2026, 10, 9, 12).getTime() })).toBe(noDay);
   });
@@ -904,24 +905,24 @@ describe('the day line', () => {
 
   test('deleting the end square clears the day, and clearDay leaves the stops as they are', () => {
     const w = complete(fixtureDay(), 'day');
-    const cleared = reduce(w, { type: 'clearDay', now });
+    const cleared = reduce(w, { type: 'clearDay', dayId: 'day', now });
     expect(cleared.tracks.map((t) => t.id)).toEqual(['t1', 't2']);
     expect(ids(cleared)).toEqual(['dentist', 'wristband', 'shared', 'goal2']);
     expect(stopOf(cleared, 'dentist').done).toBe(true);
     expect(cleared.lastTouched).toBeNull();
     expect(reduce(w, { type: 'delete', id: 'dayEnd', now })).toEqual(cleared);
-    expect(reduce(cleared, { type: 'clearDay', now })).toBe(cleared);
+    expect(reduce(cleared, { type: 'clearDay', dayId: 'day', now })).toBe(cleared);
   });
 
   test('moveDayEnd moves the end square alone; move still refuses it', () => {
     const w = fixtureDay();
-    const next = reduce(w, { type: 'moveDayEnd', x: 2500, y: 1200, now });
+    const next = reduce(w, { type: 'moveDayEnd', dayId: 'day', x: 2500, y: 1200, now });
     expect(stopOf(next, 'dayEnd')).toMatchObject({ x: 2500, y: 1200 });
     for (const id of ['dentist', 'wristband', 'shared', 'goal2']) expect(stopOf(next, id)).toBe(stopOf(w, id));
     expect(next.tracks).toBe(w.tracks);
     expect(reduce(w, { type: 'move', id: 'dayEnd', x: 2500, y: 1200, now })).toBe(w);
     const noDay = twoLines();
-    expect(reduce(noDay, { type: 'moveDayEnd', x: 0, y: 0, now })).toBe(noDay);
+    expect(reduce(noDay, { type: 'moveDayEnd', dayId: 'day', x: 0, y: 0, now })).toBe(noDay);
   });
 });
 
@@ -1026,5 +1027,109 @@ describe('a goal picture', () => {
     expect('image' in without.stops.find((s) => s.id === 'g')!).toBe(false);
     const circle = reduce(world, { type: 'edit', id: 'a', image: 'data:image/jpeg;base64,AAAA' });
     expect('image' in circle.stops.find((s) => s.id === 'a')!).toBe(false);
+  });
+});
+
+describe('a day line for each date', () => {
+  const trackOf = (world: World, id: string) => world.tracks.find((t) => t.id === id)!;
+  const at = (d: number, h: number, min = 0) => new Date(2026, 10, d, h, min).getTime();
+  /** withWeek() moved on a week: Nov 6 running through Dentist and Shared, Nov 7 held with Goal 2, and a held Nov 9. */
+  function week(): World {
+    const w = withWeek();
+    trackOf(w, 'day').day!.date = '2026-11-06';
+    trackOf(w, 'day2').day!.date = '2026-11-07';
+    w.tracks.push({
+      id: 'day9',
+      color: 4,
+      origin: { x: 0, y: 1200 },
+      stops: ['dayEnd9'],
+      train: { leg: 0, departedAt: 0 },
+      target: 'next',
+      day: { date: '2026-11-09', budgets: [0], lengths: [1800], held: true },
+    });
+    w.stops.push({ id: 'dayEnd9', title: '', shape: 'square', size: 'small', x: 0, y: 1500, done: false });
+    return w;
+  }
+
+  test("a tick just after midnight clears yesterday's day and keeps the days ahead", () => {
+    const next = reduce(week(), { type: 'tick', now: at(7, 0, 1) });
+    expect(next.tracks.map((t) => t.id)).toEqual(['t1', 't2', 'day2', 'day9']);
+    expect(next.stops.map((s) => s.id)).not.toContain('dayEnd');
+  });
+
+  test("a tick on a held day's date begins it: its train sets off now on the project time left", () => {
+    const tick = at(7, 0, 1);
+    const next = reduce(week(), { type: 'tick', now: tick });
+    const day = trackOf(next, 'day2');
+    expect(day.day!.held).toBeUndefined();
+    expect(day.train).toEqual({ leg: 0, departedAt: tick });
+    expect(day.day!.budgets[0]).toBe(timeLeftAny(next, 'goal2', tick));
+    expect(trackOf(next, 'day9').day!.held).toBe(true);
+    // Ticking again changes nothing.
+    expect(reduce(next, { type: 'tick', now: tick + 1000 })).toBe(next);
+  });
+
+  test("a held day's train waits at its start", () => {
+    const w = week();
+    const state = dayState(trackOf(w, 'day9'), w, at(7, 12));
+    expect(state).toMatchObject({ leg: 0, waiting: true, parked: false, fraction: 0 });
+    expect(state.at).toEqual(trackOf(w, 'day9').origin);
+  });
+
+  test("a stop on a held day done early leaves the day held; on its day it starts at the first pending stop", () => {
+    const w = week();
+    trackOf(w, 'day2').stops = ['shared', 'goal2', 'dayEnd2'];
+    trackOf(w, 'day2').day = { date: '2026-11-07', budgets: [0, 0, 0], lengths: [3600, 7200, 1800], held: true };
+    trackOf(w, 'day').stops = ['dentist', 'dayEnd'];
+    trackOf(w, 'day').day = { date: '2026-11-06', budgets: [1000, 0], lengths: [3600, 1800] };
+    const done = reduce(w, { type: 'complete', trackId: 't2', now: at(6, 12) });
+    expect(stopOf(done, 'shared').done).toBe(true);
+    expect(trackOf(done, 'day2')).toBe(trackOf(w, 'day2'));
+    const tick = at(7, 8);
+    const begun = reduce(done, { type: 'tick', now: tick });
+    expect(trackOf(begun, 'day2').train).toEqual({ leg: 1, departedAt: tick });
+    expect(trackOf(begun, 'day2').day!.budgets[1]).toBe(timeLeftAny(begun, 'goal2', tick));
+  });
+
+  test("drawing a day for one date leaves another date's day; drawing it again replaces only its own", () => {
+    const w = week();
+    const draw = (date: string, id: string, stops: string[]) =>
+      reduce(w, { type: 'newDay', id, endId: `${id}-end`, origin: { x: 0, y: 0 }, stops, end: { x: 9, y: 9 }, now, date });
+    const eighth = draw('2026-11-08', 'd8', ['wristband']);
+    expect(eighth.tracks.map((t) => t.id)).toEqual(['t1', 't2', 'day', 'day2', 'day9', 'd8']);
+    expect(trackOf(eighth, 'd8').day!.lengths).toEqual([7200, 1800]);
+    const again = draw('2026-11-07', 'd7', ['wristband']);
+    expect(again.tracks.map((t) => t.id)).toEqual(['t1', 't2', 'day', 'day9', 'd7']);
+    expect(again.stops.map((s) => s.id)).not.toContain('dayEnd2');
+  });
+
+  test('drawing a day through a stop planned for another day takes it off that day', () => {
+    const w = week();
+    const next = reduce(w, { type: 'newDay', id: 'd8', endId: 'e8', origin: { x: 0, y: 0 }, stops: ['goal2'], end: { x: 9, y: 9 }, now, date: '2026-11-08' });
+    expect(trackOf(next, 'd8').stops).toEqual(['goal2', 'e8']);
+    // Nov 7 held nothing else, so it goes with its end square.
+    expect(next.tracks.map((t) => t.id)).not.toContain('day2');
+    expect(next.stops.map((s) => s.id)).not.toContain('dayEnd2');
+  });
+
+  test("deleting one day's end square clears that day only", () => {
+    const next = reduce(week(), { type: 'delete', id: 'dayEnd2', now });
+    expect(next.tracks.map((t) => t.id)).toEqual(['t1', 't2', 'day', 'day9']);
+  });
+
+  test("completing a stop settles the running day's train and leaves a held day alone", () => {
+    const w = week();
+    const next = reduce(w, { type: 'complete', trackId: 't1', now });
+    expect(trackOf(next, 'day').train).toEqual({ leg: 1, departedAt: now });
+    expect(trackOf(next, 'day2')).toBe(trackOf(w, 'day2'));
+  });
+
+  test('addToDay appends to the named day only, with the stop’s default length, and takes it off any other', () => {
+    const w = week();
+    const next = reduce(w, { type: 'addToDay', dayId: 'day2', stopId: 'shared', now });
+    expect(trackOf(next, 'day2').stops).toEqual(['goal2', 'shared', 'dayEnd2']);
+    expect(trackOf(next, 'day2').day!.lengths).toEqual([7200, 3600, 1800]);
+    expect(trackOf(next, 'day').stops).toEqual(['dentist', 'dayEnd']);
+    expect(trackOf(next, 'day').day!.lengths).toEqual([3600, 1800]);
   });
 });

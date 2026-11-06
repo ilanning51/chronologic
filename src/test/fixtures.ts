@@ -56,8 +56,27 @@ export function withDay(): World {
     stops: ['dentist', 'shared', 'dayEnd'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: '2026-11-01', budgets: [1000, 0, 0] },
+    day: { date: '2026-11-01', budgets: [1000, 0, 0], lengths: [3600, 3600, 1800] },
   });
   world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
+  return world;
+}
+
+/**
+ * withDay() and the next day's line, held: Goal 2, then its own end square. Its train waits at its
+ * start until its day begins.
+ */
+export function withWeek(): World {
+  const world = withDay();
+  world.tracks.push({
+    id: 'day2',
+    color: 3,
+    origin: { x: 3000, y: 200 },
+    stops: ['goal2', 'dayEnd2'],
+    train: { leg: 0, departedAt: 0 },
+    target: 'next',
+    day: { date: '2026-11-02', budgets: [0, 0], lengths: [7200, 1800], held: true, placed: true },
+  });
+  world.stops.push({ id: 'dayEnd2', title: '', shape: 'square', size: 'small', x: 3000, y: 900, done: false });
   return world;
 }

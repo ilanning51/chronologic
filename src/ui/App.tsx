@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
-import { dayTrack, isDayEnd } from '../model/day';
-import { dayOf } from '../model/days';
+import { dayWith, isDayEnd } from '../model/day';
+import { dayOf, nextMidnight } from '../model/days';
 import { newId } from '../model/ids';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
@@ -64,6 +64,15 @@ export interface AppProps {
  */
 function homeOf(world: World, stopId: string) {
   return tracksOf(world, stopId).find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** A day line's name on a chip: today's is "today", any other's is its weekday. */
+function dayName(date: string, now: number): string {
+  if (date === dayOf(now)) return 'today';
+  const [y, m, d] = date.split('-').map(Number);
+  return WEEKDAYS[new Date(y, m - 1, d).getDay()];
 }
 
 /** How far above its first stop a drawn day starts, and below its last the end square sits, in px. */
@@ -158,8 +167,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const drawing = useRef<{ from: Point; ids: string[] } | null>(null);
   /** The ghost ink line of the day being drawn, in screen points. */
   const [dayGhost, setDayGhost] = useState<Point[] | null>(null);
-  /** The day's-end drag in flight: where the square started, the grip, and whether it added a stop. */
-  const endDrag = useRef<{ start: Point; grip: Point; added: boolean } | null>(null);
+  /** The day's-end drag in flight: its day, where the square started, the grip, and whether it added a stop. */
+  const endDrag = useRef<{ day: string; start: Point; grip: Point; added: boolean } | null>(null);
   /**
    * The drag of a line's start: its track, the grip, the seconds its train had covered, and
    * whether the first leg's chip shows, as it does only while the train is still on that leg.
@@ -366,7 +375,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const under = screenToWorld(cameraRef.current, g.at);
     if (isDayEnd(state, stop.id)) {
       const grip = { x: stop.x - under.x, y: stop.y - under.y };
-      endDrag.current = { start: { x: stop.x, y: stop.y }, grip, added: false };
+      endDrag.current = { day: dayWith(state, stop.id)!.id, start: { x: stop.x, y: stop.y }, grip, added: false };
       return;
     }
     // A goal drags as its line's goal whichever line its button speaks for, the day's included.
@@ -710,12 +719,12 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const cam = cameraRef.current;
     const under = screenToWorld(cam, at);
     const p = { x: under.x + d.grip.x, y: under.y + d.grip.y };
-    store.dispatch({ type: 'moveDayEnd', x: p.x, y: p.y, now: now() });
-    const day = dayTrack(store.getState());
+    store.dispatch({ type: 'moveDayEnd', dayId: d.day, x: p.x, y: p.y, now: now() });
+    const day = store.getState().tracks.find((t) => t.id === d.day);
     const hit = day ? nearestStop(dayCandidates(day.stops), p, SNAP_PX / cam.scale) : null;
     if (!hit) return;
-    store.dispatch({ type: 'addToDay', stopId: hit.id, now: now() });
-    if (dayTrack(store.getState())?.stops.includes(hit.id)) d.added = true;
+    store.dispatch({ type: 'addToDay', dayId: d.day, stopId: hit.id, now: now() });
+    if (store.getState().tracks.find((t) => t.id === d.day)?.stops.includes(hit.id)) d.added = true;
   };
 
   /** A square that added a stop goes back where it was; otherwise it stays where it was let go. */
@@ -723,7 +732,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     dragDayEnd(at);
     const d = endDrag.current;
     endDrag.current = null;
-    if (d?.added) store.dispatch({ type: 'moveDayEnd', x: d.start.x, y: d.start.y, now: now() });
+    if (d?.added) store.dispatch({ type: 'moveDayEnd', dayId: d.day, x: d.start.x, y: d.start.y, now: now() });
   };
 
   /**
@@ -846,7 +855,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             store.dispatch({ type: 'delete', id: open, now: now() });
             setEditing(null);
           } else if (isDayEnd(state, open)) {
-            store.dispatch({ type: 'clearDay', now: now() });
+            store.dispatch({ type: 'clearDay', dayId: dayWith(state, open)!.id, now: now() });
             setEditing(null);
           }
         }
@@ -1017,6 +1026,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     return () => window.clearInterval(id);
   }, [rolling, camera.scale, now, store]);
 
+  // Midnight turns the day over even when every train is parked and nothing else ticks.
+  const [midnight, setMidnight] = useState(0);
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      store.dispatch({ type: 'tick', now: now() });
+      setTime(now());
+      setMidnight((n) => n + 1);
+    }, Math.max(0, nextMidnight(now()) - now()));
+    return () => window.clearTimeout(id);
+  }, [midnight, now, store]);
+
   // A goal is a goal whichever line its button spoke for; the day's end is neither stop nor goal.
   const editedStop = editing ? byId.get(editing) : undefined;
   const editedHome = editing ? homeOf(world, editing) : undefined;
@@ -1031,7 +1051,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             trackId: track.id,
             color: track.day ? null : track.color,
             // A chip is named by its line, so chips the same shape can be told apart by ear.
-            name: track.day ? 'today' : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
+            name: track.day ? dayName(track.day.date, time) : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
           }))
       : [];
   const editor =

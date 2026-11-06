@@ -1454,7 +1454,7 @@ test('a goal drawn for the day and let go on another line is not joined', () => 
     stops: ['goal2', 'near', 'dayEnd'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: dayOf(WAITING), budgets: [1000, 0, 0] },
+    day: { date: dayOf(WAITING), budgets: [1000, 0, 0], lengths: [3600, 3600, 1800] },
   });
   world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
   const store = createStore(world);
@@ -1479,7 +1479,7 @@ test('a goal drawn for the day drags as its line goal, scaling the stops ahead',
     stops: ['goal2', 'near', 'dayEnd'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: dayOf(WAITING), budgets: [1000, 0, 0] },
+    day: { date: dayOf(WAITING), budgets: [1000, 0, 0], lengths: [3600, 3600, 1800] },
   });
   world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
   const store = createStore(world);
@@ -1619,7 +1619,7 @@ test("dragging a stop whose button speaks for the day shows its project leg's ti
     stops: ['shared', 'dayEnd'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: dayOf(WAITING), budgets: [1000, 0] },
+    day: { date: dayOf(WAITING), budgets: [1000, 0], lengths: [3600, 1800] },
   });
   world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
   const store = createStore(world);

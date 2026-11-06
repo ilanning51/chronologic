@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest';
 import { EMPTY, reduce } from '../model/reducer';
 import type { World } from '../model/types';
-import { twoLines, withDay } from '../test/fixtures';
-import { load, save, STORAGE_KEY, V2_KEY } from './storage';
+import { twoLines, withDay, withWeek } from '../test/fixtures';
+import { load, save, STORAGE_KEY, V2_KEY, V3_KEY } from './storage';
 
 function fakeStorage() {
   const map = new Map<string, string>();
@@ -162,32 +162,35 @@ test('save swallows a storage that refuses to write', () => {
   ).not.toThrow();
 });
 
-test('a v3 world round trips under the v3 key', () => {
+test('a world round trips under the v4 key', () => {
   const storage = fakeStorage();
   save(storage, withDay());
-  expect(STORAGE_KEY).toBe('chronologic.v3');
-  expect(storage.map.has('chronologic.v3')).toBe(true);
+  expect(storage.map.has('chronologic.v4')).toBe(true);
   expect(load(storage)).toEqual(withDay());
 });
 
-test('a v2 world is read once and the v2 key is left untouched; the next save writes v3', () => {
+test('a v2 world is read once and the v2 key is left untouched; the next save writes v4', () => {
   const storage = fakeStorage();
   const v2 = JSON.stringify(sample());
   storage.map.set('chronologic.v2', v2);
   expect(V2_KEY).toBe('chronologic.v2');
+  expect(V3_KEY).toBe('chronologic.v3');
   const world = load(storage);
   expect(world).toEqual(sample());
   expect(storage.map.get('chronologic.v2')).toBe(v2);
-  expect(storage.map.has('chronologic.v3')).toBe(false);
+  expect(storage.map.has('chronologic.v4')).toBe(false);
   save(storage, world);
-  expect(storage.map.get('chronologic.v3')).toBe(JSON.stringify(sample()));
+  expect(storage.map.get('chronologic.v4')).toBe(JSON.stringify(sample()));
+  expect(storage.map.has('chronologic.v3')).toBe(false);
   expect(storage.map.get('chronologic.v2')).toBe(v2);
 });
 
-test('a v3 world wins over a v2 one, and a v2 world that fails opens as EMPTY', () => {
+test('v4 wins over v3, v3 over v2, and an old world that fails opens as EMPTY', () => {
   const storage = fakeStorage();
   storage.map.set('chronologic.v2', JSON.stringify(sample()));
-  storage.map.set('chronologic.v3', JSON.stringify(withDay()));
+  storage.map.set('chronologic.v3', JSON.stringify(twoLines()));
+  expect(load(storage)).toEqual(twoLines());
+  storage.map.set('chronologic.v4', JSON.stringify(withDay()));
   expect(load(storage)).toEqual(withDay());
   const broken = sample();
   broken.stops[1].shape = 'circle';
@@ -219,7 +222,7 @@ test('a day track with the wrong number of budgets, or a shared end square, is r
   expect(loadOf(shared)).toEqual(EMPTY);
 });
 
-test('a day track through another goal is accepted; two day tracks or a bad date or budget are refused', () => {
+test('a day track through another goal is accepted; two day tracks on one date or a bad date or budget are refused', () => {
   const throughGoal = withDay();
   throughGoal.tracks[2].stops = ['dentist', 'wristband', 'dayEnd'];
   expect(loadOf(throughGoal)).toEqual(throughGoal);
@@ -228,7 +231,7 @@ test('a day track through another goal is accepted; two day tracks or a bad date
     edit(w);
     expect(loadOf(w)).toEqual(EMPTY);
   };
-  bad((w) => { w.tracks[1].day = { date: '2026-11-01', budgets: [0, 0] }; });
+  bad((w) => { w.tracks[1].day = { date: '2026-11-01', budgets: [0, 0], lengths: [3600, 7200] }; });
   bad((w) => { w.tracks[2].day!.date = 20261101 as never; });
   bad((w) => { w.tracks[2].day!.budgets = [1000, 'x' as never, 0]; });
   bad((w) => { w.tracks[2].day!.budgets = 'none' as never; });
@@ -241,4 +244,44 @@ test("a goal's picture round-trips, and one that is not an image data URL is ref
   expect(loadOf(world)).toEqual(world);
   world.stops[1].image = 'https://example.com/ship.jpg';
   expect(loadOf(world)).toEqual(EMPTY);
+});
+
+test('a world with a day line for each of two dates round-trips', () => {
+  const storage = fakeStorage();
+  save(storage, withWeek());
+  expect(STORAGE_KEY).toBe('chronologic.v4');
+  expect(load(storage)).toEqual(withWeek());
+});
+
+test("deleting the second day's end square leaves a world that reloads with the first day whole", () => {
+  const storage = fakeStorage();
+  const next = reduce(withWeek(), { type: 'delete', id: 'dayEnd2', now: 0 });
+  expect(next.tracks.map((t) => t.id)).toEqual(['t1', 't2', 'day']);
+  save(storage, next);
+  expect(load(storage)).toEqual(next);
+});
+
+test('a v3 world with one day loads, its blocks given their default lengths, and no old key is written', () => {
+  const storage = fakeStorage();
+  const v3 = withDay();
+  delete (v3.tracks[2].day as { lengths?: number[] }).lengths;
+  storage.map.set(V3_KEY, JSON.stringify(v3));
+  storage.map.set(V2_KEY, JSON.stringify(sample()));
+  expect(load(storage)).toEqual(withDay());
+  save(storage, load(storage));
+  expect(storage.map.get(V3_KEY)).toBe(JSON.stringify(v3));
+  expect(storage.map.get(V2_KEY)).toBe(JSON.stringify(sample()));
+});
+
+test('two days on one date, lengths out of step with stops, or an end square on a project are refused', () => {
+  const bad = (edit: (w: World) => void) => {
+    const w = withWeek();
+    edit(w);
+    expect(loadOf(w)).toEqual(EMPTY);
+  };
+  bad((w) => { w.tracks[3].day!.date = '2026-11-01'; });
+  bad((w) => { w.tracks[3].day!.lengths = [7200]; });
+  bad((w) => { w.tracks[3].day!.lengths = [7200, 'x' as never]; });
+  bad((w) => { w.tracks[3].day!.held = 'yes' as never; });
+  bad((w) => { w.tracks[1].stops = ['shared', 'dayEnd2', 'goal2']; });
 });
