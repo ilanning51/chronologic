@@ -1,3 +1,4 @@
+import { addDays } from '../model/days';
 import type { Shape, Size, World } from '../model/types';
 
 /** One running track: Dentist (a medium circle) then Wristband (a large square, the goal). */
@@ -47,7 +48,7 @@ export function twoLines(): World {
  * twoLines() and today's day line: Dentist, then Shared, then the day's-end square. The first
  * budget is Dentist's time left at 0 s; the later ones are written as the day train gets there.
  */
-export function withDay(): World {
+export function withDay(date = '2026-11-01'): World {
   const world = twoLines();
   world.tracks.push({
     id: 'day',
@@ -56,18 +57,18 @@ export function withDay(): World {
     stops: ['dentist', 'shared', 'dayEnd'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: '2026-11-01', budgets: [1000, 0, 0], lengths: [3600, 3600, 1800] },
+    day: { date, budgets: [1000, 0, 0], lengths: [3600, 3600, 1800] },
   });
   world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
   return world;
 }
 
 /**
- * withDay() and the next day's line, held: Goal 2, then its own end square. Its train waits at its
+ * withDay(date) and the next day's line, held: Goal 2, then its own end square. Its train waits at its
  * start until its day begins.
  */
-export function withWeek(): World {
-  const world = withDay();
+export function withWeek(date = '2026-11-01'): World {
+  const world = withDay(date);
   world.tracks.push({
     id: 'day2',
     color: 3,
@@ -75,7 +76,7 @@ export function withWeek(): World {
     stops: ['goal2', 'dayEnd2'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: '2026-11-02', budgets: [0, 0], lengths: [7200, 1800], held: true, placed: true },
+    day: { date: addDays(date, 1), budgets: [0, 0], lengths: [7200, 1800], held: true, placed: true },
   });
   world.stops.push({ id: 'dayEnd2', title: '', shape: 'square', size: 'small', x: 3000, y: 900, done: false });
   return world;

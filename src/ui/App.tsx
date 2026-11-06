@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
-import { dayWith, isDayEnd } from '../model/day';
+import { dayWith, drawnOnPlane, isDayEnd } from '../model/day';
 import { dayOf, nextMidnight } from '../model/days';
 import { newId } from '../model/ids';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
@@ -491,7 +491,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     setMarqueeBox(null);
     if (!m) return;
     const cam = cameraRef.current;
-    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at))));
+    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at)), dayOf(now())));
   };
 
   /** Moves the start of the line under the finger, grip and all, and reads back the first leg. */
@@ -1038,7 +1038,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     })();
   // The stop being named is kept too, so a zoom with its field open leaves the field a place to be.
   const shown = naming ? new Set([...pinned.current, naming.id]) : pinned.current;
-  const views = world.tracks.map((t) => layoutTrack(t, world, camera, time, viewport, shown));
+  // Days after tomorrow live only in the week window.
+  const views = world.tracks
+    .filter((t) => drawnOnPlane(t, dayOf(time)))
+    .map((t) => layoutTrack(t, world, camera, time, viewport, shown));
   const rolling = views.some((v) => !v.train.parked);
 
   useEffect(() => {
@@ -1167,8 +1170,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             key={v.id}
             track={v.id}
             color={v.color}
-            day={v.day}
-            sketch={v.sketch}
+            day={v.day && !v.tomorrow}
+            sketch={v.sketch || v.tomorrow}
             soonest={v.id === soonest?.id}
             shape={target.shape}
             title={target.title}

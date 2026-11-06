@@ -1,3 +1,4 @@
+import { drawnOnPlane } from '../model/day';
 import type { World } from '../model/types';
 import type { Point } from './geometry';
 
@@ -28,11 +29,14 @@ function inside(p: Point, r: Rect): boolean {
 
 /**
  * Everything whose point is in the box, edges included: the box is geometry, so a stop hidden
- * by the level counts as much as a drawn one. Null when it caught nothing.
+ * by the level counts as much as a drawn one. A day line the plane does not draw, further ahead
+ * than tomorrow, is not there to catch: neither its start nor a stop only it lists. Null when it
+ * caught nothing.
  */
-export function pick(world: World, box: Rect): Selection | null {
-  const stops = world.stops.filter((s) => inside(s, box)).map((s) => s.id);
-  const origins = world.tracks.filter((t) => inside(t.origin, box)).map((t) => t.id);
+export function pick(world: World, box: Rect, today: string): Selection | null {
+  const onPlane = (id: string) => world.tracks.some((t) => t.stops.includes(id) && drawnOnPlane(t, today));
+  const stops = world.stops.filter((s) => inside(s, box) && onPlane(s.id)).map((s) => s.id);
+  const origins = world.tracks.filter((t) => inside(t.origin, box) && drawnOnPlane(t, today)).map((t) => t.id);
   return stops.length === 0 && origins.length === 0 ? null : { stops, origins };
 }
 

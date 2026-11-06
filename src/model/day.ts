@@ -1,3 +1,4 @@
+import { addDays } from './days';
 import { timeLeftAny } from './train';
 import type { Size, Stop, Track, World } from './types';
 
@@ -9,6 +10,14 @@ export function defaultLength(stop: Pick<Stop, 'size'> | undefined): number {
 }
 
 /** Every day line, in the order the world keeps them. */
+/**
+ * Whether the plane draws a line: every project, today's day line, and tomorrow's. A day further
+ * ahead lives only in the week window until its day comes near.
+ */
+export function drawnOnPlane(track: Track, today: string): boolean {
+  return !track.day || track.day.date === today || track.day.date === addDays(today, 1);
+}
+
 export function days(world: World): Track[] {
   return world.tracks.filter((t) => t.day);
 }

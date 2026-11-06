@@ -18,9 +18,10 @@ interface TrackProps {
  * is on top, so the hit squares come after the lines or the stroke would take the press.
  */
 export function Track({ view }: TrackProps) {
-  // A sketch is a thought, not yet a plan: muted and thin, train and all.
-  const color = view.finished || view.sketch ? 'var(--muted)' : view.day ? 'var(--ink)' : colorVar(view.color);
-  const width = view.sketch ? TRACK_WIDTH / 2 : TRACK_WIDTH;
+  // A sketch is a thought, not yet a plan, and tomorrow is not yet today: muted and thin, train and all.
+  const faint = view.sketch || view.tomorrow;
+  const color = view.finished || faint ? 'var(--muted)' : view.day ? 'var(--ink)' : colorVar(view.color);
+  const width = faint ? TRACK_WIDTH / 2 : TRACK_WIDTH;
   const { train } = view;
   const rolling = !train.waiting && !train.parked;
   const target = rolling ? { 'data-target': 'train', 'data-track': view.id } : {};

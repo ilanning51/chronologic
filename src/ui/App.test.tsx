@@ -3,14 +3,14 @@ import tokensCss from '../styles/tokens.css?raw';
 import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { dayOf } from '../model/days';
+import { addDays, dayOf } from '../model/days';
 import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
 import { TRACK_WIDTH } from '../plane/world';
-import { running, twoLines, withDay } from '../test/fixtures';
+import { running, twoLines, withDay, withWeek } from '../test/fixtures';
 import { App } from './App';
 
 window.innerWidth = 1000;
@@ -2437,4 +2437,13 @@ describe('the week window', () => {
     act(() => weekButton().click());
     expect(screen.getByRole('button', { name: 'Step' })).toHaveAttribute('aria-pressed', 'false');
   });
+});
+
+test('the plane draws no line for a day after tomorrow, nor its end square', () => {
+  const w = withWeek(dayOf(WAITING));
+  w.tracks.find((t) => t.id === 'day2')!.day!.date = addDays(dayOf(WAITING), 2);
+  render(<App store={createStore(w)} now={() => WAITING} />);
+  expect(document.querySelector('[data-target="origin"][data-track="day"]')).toBeInTheDocument();
+  expect(document.querySelector('[data-target="origin"][data-track="day2"]')).toBeNull();
+  expect(document.querySelector('[data-id="dayEnd2"]')).toBeNull();
 });
