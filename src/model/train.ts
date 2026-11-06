@@ -105,6 +105,8 @@ export function dayState(day: Track, world: World, now: number): TrainState {
   const route = trackRoute(day, byId);
   const { leg, departedAt } = day.train;
   if (leg >= day.stops.length) return parkedState(day, route, leg, departedAt);
+  // A day not yet begun waits at its start.
+  if (day.day?.held) return { leg, parked: false, waiting: true, seconds: 0, fraction: 0, departedAt, at: route.vertices[0], angle: 0 };
   const budget = day.day?.budgets[leg] ?? 0;
   const left = timeLeftAny(world, day.stops[leg], now);
   const fraction = budget === 0 ? 1 : Math.min(1, Math.max(0, 1 - left / budget));

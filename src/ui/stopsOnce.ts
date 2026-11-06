@@ -8,7 +8,7 @@ export interface PlacedStop {
   day: boolean;
   /** Every line through it is done, so it dims. */
   finished: boolean;
-  /** Every line through it is a sketch, so it is muted. */
+  /** Every line through it is a sketch or tomorrow's day, so it is muted. */
   sketch: boolean;
 }
 
@@ -38,7 +38,7 @@ export function stopsOnce(views: TrackView[]): PlacedStop[] {
       color: view.color,
       day: view.day,
       finished: listings.every((l) => l.view.finished),
-      sketch: listings.every((l) => l.view.sketch),
+      sketch: listings.every((l) => l.view.sketch || l.view.tomorrow),
     };
   });
 }

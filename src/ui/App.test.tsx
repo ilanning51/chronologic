@@ -2,15 +2,15 @@ import uiCss from '../styles/ui.css?raw';
 import tokensCss from '../styles/tokens.css?raw';
 import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, expect, test, vi } from 'vitest';
-import { dayOf } from '../model/days';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { addDays, dayOf } from '../model/days';
 import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
 import { TRACK_WIDTH } from '../plane/world';
-import { running, twoLines, withDay } from '../test/fixtures';
+import { running, twoLines, withDay, withWeek } from '../test/fixtures';
 import { App } from './App';
 
 window.innerWidth = 1000;
@@ -1454,7 +1454,7 @@ test('a goal drawn for the day and let go on another line is not joined', () => 
     stops: ['goal2', 'near', 'dayEnd'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: dayOf(WAITING), budgets: [1000, 0, 0] },
+    day: { date: dayOf(WAITING), budgets: [1000, 0, 0], lengths: [3600, 3600, 1800] },
   });
   world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
   const store = createStore(world);
@@ -1479,7 +1479,7 @@ test('a goal drawn for the day drags as its line goal, scaling the stops ahead',
     stops: ['goal2', 'near', 'dayEnd'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: dayOf(WAITING), budgets: [1000, 0, 0] },
+    day: { date: dayOf(WAITING), budgets: [1000, 0, 0], lengths: [3600, 3600, 1800] },
   });
   world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
   const store = createStore(world);
@@ -1619,7 +1619,7 @@ test("dragging a stop whose button speaks for the day shows its project leg's ti
     stops: ['shared', 'dayEnd'],
     train: { leg: 0, departedAt: 0 },
     target: 'next',
-    day: { date: dayOf(WAITING), budgets: [1000, 0] },
+    day: { date: dayOf(WAITING), budgets: [1000, 0], lengths: [3600, 1800] },
   });
   world.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
   const store = createStore(world);
@@ -2387,4 +2387,63 @@ test("Escape on a new line's name leaves no line and nothing to undo or redo", (
   expect(store.getState().tracks).toHaveLength(1);
   expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled();
+});
+
+describe('the week window', () => {
+  const t = () => WAITING;
+  const weekButton = () => screen.getByRole('button', { name: 'Week' });
+  const dialog = () => screen.queryByRole('dialog', { name: 'Week' });
+
+  test('opens from its button on tomorrow, and closes from it', () => {
+    render(<App store={createStore(running())} now={t} />);
+    expect(dialog()).toBeNull();
+    act(() => weekButton().click());
+    expect(dialog()).toBeInTheDocument();
+    expect(weekButton()).toHaveAttribute('aria-expanded', 'true');
+    const tomorrow = document.querySelector('[data-week-day][aria-pressed="true"]')!;
+    expect(tomorrow.getAttribute('data-week-day')! > dayOf(WAITING)).toBe(true);
+    act(() => weekButton().click());
+    expect(dialog()).toBeNull();
+  });
+
+  test('Escape closes it, and so does a tap on the plane', () => {
+    render(<App store={createStore(running())} now={t} />);
+    act(() => weekButton().click());
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(dialog()).toBeNull();
+    act(() => weekButton().click());
+    act(() => tapOn(paper()));
+    expect(dialog()).toBeNull();
+  });
+
+  test('a wheel over the day plane never zooms the map', () => {
+    render(<App store={createStore(running())} now={t} />);
+    act(() => weekButton().click());
+    const before = left(/^Dentist/);
+    fireEvent.wheel(screen.getByLabelText('Day plane'), { deltaY: -400, clientX: 500, clientY: 400 });
+    expect(left(/^Dentist/)).toBe(before);
+    // The same wheel on the plane does zoom it.
+    fireEvent.wheel(paper(), { deltaY: -400, clientX: 500, clientY: 400 });
+    expect(left(/^Dentist/)).not.toBe(before);
+  });
+
+  test('opening it puts the brush down', () => {
+    render(<App store={createStore(running())} now={t} />);
+    openTray();
+    tapTile('Step');
+    expect(screen.getByRole('button', { name: 'Step' })).toHaveAttribute('aria-pressed', 'true');
+    act(() => weekButton().click());
+    expect(screen.getByRole('button', { name: 'Step' })).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
+test('the plane draws no line for a day after tomorrow, nor its end square', () => {
+  const w = withWeek(dayOf(WAITING));
+  w.tracks.find((t) => t.id === 'day2')!.day!.date = addDays(dayOf(WAITING), 2);
+  render(<App store={createStore(w)} now={() => WAITING} />);
+  expect(document.querySelector('[data-target="origin"][data-track="day"]')).toBeInTheDocument();
+  expect(document.querySelector('[data-target="origin"][data-track="day2"]')).toBeNull();
+  expect(document.querySelector('[data-id="dayEnd2"]')).toBeNull();
 });

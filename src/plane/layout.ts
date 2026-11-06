@@ -1,4 +1,6 @@
 import { crowdAt } from '../model/crowd';
+import { drawnOnPlane } from '../model/day';
+import { addDays, dayOf } from '../model/days';
 import { tracksOf } from '../model/reducer';
 import { nextIndex, stateOf, trackRoute } from '../model/train';
 import type { Shape, Size, Track, World } from '../model/types';
@@ -47,6 +49,8 @@ export interface TrackView {
   finished: boolean;
   /** The day line, drawn in ink. */
   day: boolean;
+  /** Tomorrow's day line: drawn like a sketch, muted and thin, its train waiting at its start. */
+  tomorrow: boolean;
   /** A project line with only its goal, drawn muted and thin. A look, not a state. */
   sketch: boolean;
   /** The road still to come, from the train to the goal, in the line's colour. */
@@ -76,6 +80,7 @@ export function layoutTrack(
   pinned: Set<string> = new Set(),
 ): TrackView {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
+  const today = dayOf(now);
   const grown = {
     x: -CLIP_MARGIN_PX,
     y: -CLIP_MARGIN_PX,
@@ -137,7 +142,7 @@ export function layoutTrack(
     goal: index === goalIndex,
     projectGoal: index === goalIndex && !track.day,
     terminus: index === goalIndex && !track.day && stop.done,
-    ring: !stop.done && tracksOf(world, stop.id).length >= 2,
+    ring: !stop.done && tracksOf(world, stop.id).filter(({ track: t }) => drawnOnPlane(t, today)).length >= 2,
     crowd: index === state.leg ? crowd : 0,
   }));
 
@@ -149,6 +154,7 @@ export function layoutTrack(
     color: track.color,
     finished: state.parked,
     day: track.day !== undefined,
+    tomorrow: track.day !== undefined && track.day.date === addDays(today, 1),
     sketch: !track.day && track.stops.length === 1,
     segments,
     behind,

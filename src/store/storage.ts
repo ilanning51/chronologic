@@ -1,8 +1,15 @@
+import { defaultLength } from '../model/day';
 import { EMPTY } from '../model/reducer';
 import type { BubbleTarget, Shape, Size, Stop, Track, World } from '../model/types';
 
-/** Bump the version in the key when the shape of World changes; an old world opens as empty unless it is read on purpose, as v2 is. */
-export const STORAGE_KEY = 'chronologic.v3';
+/**
+ * Bump the version in the key when the shape of World changes; an old world opens as empty unless
+ * it is read on purpose, as v3 and v2 are. An older build reading a newer world would refuse it and
+ * open empty, which is why the key moves rather than the shape changing under it.
+ */
+export const STORAGE_KEY = 'chronologic.v4';
+/** A v3 world has at most one day line and no block lengths; it is read and given them. */
+export const V3_KEY = 'chronologic.v3';
 /** A v2 world is a v3 world with no day track and no shared stops, so it is read once and kept. */
 export const V2_KEY = 'chronologic.v2';
 
@@ -28,18 +35,27 @@ function isStop(v: unknown): v is Stop {
     isNumber(v.x) &&
     isNumber(v.y) &&
     typeof v.done === 'boolean' &&
+    (v.doneAt === undefined || isNumber(v.doneAt)) &&
     (v.image === undefined || (typeof v.image === 'string' && v.image.startsWith('data:image/')))
   );
 }
 
-/** A day track's date is a string and it has one finite budget per stop. */
+function isPerStop(v: unknown, stopCount: number): boolean {
+  return Array.isArray(v) && v.length === stopCount && v.every(isNumber);
+}
+
+/**
+ * A day track's date is a string and it has one finite budget per stop, and one block length per
+ * stop unless it was saved before blocks had lengths. Held and placed, where present, are true.
+ */
 function isDay(v: unknown, stopCount: number): boolean {
   return (
     isRecord(v) &&
     typeof v.date === 'string' &&
-    Array.isArray(v.budgets) &&
-    v.budgets.length === stopCount &&
-    v.budgets.every(isNumber)
+    isPerStop(v.budgets, stopCount) &&
+    (v.lengths === undefined || isPerStop(v.lengths, stopCount)) &&
+    (v.held === undefined || v.held === true) &&
+    (v.placed === undefined || v.placed === true)
   );
 }
 
@@ -66,7 +82,8 @@ function isTrack(v: unknown, shapes: ReadonlyMap<string, Shape>): v is Track {
 
 /**
  * Across tracks: every square a track lists is last on exactly one track, its home, since a goal
- * may sit mid-line on another track. At most one day track, and its end square is on no other.
+ * may sit mid-line on another track. One day track per date at most, and each day's end square is
+ * on no other track.
  */
 function tracksAgree(tracks: readonly Track[], shapes: ReadonlyMap<string, Shape>): boolean {
   const homes = new Map<string, number>();
@@ -80,13 +97,11 @@ function tracksAgree(tracks: readonly Track[], shapes: ReadonlyMap<string, Shape
     }
   }
   const days = tracks.filter((t) => t.day !== undefined);
-  if (days.length > 1) return false;
-  if (days.length === 1) {
-    const day = days[0];
+  if (new Set(days.map((t) => t.day!.date)).size !== days.length) return false;
+  return days.every((day) => {
     const end = day.stops[day.stops.length - 1];
-    if (tracks.some((t) => t !== day && t.stops.includes(end))) return false;
-  }
-  return true;
+    return !tracks.some((t) => t !== day && t.stops.includes(end));
+  });
 }
 
 function isWorld(v: unknown): v is World {
@@ -97,16 +112,29 @@ function isWorld(v: unknown): v is World {
   return v.tracks.every((t) => isTrack(t, shapes)) && tracksAgree(v.tracks as Track[], shapes);
 }
 
+/** A day saved before blocks had lengths gets each stop's default, so every day carries them. */
+function withLengths(world: World): World {
+  if (world.tracks.every((t) => !t.day || t.day.lengths)) return world;
+  const byId = new Map(world.stops.map((s) => [s.id, s]));
+  return {
+    ...world,
+    tracks: world.tracks.map((t) =>
+      t.day && !t.day.lengths ? { ...t, day: { ...t.day, lengths: t.stops.map((id) => defaultLength(byId.get(id))) } } : t,
+    ),
+  };
+}
+
 /**
  * The saved world, or an empty one when nothing is saved or what is saved cannot be trusted. With
- * no v3 world, a v2 one is read instead; the next save writes v3, and the v2 key is never touched.
+ * no v4 world, a v3 or else a v2 one is read instead; the next save writes v4, and the older keys
+ * are never touched.
  */
 export function load(storage: Pick<Storage, 'getItem'>): World {
   try {
-    const raw = storage.getItem(STORAGE_KEY) ?? storage.getItem(V2_KEY);
+    const raw = storage.getItem(STORAGE_KEY) ?? storage.getItem(V3_KEY) ?? storage.getItem(V2_KEY);
     if (!raw) return EMPTY;
     const parsed: unknown = JSON.parse(raw);
-    return isWorld(parsed) ? parsed : EMPTY;
+    return isWorld(parsed) ? withLengths(parsed) : EMPTY;
   } catch {
     return EMPTY;
   }

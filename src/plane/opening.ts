@@ -1,17 +1,18 @@
+import { dayOf } from '../model/days';
 import { legSeconds, stateOf, trackRoute, type TrainState } from '../model/train';
 import type { Track, World } from '../model/types';
 import { type Camera, centerOn, fitLeg, HOME } from './camera';
 import { soonestTrack } from './soonest';
 
 /**
- * Where the camera starts. With a day under way, on the day train: the day is the plan, so it
+ * Where the camera starts. With today's day under way, on its day train: the day is the plan, so it
  * is what to look at first. Otherwise on the soonest line's train. Either way zoomed so its leg
  * fills a third of the width. With nothing running the camera stays home.
  */
 export function openingCamera(world: World, now: number, viewport: { w: number; h: number }): Camera {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
 
-  const day = world.tracks.find((t) => t.day);
+  const day = world.tracks.find((t) => t.day?.date === dayOf(now));
   if (day) {
     const state = stateOf(day, world, now);
     if (!state.parked) return frame(day, state);
