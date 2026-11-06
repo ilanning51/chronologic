@@ -1,7 +1,11 @@
 import { expect, test } from 'vitest';
 import { LABEL_GAP_PX, LABEL_LEAD_PX, labelsWithRoom, placeLabels, textWidth, wrapName } from './labels';
+import { LABEL_ROOM_PX } from './world';
 
-test('labels go left to right, always-ids first, and a label needs 80 px of room', () => {
+test('labels go left to right, always-ids first, and a label needs its room', () => {
+  // The room is more than 50 px and less than 150, so these stops fall as the comments say.
+  expect(LABEL_ROOM_PX).toBeGreaterThan(50);
+  expect(LABEL_ROOM_PX).toBeLessThan(150);
   const stops = [
     { id: 'c', x: 150 },
     { id: 'a', x: 0 },
@@ -12,8 +16,8 @@ test('labels go left to right, always-ids first, and a label needs 80 px of room
   expect([...labelsWithRoom(stops, new Set(['d']))].sort()).toEqual(['a', 'd']);
   // With nothing forced: a (0), b too close, c (150) fits, d too close to c.
   expect([...labelsWithRoom(stops, new Set())].sort()).toEqual(['a', 'c']);
-  // Exactly 80 px apart is room enough.
-  expect([...labelsWithRoom([{ id: 'p', x: 0 }, { id: 'q', x: 80 }], new Set())].sort()).toEqual(['p', 'q']);
+  // Exactly the room apart is room enough.
+  expect([...labelsWithRoom([{ id: 'p', x: 0 }, { id: 'q', x: LABEL_ROOM_PX }], new Set())].sort()).toEqual(['p', 'q']);
 });
 
 test('an always-id that is not in the list is ignored', () => {
