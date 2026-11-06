@@ -33,3 +33,9 @@ test('cutAt splits the route at the train, repeating no vertex', () => {
     ahead: [{ x: 100, y: 0 }, { x: 200, y: 0 }],
   });
 });
+test('a bend can sit at either end of its leg, and the leg is as long either way', () => {
+  const first = routeThrough([{ x: 0, y: 0 }, { x: 100, y: 30 }], ['diagonal-first']);
+  const last = routeThrough([{ x: 0, y: 0 }, { x: 100, y: 30 }], ['straight-first']);
+  expect(last.vertices).toEqual([{ x: 0, y: 0 }, { x: 70, y: 0 }, { x: 100, y: 30 }]);
+  expect(pathLength(last.vertices, 0, 2)).toBeCloseTo(pathLength(first.vertices, 0, 2));
+});

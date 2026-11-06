@@ -1,23 +1,62 @@
 :root {
-  /* Colors. Opaque only, measured against paper in the design doc. */
-  --paper: #EEEBE5;
-  --ink: #2B2420;
-  --muted: #6B635C;
+  /* Colors, after the New York subway map. Opaque only. The ink is 18.9:1 on the day paper and
+     the muted grey 5.9:1, 5.1:1 on the night paper; daylight.ts drifts --paper and --grid. */
+  --paper: #FFFFFF;
+  --ink: #1C1B1A;
+  --muted: #636466;
   /* The grid's hairlines: a shade off the paper, so a square is seen and never read. */
-  --grid: #E0DCD5;
-  --track-blue: #2440A4;
-  --track-ochre: #A67C00;
-  --track-green: #1F7A3A;
-  --track-red: #C4251F;
-  --track-plum: #6B2D8B;
-  --track-teal: #0F6E7A;
-  --track-rust: #B5500F;
-  --track-slate: #3D4F63;
+  --grid: #EDEDED;
+  /* The MTA trunk colours as the 2025 map prints them, in palette.ts order. */
+  --track-blue: #007EC5;
+  --track-yellow: #FFD200;
+  --track-green: #009862;
+  --track-red: #E70B40;
+  --track-purple: #AF378A;
+  --track-lime: #72B030;
+  --track-orange: #F18402;
+  --track-brown: #A7752A;
+  /* A line's colour where words sit on it, palette.ts's `fill`: blue and brown a shade darker. */
+  --track-blue-fill: #007CC2;
+  --track-yellow-fill: var(--track-yellow);
+  --track-green-fill: var(--track-green);
+  --track-red-fill: var(--track-red);
+  --track-purple-fill: var(--track-purple);
+  --track-lime-fill: var(--track-lime);
+  --track-orange-fill: var(--track-orange);
+  --track-brown-fill: #9C6D27;
+  /* Words on a line's fill, palette.ts's `on`: whichever of ink and white reads better. */
+  --on-plate: #FFFFFF;
+  --track-blue-on: var(--on-plate);
+  --track-yellow-on: var(--ink);
+  --track-green-on: var(--ink);
+  --track-red-on: var(--on-plate);
+  --track-purple-on: var(--on-plate);
+  --track-lime-on: var(--ink);
+  --track-orange-on: var(--ink);
+  --track-brown-on: var(--on-plate);
 
-  /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
-  --track: 10px;
+  /* The map's furniture: every control is a black plate with white words and square corners, after
+     the 2025 map's title bar and legend headers. Hover and press are lighter plates, never glass. */
+  --plate: var(--ink);
+  --plate-hover: #2A2A2A;
+  --plate-press: #3D3D3D;
+  --plate-radius: 0;
+  /* Helvetica Medium, the weight the MTA's signs are set in. */
+  --plate-weight: 500;
+
+  /* Screen sizes, in CSS px. Constant at every zoom; they match world.ts. */
+  /* W, one line's width, and the map's sizes as multiples of it (vignelli.ts). */
+  --track: 16px;
   --dot: 10px;
-  --label: 13px;
+  --label: calc(var(--track) * 1.056);
+  /* A station: an ink disc one line wide on its line's colour, a step larger for a larger task. A
+     transfer joins its discs with an ink bar inside a paper capsule with a fine ink outline. */
+  --disc-small: var(--track);
+  --disc-medium: calc(var(--track) * 1.12);
+  --disc-large: calc(var(--track) * 1.25);
+  --bar: calc(var(--track) * 0.39);
+  --capsule-pad: calc(var(--track) * 0.08);
+  --capsule-outline: calc(var(--track) * 0.087);
   /* The least hit target for anything pressable, in CSS px. */
   --tap: 44px;
   --circle-small: 14px;
@@ -44,7 +83,8 @@
   --add: 3.5rem;
   --chip: 2.25rem;
 
-  --font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  /* The 2025 map is set in Neue Haas Grotesk Display, Helvetica's first cut; Helvetica Neue stands in. */
+  --font: 'Neue Haas Grotesk Display Pro', 'Neue Haas Grotesk Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 html, body, #root {

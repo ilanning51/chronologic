@@ -5,6 +5,7 @@ import { legSeconds, stateOf, trackRoute, type TrainState } from '../model/train
 import type { Track, World } from '../model/types';
 import { type Camera, centerOn, fitLeg, HOME } from './camera';
 import { PROJECT_MIN_SCALE } from './level';
+import { routeOf, trainOn } from './metro';
 import { soonestTrack } from './soonest';
 
 /**
@@ -43,6 +44,7 @@ export function openingCamera(world: World, now: number, viewport: { w: number; 
     const leg = state.waiting && state.leg + 1 < track.stops.length ? state.leg + 1 : state.leg;
     const scale = fitLeg(legSeconds(trackRoute(track, byId), leg), viewport.w);
     // A project is not drawn past the 30-day unit, so a years-long leg frames at that zoom instead.
-    return centerOn(HOME, state.at, viewport, isProject(track) ? Math.max(scale, PROJECT_MIN_SCALE) : scale);
+    const at = trainOn(routeOf(world, track, dayOf(now)), state).at;
+    return centerOn(HOME, at, viewport, isProject(track) ? Math.max(scale, PROJECT_MIN_SCALE) : scale);
   }
 }

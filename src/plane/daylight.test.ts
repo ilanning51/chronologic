@@ -7,7 +7,8 @@ test('by day the paper is the design paper, and the grid is the design grid', ()
   expect(paperAt(10)).toBe(DAY_PAPER);
   expect(paperAt(13.5)).toBe(DAY_PAPER);
   expect(paperAt(16)).toBe(DAY_PAPER);
-  expect(gridTint(DAY_PAPER)).toBe('#E0DCD5');
+  expect(DAY_PAPER).toBe('#FFFFFF');
+  expect(gridTint(DAY_PAPER)).toBe('#EDEDED');
 });
 
 test('dusk is warmer than day and dawn is cooler, each by a flat tint', () => {
@@ -34,5 +35,5 @@ test('the hour reads minutes as a fraction, and applying writes both tokens', ()
   expect(hourOf(new Date(2026, 10, 3, 19, 30))).toBe(19.5);
   const written: Record<string, string> = {};
   applyDaylight({ style: { setProperty: (n, v) => (written[n] = v) } }, new Date(2026, 10, 3, 12, 0));
-  expect(written).toEqual({ '--paper': DAY_PAPER, '--grid': '#E0DCD5' });
+  expect(written).toEqual({ '--paper': DAY_PAPER, '--grid': '#EDEDED' });
 });

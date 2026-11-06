@@ -15,24 +15,35 @@ function angleOf(a: Point, b: Point): number {
 }
 
 /**
- * Routes a line through stations the way the subway map does: between two stations a
- * 45 degree segment first, covering the shorter axis, then a straight run for the rest.
+ * Where a leg's one bend sits. Either way the leg is a 45 degree run covering the shorter axis and
+ * a straight run for the rest, so either way it is the same length, and so the same time.
+ */
+export type Bend = 'diagonal-first' | 'straight-first';
+
+/** The corner of a leg from `from` to `to`, or null when the leg is one straight or diagonal run. */
+export function bendOf(from: Point, to: Point, bend: Bend): Point | null {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const diagonal = Math.min(Math.abs(dx), Math.abs(dy));
+  if (diagonal === 0 || Math.abs(dx) === Math.abs(dy)) return null;
+  const run = { x: Math.sign(dx) * diagonal, y: Math.sign(dy) * diagonal };
+  return bend === 'diagonal-first' ? { x: from.x + run.x, y: from.y + run.y } : { x: to.x - run.x, y: to.y - run.y };
+}
+
+/**
+ * Routes a line through stations the way the subway map does: only horizontal, vertical and
+ * 45 degree runs. Between two stations a 45 degree run covers the shorter axis and a straight run
+ * the rest; `bends[i]` says which comes first on leg i, diagonal first when it is not given.
  * The first vertex is the first station itself; nothing is drawn before it.
  */
-export function routeThrough(points: Point[]): Route {
+export function routeThrough(points: Point[], bends: Bend[] = []): Route {
   if (points.length === 0) return { vertices: [], stationAt: [] };
   const vertices: Point[] = [points[0]];
   const stationAt = [0];
   for (let i = 1; i < points.length; i++) {
-    const from = points[i - 1];
-    const to = points[i];
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const diagonal = Math.min(Math.abs(dx), Math.abs(dy));
-    if (diagonal > 0 && Math.abs(dx) !== Math.abs(dy)) {
-      vertices.push({ x: from.x + Math.sign(dx) * diagonal, y: from.y + Math.sign(dy) * diagonal });
-    }
-    vertices.push(to);
+    const corner = bendOf(points[i - 1], points[i], bends[i - 1] ?? 'diagonal-first');
+    if (corner) vertices.push(corner);
+    vertices.push(points[i]);
     stationAt.push(vertices.length - 1);
   }
   return { vertices, stationAt };

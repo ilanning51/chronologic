@@ -5,8 +5,8 @@ import { deflateSync } from 'node:zlib';
 
 const SIZE = 180;
 const RADIUS = 60;
-const PAPER = [0xee, 0xeb, 0xe5];
-const INK = [0x2b, 0x24, 0x20];
+const PAPER = [0xff, 0xff, 0xff];
+const INK = [0x11, 0x11, 0x11];
 
 const stride = SIZE * 4 + 1;
 const raw = Buffer.alloc(stride * SIZE);

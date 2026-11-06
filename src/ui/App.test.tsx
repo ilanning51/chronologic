@@ -9,7 +9,7 @@ import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
-import { TRACK_WIDTH } from '../plane/world';
+import { LANE_PX, TRACK_WIDTH } from '../plane/world';
 import { running, twoLines, withDay, withLife, withWeek } from '../test/fixtures';
 import { App } from './App';
 
@@ -55,7 +55,7 @@ test('a done goal stays as a terminus: a large ink dot that keeps its name in in
   // A passed step is an ordinary dot.
   expect(screen.getByRole('button', { name: /^Dentist/ })).not.toHaveClass('terminus');
   const dot = /\.stop\.terminus \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
-  expect(dot).toMatch(/width:\s*var\(--square-large\)/);
+  expect(dot).toMatch(/width:\s*var\(--disc-large\)/);
   expect(dot).toMatch(/background:\s*var\(--ink\)/);
   expect(/\.stop\.terminus \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
   // The terminus rules come after the finished and done ones, so they win at equal weight.
@@ -155,6 +155,7 @@ test("a sketch's bubble is muted, like its line", () => {
   const bubble = document.querySelector('[data-target="bubble"]') as HTMLElement;
   expect(bubble).toBeInTheDocument();
   expect(bubble.style.getPropertyValue('--track-color')).toBe('var(--muted)');
+  expect(bubble.style.getPropertyValue('--track-on')).toBe('var(--on-plate)');
 });
 
 test("choosing a picture in the goal's editor keeps the shrunk one on the goal", async () => {
@@ -966,12 +967,13 @@ test('a stop on two lines is drawn as a ring', () => {
   expect(shape).toHaveClass('shape', 'ring', 'circle', 'medium');
   // A stop on one line stays solid.
   expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('.shape')).not.toHaveClass('ring');
-  // The paper centre is the same shape again, 4 px in, so the ink border is as thick as a line.
-  const centre = cssRule('.shape.ring::after');
-  expect(centre).toMatch(/inset:\s*4px/);
-  expect(centre).toMatch(/background:\s*var\(--paper\)/);
-  expect(cssRule('.shape.ring.circle::after')).toMatch(/border-radius:\s*50%/);
-  expect(cssRule('.shape.ring.triangle::after')).toMatch(/clip-path:\s*polygon\(50% 0, 100% 100%, 0 100%\)/);
+  // The map's transfer: a paper capsule in a fine ink outline, its disc inside.
+  const capsule = cssRule('.stop .shape.ring');
+  expect(capsule).toMatch(/background:\s*var\(--paper\)/);
+  expect(capsule).toMatch(/inset 0 0 0 var\(--capsule-outline\) var\(--ink\)/);
+  const disc = cssRule('.stop .shape.ring::before');
+  expect(disc).toMatch(/inset:\s*calc\(var\(--capsule-pad\) \+ var\(--capsule-outline\)\)/);
+  expect(disc).toMatch(/background:\s*var\(--ink\)/);
 });
 
 test('a done interchange is a plain dot', () => {
@@ -1045,10 +1047,19 @@ test('the soonest line fills its bubble', () => {
   expect(bubble('t2')).not.toHaveClass('soonest');
   expect(bubble('day')).not.toHaveClass('soonest');
   expect(bubble('day').style.getPropertyValue('--track-color')).toBe('var(--ink)');
+  // Words on a line's colour take that colour's own text colour: white on blue, ink on yellow.
+  expect(bubble('t1').style.getPropertyValue('--track-on')).toBe('var(--track-blue-on)');
+  expect(bubble('t2').style.getPropertyValue('--track-on')).toBe('var(--track-yellow-on)');
+  expect(bubble('day').style.getPropertyValue('--track-on')).toBe('var(--on-plate)');
+  // The day's mark shows white on the black plate, so its bubble says it is the day's.
+  expect(bubble('day')).toHaveClass('day');
+  expect(bubble('t1')).not.toHaveClass('day');
   const filled = cssRule('.bubble.soonest');
-  expect(filled).toMatch(/background:\s*var\(--track-color\)/);
-  expect(filled).toMatch(/color:\s*var\(--paper\)/);
-  expect(cssRule('.bubble.soonest .shape')).toMatch(/background:\s*var\(--paper\)/);
+  // Filled with the shade of the line that words read on.
+  expect(bubble('t1').style.getPropertyValue('--track-fill')).toBe('var(--track-blue-fill)');
+  expect(filled).toMatch(/background:\s*var\(--track-fill\)/);
+  expect(filled).toMatch(/color:\s*var\(--track-on\)/);
+  expect(cssRule('.bubble.soonest .shape')).toMatch(/background:\s*var\(--track-on\)/);
 });
 
 /** Where a stop is drawn on screen. */
@@ -1579,9 +1590,9 @@ test('tapping the day train follows the day train, not the project motion on its
   });
   // The shadow is half way down its first leg, at (1000, -200); the camera centres there.
   expect(dayState(world.tracks[2], world, NOW).at).toEqual({ x: 1000, y: -200 });
+  // It runs in its own lane beside the project line it shares the road with, a lane's width at most from the road.
   const [x, y] = /translate\(([-\d.e]+)px,\s*([-\d.e]+)px/.exec(dayTrain().style.transform)!.slice(1).map(Number);
-  expect(x).toBeCloseTo(window.innerWidth / 2, 3);
-  expect(y).toBeCloseTo(window.innerHeight / 2, 3);
+  expect(Math.hypot(x - window.innerWidth / 2, y - window.innerHeight / 2)).toBeLessThanOrEqual(LANE_PX);
 });
 
 test("the day's-end square's editor is only a hold, and the hold clears the day", () => {
