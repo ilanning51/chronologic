@@ -10,8 +10,10 @@ import type { Point } from './geometry';
 import { gridFor } from './grid';
 import { labelsWithRoom } from './labels';
 import { showsAt } from './level';
-import { routeOf, trainOn } from './metro';
-import { cutAt, legSpan } from './routing';
+import { shiftLine } from './draw';
+import { lanesOf, routeOf } from './metro';
+import { cutAt, pathLength, pointAlong } from './routing';
+import { LANE_PX } from './world';
 
 export interface StopView {
   id: string;
@@ -90,20 +92,32 @@ export function layoutTrack(
   };
   const inside = (p: Point) => p.x >= grown.x && p.x <= grown.x + grown.w && p.y >= grown.y && p.y <= grown.y + grown.h;
 
-  const route = routeOf(world, track);
-  const vertices = route.vertices.map((v) => worldToScreen(camera, v));
+  // The line as the map draws it, in screen pixels: its chosen bends, and its lane wherever it
+  // shares a road. A line not on the plane has the road to itself.
+  const lanes = lanesOf(world, today).get(track.id);
+  const route = lanes?.route ?? routeOf(world, track, today);
+  const shift = lanes?.shift ?? route.vertices.slice(1).map(() => ({ x: 0, y: 0 }));
+  const line = shiftLine(
+    route.vertices.map((v) => worldToScreen(camera, v)),
+    route.stationAt,
+    shift.map((o) => ({ x: o.x * LANE_PX, y: o.y * LANE_PX })),
+  );
   const state = stateOf(track, world, now);
 
-  // The line is cut at the train: behind it is travelled, ahead is still to come. A parked train
-  // has travelled it all.
-  const cut = state.parked
-    ? { behind: route.vertices, ahead: [] }
-    : (() => {
-        const { from, to } = legSpan(route, state.leg);
-        return cutAt(route.vertices, from, to, state.seconds);
-      })();
-  const toSegments = (points: Point[]): [Point, Point][] => {
-    const shown = points.map((p) => worldToScreen(camera, p));
+  // The train is the share of its leg's length the clock has run, along the leg as drawn. The
+  // line is cut there: behind it is travelled, ahead is still to come. A parked train has
+  // travelled it all, and stands at its last stop.
+  const last = line.stationAt[line.stationAt.length - 1];
+  const leg = state.parked ? null : { from: line.stationAt[state.leg], to: line.stationAt[state.leg + 1] };
+  const share = (() => {
+    if (!leg) return 1;
+    const planned = pathLength(route.vertices, route.stationAt[state.leg], route.stationAt[state.leg + 1]);
+    return planned === 0 ? 1 : state.seconds / planned;
+  })();
+  const cut = leg
+    ? cutAt(line.points, leg.from, leg.to, share * pathLength(line.points, leg.from, leg.to))
+    : { behind: line.points, ahead: [] };
+  const toSegments = (shown: Point[]): [Point, Point][] => {
     const out: [Point, Point][] = [];
     for (let i = 1; i < shown.length; i++) {
       const clipped = clipSegment(shown[i - 1], shown[i], grown);
@@ -118,9 +132,12 @@ export function layoutTrack(
   const next = nextIndex(track, byId);
   const goalIndex = track.stops.length - 1;
   const gridSeconds = gridFor(camera.scale).seconds;
+  // A stop on this line alone sits in the line's lane. A stop on several sits on its own point,
+  // which is the middle of any ribbon through it, since lanes are centred on the road.
+  const linesAt = (id: string) => tracksOf(world, id).filter(({ track: t }) => drawnOnPlane(t, today)).length;
   const placed = track.stops.flatMap((id, index) => {
     const stop = byId.get(id)!;
-    const at = worldToScreen(camera, stop);
+    const at = linesAt(id) >= 2 ? worldToScreen(camera, stop) : line.points[line.stationAt[index + 1]];
     const shown = index === next || index === goalIndex || pinned.has(id) || showsAt(stop.shape, stop.size, gridSeconds);
     return inside(at) && shown ? [{ stop, at, index }] : [];
   });
@@ -143,12 +160,12 @@ export function layoutTrack(
     goal: index === goalIndex,
     projectGoal: index === goalIndex && !track.day,
     terminus: index === goalIndex && !track.day && stop.done,
-    ring: !stop.done && tracksOf(world, stop.id).filter(({ track: t }) => drawnOnPlane(t, today)).length >= 2,
+    ring: !stop.done && linesAt(stop.id) >= 2,
     crowd: index === state.leg ? crowd : 0,
   }));
 
-  const drawn = trainOn(route, state);
-  const trainAt = worldToScreen(camera, drawn.at);
+  const drawn = leg ? pointAlong(line.points, leg.from, leg.to, share) : { at: line.points[last], angle: state.angle };
+  const trainAt = drawn.at;
   const train: TrainView = { x: trainAt.x, y: trainAt.y, angle: drawn.angle, waiting: state.waiting, parked: state.parked };
 
   return {
@@ -160,7 +177,7 @@ export function layoutTrack(
     sketch: !track.day && track.stops.length === 1,
     segments,
     behind,
-    origin: vertices[0],
+    origin: line.points[0],
     stops,
     train,
     anyInView: segments.length > 0 || behind.length > 0 || stops.length > 0 || inside(trainAt),

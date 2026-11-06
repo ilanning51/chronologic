@@ -9,7 +9,7 @@ import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
-import { TRACK_WIDTH } from '../plane/world';
+import { LANE_PX, TRACK_WIDTH } from '../plane/world';
 import { running, twoLines, withDay, withWeek } from '../test/fixtures';
 import { App } from './App';
 
@@ -1587,9 +1587,9 @@ test('tapping the day train follows the day train, not the project motion on its
   });
   // The shadow is half way down its first leg, at (1000, -200); the camera centres there.
   expect(dayState(world.tracks[2], world, NOW).at).toEqual({ x: 1000, y: -200 });
+  // It runs in its own lane beside the project line it shares the road with, a lane's width at most from the road.
   const [x, y] = /translate\(([-\d.e]+)px,\s*([-\d.e]+)px/.exec(dayTrain().style.transform)!.slice(1).map(Number);
-  expect(x).toBeCloseTo(window.innerWidth / 2, 3);
-  expect(y).toBeCloseTo(window.innerHeight / 2, 3);
+  expect(Math.hypot(x - window.innerWidth / 2, y - window.innerHeight / 2)).toBeLessThanOrEqual(LANE_PX);
 });
 
 test("the day's-end square's editor is only a hold, and the hold clears the day", () => {

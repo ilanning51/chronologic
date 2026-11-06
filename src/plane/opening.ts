@@ -26,6 +26,6 @@ export function openingCamera(world: World, now: number, viewport: { w: number; 
     // A waiting train is about to set off on the next leg; at the last stop there is none.
     const leg = state.waiting && state.leg + 1 < track.stops.length ? state.leg + 1 : state.leg;
     const scale = fitLeg(legSeconds(trackRoute(track, byId), leg), viewport.w);
-    return centerOn(HOME, trainOn(routeOf(world, track), state).at, viewport, scale);
+    return centerOn(HOME, trainOn(routeOf(world, track, dayOf(now)), state).at, viewport, scale);
   }
 }

@@ -1022,7 +1022,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
     // The day train is a shadow: it is where dayState says, not where its legs' own clock would be.
-    const at = trainOn(routeOf(state, track), stateOf(track, state, now())).at;
+    const at = trainOn(routeOf(state, track, dayOf(now())), stateOf(track, state, now())).at;
     stash.current = c;
     fly(c, centerOn(c, at, viewport, MOTION_SCALE));
   };
