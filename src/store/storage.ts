@@ -1,5 +1,6 @@
 import { defaultLength } from '../model/day';
 import { EMPTY } from '../model/reducer';
+import { DAY } from '../plane/grid';
 import type { BubbleTarget, Shape, Size, Stop, Track, World } from '../model/types';
 
 /**
@@ -7,11 +8,15 @@ import type { BubbleTarget, Shape, Size, Stop, Track, World } from '../model/typ
  * it is read on purpose, as v3 and v2 are. An older build reading a newer world would refuse it and
  * open empty, which is why the key moves rather than the shape changing under it.
  */
-export const STORAGE_KEY = 'chronologic.v4';
+export const STORAGE_KEY = 'chronologic.v5';
+/** A v4 world has no life line; it is read and given an empty one. */
+export const V4_KEY = 'chronologic.v4';
 /** A v3 world has at most one day line and no block lengths; it is read and given them. */
 export const V3_KEY = 'chronologic.v3';
 /** A v2 world is a v3 world with no day track and no shared stops, so it is read once and kept. */
 export const V2_KEY = 'chronologic.v2';
+/** A v5 world that fails validation is kept here, once, so the empty world's next save cannot overwrite it. */
+export const REFUSED_KEY = 'chronologic.v5.refused';
 
 const SHAPES: readonly Shape[] = ['circle', 'triangle', 'square'];
 const SIZES: readonly Size[] = ['small', 'medium', 'large'];
@@ -59,17 +64,24 @@ function isDay(v: unknown, stopCount: number): boolean {
   );
 }
 
-/** A track is trusted when it names real stops once each, ends in a square, and its train is on the line. */
+/**
+ * A track is trusted when it names real stops once each, its train is on the line, and a project
+ * ends in a square. The life line may be empty, lists only squares, and has a height and one budget
+ * per stop.
+ */
 function isTrack(v: unknown, shapes: ReadonlyMap<string, Shape>): v is Track {
   if (!isRecord(v) || typeof v.id !== 'string') return false;
   if (!Number.isInteger(v.color) || (v.color as number) < 0) return false;
   if (!isRecord(v.origin) || !isNumber(v.origin.x) || !isNumber(v.origin.y)) return false;
   if (!TARGETS.includes(v.target as BubbleTarget)) return false;
   const { stops, train } = v;
-  if (!Array.isArray(stops) || stops.length === 0) return false;
+  if (!Array.isArray(stops)) return false;
   if (!stops.every((id) => typeof id === 'string' && shapes.has(id))) return false;
   if (new Set(stops).size !== stops.length) return false;
-  if (shapes.get(stops[stops.length - 1]) !== 'square') return false;
+  if (v.life !== undefined) {
+    if (v.day !== undefined || !isRecord(v.life) || !isNumber(v.life.y) || !isPerStop(v.life.budgets, stops.length)) return false;
+    if (!stops.every((id) => shapes.get(id) === 'square')) return false;
+  } else if (stops.length === 0 || shapes.get(stops[stops.length - 1]) !== 'square') return false;
   if (v.day !== undefined && !isDay(v.day, stops.length)) return false;
   return (
     isRecord(train) &&
@@ -81,17 +93,24 @@ function isTrack(v: unknown, shapes: ReadonlyMap<string, Shape>): v is Track {
 }
 
 /**
- * Across tracks: every square a track lists is last on exactly one track, its home, since a goal
- * may sit mid-line on another track. One day track per date at most, and each day's end square is
- * on no other track.
+ * Across tracks: at most one life line. Every square a project or day lists is last on exactly one
+ * of them, its home, since a goal may sit mid-line on another track; a square only the life line
+ * lists is a marker and has none. One day track per date at most, and each day's end square is on
+ * no other track.
  */
 function tracksAgree(tracks: readonly Track[], shapes: ReadonlyMap<string, Shape>): boolean {
+  if (tracks.filter((t) => t.life).length > 1) return false;
   const homes = new Map<string, number>();
   for (const t of tracks) {
+    if (t.life) continue;
     const last = t.stops[t.stops.length - 1];
     homes.set(last, (homes.get(last) ?? 0) + 1);
   }
   for (const t of tracks) {
+    if (t.life) {
+      if (t.stops.some((id) => (homes.get(id) ?? 0) > 1)) return false;
+      continue;
+    }
     for (const id of t.stops) {
       if (shapes.get(id) === 'square' && homes.get(id) !== 1) return false;
     }
@@ -125,18 +144,51 @@ function withLengths(world: World): World {
 }
 
 /**
- * The saved world, or an empty one when nothing is saved or what is saved cannot be trusted. With
- * no v4 world, a v3 or else a v2 one is read instead; the next save writes v4, and the older keys
- * are never touched.
+ * The world with a life line: its own when it has one, else an empty one below everything, a day of
+ * world units under the lowest stop and starting at the leftmost, or through the origin for a world
+ * with no stops. It goes first, so it draws under the project lines. Run on what `load` returns, never
+ * in the reducer, which would re-run it after undo.
  */
-export function load(storage: Pick<Storage, 'getItem'>): World {
+export function ensureLife(world: World, now: number): World {
+  if (world.tracks.some((t) => t.life)) return world;
+  const ys = world.stops.map((s) => s.y);
+  const y = ys.length === 0 ? 0 : Math.max(...ys) + DAY;
+  const x = world.stops.length === 0 ? 0 : Math.min(...world.stops.map((s) => s.x));
+  const life: Track = {
+    id: 'life',
+    // newTrack colours by the count of projects, so this one never shifts the lines after it.
+    color: 0,
+    origin: { x, y },
+    stops: [],
+    train: { leg: 0, departedAt: now },
+    target: 'next',
+    life: { y, budgets: [] },
+  };
+  return { ...world, tracks: [life, ...world.tracks] };
+}
+
+/**
+ * The saved world, or a fresh one when nothing is saved or what is saved cannot be trusted; either
+ * way it has a life line. Read order is v5, v4, v3, v2; the next save writes v5, and the older keys
+ * are never touched. A v5 world that is refused is first copied to the refused key unless that key
+ * already holds one, so nothing made later can overwrite it.
+ */
+export function load(storage: Pick<Storage, 'getItem' | 'setItem'>, now: number): World {
   try {
-    const raw = storage.getItem(STORAGE_KEY) ?? storage.getItem(V3_KEY) ?? storage.getItem(V2_KEY);
-    if (!raw) return EMPTY;
-    const parsed: unknown = JSON.parse(raw);
-    return isWorld(parsed) ? withLengths(parsed) : EMPTY;
+    const current = storage.getItem(STORAGE_KEY);
+    const raw = current ?? storage.getItem(V4_KEY) ?? storage.getItem(V3_KEY) ?? storage.getItem(V2_KEY);
+    if (!raw) return ensureLife(EMPTY, now);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = undefined;
+    }
+    if (isWorld(parsed)) return ensureLife(withLengths(parsed), now);
+    if (current !== null && storage.getItem(REFUSED_KEY) === null) storage.setItem(REFUSED_KEY, current);
+    return ensureLife(EMPTY, now);
   } catch {
-    return EMPTY;
+    return ensureLife(EMPTY, now);
   }
 }
 

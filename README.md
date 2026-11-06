@@ -69,7 +69,7 @@ A production build lands in `dist`, and `npm run preview` serves it so the insta
 npm run build
 ```
 
-The app ships a web app manifest, therefore it installs to the home screen from the browser's share or menu and opens in landscape. Everything is saved in the browser's local storage on the device it was made on, under the key `chronologic.v4`, as there is one user and one device at a time. The first time it opens, it reads a world saved by v3, or failing that by v2, and keeps it; the older keys are never written to. A world saved by the first version is left alone and ignored.
+The app ships a web app manifest, therefore it installs to the home screen from the browser's share or menu and opens in landscape. Everything is saved in the browser's local storage on the device it was made on, under the key `chronologic.v5`, as there is one user and one device at a time. On opening it reads v5, and failing that v4, then v3, then v2; the older keys are never written to, and the next save writes v5. A world read from before the life line gets an empty one below its lines. A v5 world that fails validation opens as an empty world, and its text is first copied to `chronologic.v5.refused`, once and never overwritten, so it can be recovered by hand. A world saved by the first version is left alone and ignored.
 
 ## Design
 
