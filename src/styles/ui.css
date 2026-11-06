@@ -286,10 +286,15 @@ button:focus-visible {
   cursor: pointer;
 }
 
-/* The plus is a round bullet, the one round thing in the furniture. Pressed or focused, a lighter plate. */
-.hud-add:focus-visible,
+/* The plus is a round bullet, the one round thing in the furniture. Pressed, a lighter plate; focused,
+   a white ring inside its edge, as every plate's focus is. */
 .hud-add:active {
   background: var(--plate-press);
+}
+
+.hud-add:focus-visible {
+  outline: 2px solid var(--on-plate);
+  outline-offset: -2px;
 }
 
 /* Undo and Redo: one toolbar group, top left, on a plate. The plate is always there; only a
@@ -441,15 +446,23 @@ button:focus-visible {
   cursor: pointer;
 }
 
-.pill-text:focus-visible,
 .pill-text:active {
   background: var(--plate-press);
 }
 
-/* The chosen size: white with ink words, as a chosen tile is. */
+.pill-text:focus-visible {
+  outline: 2px solid var(--on-plate);
+  outline-offset: -2px;
+}
+
+/* The chosen size: white with ink words, as a chosen tile is; its focus ring turns ink to show on it. */
 .pill-text[aria-pressed='true'] {
   background: var(--on-plate);
   color: var(--ink);
+}
+
+.pill-text[aria-pressed='true']:focus-visible {
+  outline-color: var(--ink);
 }
 
 /* Leave a line: one chip per line the stop is on, a round bullet of its colour ringed in white so

@@ -1128,11 +1128,12 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   });
   const hud = (
     <>
+      {/* The legend is a solid plate and takes no input: drawn first, it lies under any bubble in its corner. */}
+      <Legend camera={camera} />
       {bubbles}
       {legTime && <LegTime {...legTime} />}
       {editor}
       <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={() => history('undo')} onRedo={() => history('redo')} />
-      <Legend camera={camera} />
       <Tray
         open={trayOpen}
         brush={brush}
