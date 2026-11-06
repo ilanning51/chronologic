@@ -2860,3 +2860,14 @@ describe('life line gestures', () => {
     });
   });
 });
+
+test('from the 3-month unit up no project train is drawn, only the life train', () => {
+  render(<App store={createStore(withLife())} now={() => WAITING} />);
+  for (let i = 0; i < 40 && document.querySelector('.legend')!.textContent !== '5 years'; i++) {
+    act(() => {
+      fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 2500 });
+    });
+  }
+  expect(document.querySelector('.legend')!.textContent).toBe('5 years');
+  expect(document.querySelectorAll('[data-train]')).toHaveLength(1);
+});

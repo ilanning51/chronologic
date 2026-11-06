@@ -24,7 +24,7 @@ import {
 import type { Gesture, Tile } from '../plane/gestures';
 import { distance, type Point } from '../plane/geometry';
 import { gridFor, GRID_MIN_PX, YEAR } from '../plane/grid';
-import { PROJECT_MIN_SCALE, RINGS_HIDDEN_FROM } from '../plane/level';
+import { PROJECT_MIN_SCALE, PROJECTS_HIDDEN_FROM, RINGS_HIDDEN_FROM } from '../plane/level';
 import { bubbleFor, clearOf } from '../plane/bubbles';
 import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
@@ -1100,6 +1100,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     .filter((t) => drawnOnPlane(t, dayOf(time)))
     .map((t) => layoutTrack(t, world, camera, time, viewport, shown));
   const rolling = views.some((v) => !v.train.parked);
+  // From the 3-month unit up a project is not drawn at all, its train included; only the life line remains.
+  const farOut = gridFor(camera.scale).seconds >= PROJECTS_HIDDEN_FROM;
 
   useEffect(() => {
     if (!rolling) return;
@@ -1282,7 +1284,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
         <Grid camera={camera} />
         {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
-        {views.map((v) => (
+        {views.filter((v) => !farOut || v.day || v.life).map((v) => (
           <Track key={v.id} view={v} />
         ))}
         {placedStops.map((p) => (
