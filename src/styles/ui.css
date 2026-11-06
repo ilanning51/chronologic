@@ -111,6 +111,31 @@
   transform: translate(-50%, -50%);
 }
 
+/* A stop's mark, keylined in paper as the map's route signs are, so it reads on its line's colour.
+   Four hard shadows, one each way, make the keyline; they follow a triangle's edge as a border could not. */
+.stop .mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  filter:
+    drop-shadow(2px 0 0 var(--paper))
+    drop-shadow(-2px 0 0 var(--paper))
+    drop-shadow(0 2px 0 var(--paper))
+    drop-shadow(0 -2px 0 var(--paper));
+}
+
+/* An interchange whose lines run side by side: the map's transfer, a paper capsule in an ink
+   outline laid square across every lane, the ring in its middle with paper around it. Its size is
+   set from the mark it holds. */
+.stop .link {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border: 3px solid var(--ink);
+  background: var(--paper);
+}
+
 /* Where hit targets overlap, the next stop, the only one a tap completes, is on top. */
 .stop.next {
   z-index: 1;
@@ -213,7 +238,8 @@
   pointer-events: none;
 }
 
-/* The label hangs beneath the shape, centered on the stop's point. */
+/* The label hangs beneath the shape, centered on the stop's point, haloed in paper so a line
+   passing under it never runs through its words. */
 .stop .label {
   position: absolute;
   left: 0;
@@ -222,6 +248,12 @@
   font-size: var(--label);
   white-space: nowrap;
   line-height: 1.25;
+  text-shadow:
+    -1px -1px 0 var(--paper),
+    1px -1px 0 var(--paper),
+    -1px 1px 0 var(--paper),
+    1px 1px 0 var(--paper),
+    0 0 3px var(--paper);
 }
 
 .stop.done .label {

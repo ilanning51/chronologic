@@ -34,6 +34,12 @@ export interface StopView {
   terminus: boolean;
   /** On two or more lines and not done: an interchange, drawn as a ring. */
   ring: boolean;
+  /**
+   * Where this line's lane crosses the stop, square across the road it shares there: the stop's
+   * own point moved by the line's lane arriving, or leaving where that lane is wider. The stop's
+   * own point when the line has the road alone.
+   */
+  lane: Point;
   /** Dots of crowd, only on the stop the train waits at. */
   crowd: number;
 }
@@ -137,6 +143,13 @@ export function layoutTrack(
   const gridSeconds = gridFor(camera.scale).seconds;
   // A stop on this line alone sits in the line's lane. A stop on several sits on its own point,
   // which is the middle of any ribbon through it, since lanes are centred on the road.
+  const laneAt = (station: number): Point => {
+    const v = route.stationAt[station];
+    const sides = [shift[v - 1], shift[v]].filter((o): o is Point => o !== undefined);
+    const widest = sides.reduce((a, b) => (Math.hypot(b.x, b.y) > Math.hypot(a.x, a.y) + 1e-6 ? b : a), { x: 0, y: 0 });
+    const own = worldToScreen(camera, route.vertices[v]);
+    return { x: own.x + widest.x * LANE_PX, y: own.y + widest.y * LANE_PX };
+  };
   const linesAt = (id: string) => tracksOf(world, id).filter(({ track: t }) => drawnOnPlane(t, today)).length;
   const placed = track.stops.flatMap((id, index) => {
     const stop = byId.get(id)!;
@@ -164,6 +177,7 @@ export function layoutTrack(
     projectGoal: index === goalIndex && !track.day,
     terminus: index === goalIndex && !track.day && stop.done,
     ring: !stop.done && linesAt(stop.id) >= 2,
+    lane: laneAt(index + 1),
     crowd: index === state.leg ? crowd : 0,
   }));
 
