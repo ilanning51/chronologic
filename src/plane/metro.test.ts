@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import type { Stop, Track, World } from '../model/types';
 import { chooseBends, lanesOf, routesOf } from './metro';
 import { legSpan, pathLength } from './routing';
@@ -87,4 +87,43 @@ test('a line that shares only part of a road is cut where the other joins it', (
   expect(xy(route.vertices)).toEqual([{ x: 0, y: 0 }, { x: 150, y: 0 }, { x: 200, y: 0 }, { x: 300, y: 0 }]);
   expect(route.stationAt).toEqual([0, 3]);
   expect(shift.map((o) => Math.abs(o.y))).toEqual([0, 0.5, 0]);
+});
+
+describe('the life line among project lines', () => {
+  const life = (origin: { x: number; y: number }, stops: string[], y: number): Track => ({
+    ...track('life', origin, stops),
+    life: { y, budgets: stops.map(() => 0) },
+  });
+
+  test('its route is straight at its height through its origin and stops, whatever the stops say', () => {
+    const w = world([life({ x: 0, y: 40 }, ['m', 'n'], 100)], [stop('m', 50, 100), stop('n', 200, 90)]);
+    expect(xy(routesOf(w, TODAY).get('life')!.vertices)).toEqual([{ x: 0, y: 100 }, { x: 50, y: 100 }, { x: 200, y: 100 }]);
+  });
+
+  test('the route follows the height when the height changes', () => {
+    const at = (y: number) => world([life({ x: 0, y }, ['m'], y)], [stop('m', 50, y)]);
+    expect(routesOf(at(100), TODAY).get('life')!.vertices[1].y).toBe(100);
+    expect(routesOf(at(300), TODAY).get('life')!.vertices[1].y).toBe(300);
+  });
+
+  test('a project whose goal is a ring still routes through the ring', () => {
+    const w = world(
+      [track('p', { x: 0, y: 0 }, ['ring']), life({ x: 0, y: 100 }, ['ring'], 100)],
+      [stop('ring', 200, 100)],
+    );
+    const vertices = xy(routesOf(w, TODAY).get('p')!.vertices);
+    expect(vertices[vertices.length - 1]).toEqual({ x: 200, y: 100 });
+  });
+
+  test('it takes no lane and shifts no line that runs along its road', () => {
+    // The project starts at the life line's height and runs along it to the ring: a shared road.
+    const w = world(
+      [track('p', { x: 0, y: 100 }, ['ring']), life({ x: 0, y: 100 }, ['ring'], 100)],
+      [stop('ring', 200, 100)],
+    );
+    const lanes = lanesOf(w, TODAY);
+    expect(lanes.has('life')).toBe(false);
+    expect(lanes.get('p')!.shift).toEqual([{ x: 0, y: 0 }]);
+    expect(lanes.get('p')!.width).toEqual([1]);
+  });
 });

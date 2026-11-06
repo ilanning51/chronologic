@@ -32,6 +32,8 @@ export interface StopView {
   projectGoal: boolean;
   /** A project's goal, done: a terminus, drawn as a large ink dot that keeps its name. */
   terminus: boolean;
+  /** A done square on the life line: a small ink square that keeps its name. */
+  landmark: boolean;
   /** On two or more lines and not done: an interchange, drawn as a ring. */
   ring: boolean;
   /**
@@ -60,6 +62,8 @@ export interface TrackView {
   day: boolean;
   /** Tomorrow's day line: drawn like a sketch, muted and thin, its train waiting at its start. */
   tomorrow: boolean;
+  /** The life line, drawn in ink and wider, edge to edge. */
+  life: boolean;
   /** A project line with only its goal, drawn muted and thin. A look, not a state. */
   sketch: boolean;
   /** The road still to come, from the train to the goal, in the line's colour. */
@@ -140,8 +144,18 @@ export function layoutTrack(
   };
   const gridSeconds = gridFor(camera.scale).seconds;
   const hidden = isProject(track) && gridSeconds >= PROJECTS_HIDDEN_FROM;
-  const behind = hidden ? [] : toSegments(cut.behind);
-  const segments = hidden ? [] : toSegments(cut.ahead);
+  // The life line runs the whole width of the view at its height, whatever its stops: its first
+  // and last segments are carried out to the clip bounds, on either side of the train.
+  const reach = (points: Point[], side: 'left' | 'right'): Point[] => {
+    if (!track.life) return points;
+    const from = side === 'left' ? points[0] : points[points.length - 1];
+    const x = side === 'left' ? Math.min(grown.x, from.x) : Math.max(grown.x + grown.w, from.x);
+    const end = { x, y: from.y };
+    return side === 'left' ? [end, ...points] : [...points, end];
+  };
+  const trailing = cut.ahead.length > 0 ? cut.ahead : cut.behind.slice(-1);
+  const behind = hidden ? [] : toSegments(reach(cut.behind, 'left'));
+  const segments = hidden ? [] : toSegments(reach(trailing, 'right'));
   const crowd = state.waiting ? crowdAt(track, byId, now) : 0;
 
   const next = nextIndex(track, byId);
@@ -166,7 +180,7 @@ export function layoutTrack(
   });
   const always = new Set<string>();
   for (const p of placed) {
-    if (p.index === goalIndex || p.index === next) always.add(p.stop.id);
+    if (p.index === goalIndex || p.index === next || (track.life && p.stop.done)) always.add(p.stop.id);
   }
   const labeled = labelsWithRoom(placed.map((p) => ({ id: p.stop.id, x: p.at.x })), always);
   const stops: StopView[] = placed.map(({ stop, at, index }) => ({
@@ -183,6 +197,7 @@ export function layoutTrack(
     goal: index === goalIndex,
     projectGoal: index === goalIndex && isProject(track),
     terminus: index === goalIndex && isProject(track) && stop.done,
+    landmark: track.life !== undefined && stop.done,
     ring: !stop.done && linesAt(stop.id) >= 2,
     lane: laneAt(index + 1),
     crowd: index === state.leg ? crowd : 0,
@@ -195,9 +210,10 @@ export function layoutTrack(
   return {
     id: track.id,
     color: track.color,
-    finished: state.parked,
+    finished: state.parked && !track.life,
     day: track.day !== undefined,
     tomorrow: track.day !== undefined && track.day.date === addDays(today, 1),
+    life: track.life !== undefined,
     sketch: isProject(track) && track.stops.length === 1,
     segments,
     behind,

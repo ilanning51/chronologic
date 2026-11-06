@@ -83,7 +83,9 @@ export function stopsOnce(views: TrackView[], lifeId?: string): PlacedStop[] {
         label: listings.some((l) => l.stop.label),
         // A goal is a goal whichever line its button speaks for.
         projectGoal: listings.some((l) => l.stop.projectGoal),
-        terminus: listings.some((l) => l.stop.terminus),
+        // A done goal that also stands on the life line is that line's landmark, not a terminus.
+        landmark: listings.some((l) => l.stop.landmark),
+        terminus: listings.some((l) => l.stop.terminus) && !listings.some((l) => l.stop.landmark),
         crowd: Math.max(...listings.map((l) => l.stop.crowd)),
       },
       track: view.id,

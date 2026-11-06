@@ -10,6 +10,8 @@ import { VIGNELLI } from './vignelli';
  * size Apple sets body text at, and the line, the discs and every other size follow from it.
  */
 export const TRACK_WIDTH = 16;
+/** The life line, wider than any project line: the axis everything else is measured against. */
+export const LIFE_WIDTH = TRACK_WIDTH * 1.5;
 /** How far apart, centre to centre, lines run where they share a road: a tenth of a line of paper between them. */
 export const LANE_PX = TRACK_WIDTH * VIGNELLI.lanePitch;
 /**

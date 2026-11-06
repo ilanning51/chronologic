@@ -1,4 +1,5 @@
 import { drawnOnPlane } from '../model/day';
+import { lifeRoute } from '../model/life';
 import type { TrainState } from '../model/train';
 import type { Track, World } from '../model/types';
 import type { Point } from './geometry';
@@ -25,6 +26,13 @@ interface Leg {
   to: Point;
   segments: [Point, Point][];
   corner: Point | null;
+}
+
+/** The points a track passes through, in order. The life line's all lie at its own height. */
+function pointsOf(t: Track, byId: Map<string, Point>): Point[] {
+  const points = [t.origin, ...t.stops.map((id) => byId.get(id)!)];
+  const y = t.life?.y;
+  return y === undefined ? points : points.map((p) => ({ x: p.x, y }));
 }
 
 const near = (a: Point, b: Point) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= 1e-6 * (1 + Math.abs(a.x) + Math.abs(a.y));
@@ -103,7 +111,7 @@ function costOf(leg: Leg, others: Leg[], stops: Point[]): number {
 export function chooseBends(world: World, today: string): Map<string, Bend[]> {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const tracks = world.tracks.filter((t) => drawnOnPlane(t, today));
-  const points = tracks.map((t) => [t.origin, ...t.stops.map((id) => byId.get(id)!)]);
+  const points = tracks.map((t) => pointsOf(t, byId));
   const bends: Bend[][] = points.map((p) => p.slice(1).map((): Bend => 'diagonal-first'));
   const legs: Leg[][] = points.map((p, track) => bends[track].map((bend, leg) => legOf(track, leg, p[leg], p[leg + 1], bend)));
   const stops = world.stops.map((s) => ({ x: s.x, y: s.y }));
@@ -131,7 +139,7 @@ export function chooseBends(world: World, today: string): Map<string, Bend[]> {
 
 /** Everything the routes depend on, and nothing else: where each line starts, its stops, and where they are. */
 function shapeKey(world: World, today: string): string {
-  const lines = world.tracks.filter((t) => drawnOnPlane(t, today)).map((t) => `${t.id}@${t.origin.x},${t.origin.y}:${t.stops.join(',')}`).join('|');
+  const lines = world.tracks.filter((t) => drawnOnPlane(t, today)).map((t) => `${t.id}@${t.origin.x},${t.origin.y}${t.life ? `^${t.life.y}` : ''}:${t.stops.join(',')}`).join('|');
   const stops = world.stops.map((s) => `${s.id}@${s.x},${s.y}`).join('|');
   return `${lines}#${stops}`;
 }
@@ -148,7 +156,9 @@ export function routesOf(world: World, today: string): Map<string, Route> {
     const byId = new Map(world.stops.map((s) => [s.id, s]));
     const bends = chooseBends(world, today);
     found = new Map(
-      world.tracks.filter((t) => drawnOnPlane(t, today)).map((t) => [t.id, routeThrough([t.origin, ...t.stops.map((id) => byId.get(id)!)], bends.get(t.id))]),
+      world.tracks
+        .filter((t) => drawnOnPlane(t, today))
+        .map((t) => [t.id, t.life ? lifeRoute(t, byId) : routeThrough(pointsOf(t, byId), bends.get(t.id))]),
     );
     routes.set(key, found);
     if (routes.size > KEPT) routes.delete(routes.keys().next().value!);
@@ -200,7 +210,8 @@ const sign = (n: number) => (Math.abs(n) < 1e-9 ? 0 : Math.sign(n));
  * Lines that share a road run side by side, as a ribbon. Each stretch of shared road gives the
  * lines on it a lane apiece, centred on the road. A line takes the side it comes from and leaves
  * to, so lines part without crossing where they can; where that does not decide, the older line
- * is nearer the low side. A line alone on its road keeps to the middle.
+ * is nearer the low side. A line alone on its road keeps to the middle. The life line is not laid
+ * in a lane at all, and no line is moved aside for it.
  */
 export function lanesOf(world: World, today: string): Map<string, Lanes> {
   const key = shapeKey(world, today);
@@ -216,7 +227,8 @@ const laned = new Map<string, Map<string, Lanes>>();
 
 function layLanes(world: World, today: string): Map<string, Lanes> {
   const routes = routesOf(world, today);
-  const tracks = world.tracks.filter((t) => drawnOnPlane(t, today));
+  // The life line is the one straight axis: it keeps its own height, in no lane, and moves no line.
+  const tracks = world.tracks.filter((t) => drawnOnPlane(t, today) && !t.life);
   const lines = tracks.map((t) => routes.get(t.id)!);
   const roads = lines.map((r) => r.vertices.slice(1).map((b, k) => roadOf(r.vertices[k], b)));
 

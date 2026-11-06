@@ -15,6 +15,7 @@ const stopAt = (lane: { x: number; y: number }, ring = true): StopView => ({
   goal: false,
   projectGoal: false,
   terminus: false,
+  landmark: false,
   ring,
   lane,
   crowd: 0,
@@ -79,4 +80,12 @@ describe('which line a stop speaks for', () => {
     const b = view('b', [stopView('shared', true)]);
     expect(stopsOnce([a, b], 'life').find((p) => p.stop.id === 'shared')!.track).toBe('b');
   });
+});
+
+test('a done goal on the life line is its landmark, not a terminus; on a project line alone it stays a terminus', () => {
+  const done = (over: Partial<StopView>): StopView => ({ ...stopAt({ x: 100, y: 100 }, false), done: true, ...over });
+  const [both] = stopsOnce([viewOf('p', done({ terminus: true })), viewOf('life', done({ landmark: true }))], 'life');
+  expect(both.stop).toMatchObject({ landmark: true, terminus: false });
+  const [alone] = stopsOnce([viewOf('p', done({ terminus: true }))]);
+  expect(alone.stop).toMatchObject({ landmark: false, terminus: true });
 });

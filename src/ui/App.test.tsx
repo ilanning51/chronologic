@@ -63,6 +63,23 @@ test('a done goal stays as a terminus: a large ink dot that keeps its name in in
   expect(uiCss.indexOf('.stop.terminus .label')).toBeGreaterThan(uiCss.indexOf('.stop.done .label'));
 });
 
+test('a done square on the life line is a landmark: a small ink square that keeps its name in ink, under its own rules', () => {
+  const world = withLife();
+  world.stops.find((s) => s.id === 'start')!.done = true;
+  render(<App store={createStore(world)} now={() => 500_000} />);
+  const square = screen.getByRole('button', { name: /^Start.*done/ });
+  expect(square).toHaveClass('landmark');
+  expect(square).not.toHaveClass('terminus');
+  const dot = /\.stop\.landmark \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(dot).toMatch(/width:\s*var\(--disc-small\)/);
+  expect(dot).toMatch(/border-radius:\s*0/);
+  expect(dot).toMatch(/background:\s*var\(--ink\)/);
+  expect(/\.stop\.landmark \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
+  // After the finished and done rules, so they win at equal weight.
+  expect(uiCss.indexOf('.stop.landmark .shape.dot')).toBeGreaterThan(uiCss.indexOf('.stop.finished .shape.dot'));
+  expect(uiCss.indexOf('.stop.landmark .label')).toBeGreaterThan(uiCss.indexOf('.stop.done .label'));
+});
+
 test("a goal's name is set in bold capitals on the plane and in its bubble", () => {
   render(<App store={createStore(running())} now={() => WAITING} />);
   expect(screen.getByText('Wristband')).toHaveClass('label', 'goal-name');
