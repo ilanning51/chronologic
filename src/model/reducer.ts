@@ -294,7 +294,11 @@ function apply(world: World, action: Action): World {
     case 'moveGroup': {
       const { now, keep } = action;
       // Only what the world knows; a stop moves done or not, as the whole picture slides together.
-      const stops = Object.entries(action.stops).filter(([id]) => world.stops.some((s) => s.id === id));
+      // A square on the life line keeps the life line's height whatever the group gives it.
+      const lifeLine = lifeOf(world);
+      const stops = Object.entries(action.stops)
+        .filter(([id]) => world.stops.some((s) => s.id === id))
+        .map(([id, p]): [string, Point] => [id, lifeLine?.life && lifeLine.stops.includes(id) ? { x: p.x, y: lifeLine.life.y } : p]);
       const origins = Object.entries(action.origins).filter(([id]) => world.tracks.some((t) => t.id === id));
       if (stops.length === 0 && origins.length === 0) return world;
       const stopAt = new Map(stops);
@@ -306,6 +310,18 @@ function apply(world: World, action: Action): World {
         stops: world.stops.map((s) => (stopAt.has(s.id) ? { ...s, ...stopAt.get(s.id)! } : s)),
         lastTouched: touched[0]?.id ?? world.lastTouched,
       };
+      // A pending life square never ends at or left of the life train, nor left of the last done
+      // square: a group that would put one there stays where it was.
+      if (lifeLine?.life) {
+        const trainAt = lifeTrainX(world, lifeLine, now);
+        const doneAt = lastDoneX(after, lifeLine);
+        const pending = new Set(world.stops.filter((s) => !s.done).map((s) => s.id));
+        const blocked = lifeLine.stops.some((id) => {
+          const to = stopAt.get(id);
+          return to !== undefined && pending.has(id) && (to.x <= trainAt || (doneAt !== null && to.x < doneAt));
+        });
+        if (blocked) return world;
+      }
       const rerouted = touched.reduce((w, t) => keepTrain(world, w, t.id, now, keep?.[t.id]), after);
       // Squares carried along the life line keep their order by x, and the life train its rule.
       const life = lifeOf(rerouted);
@@ -491,9 +507,10 @@ function apply(world: World, action: Action): World {
       const cleared = old ? clearDay(world, old.id) : world;
       if (cleared.tracks.some((t) => t.id === id) || cleared.stops.some((s) => s.id === endId)) return world;
       const byId = stopsById(cleared);
-      // Pending stops some project lists, each once, in the order drawn. The old end square is gone.
+      // Pending stops some project lists, each once, in the order drawn, and none the life line
+      // lists: a ring is a goal on the life line, not an errand. The old end square is gone.
       const picked = [...new Set(action.stops)].filter(
-        (s) => byId.get(s)?.done === false && cleared.tracks.some((t) => isProject(t) && t.stops.includes(s)),
+        (s) => byId.get(s)?.done === false && !onLife(cleared, s) && cleared.tracks.some((t) => isProject(t) && t.stops.includes(s)),
       );
       if (picked.length === 0) return world;
       // A stop sits on one day at most: drawn onto this one, it comes off any other.
@@ -519,7 +536,7 @@ function apply(world: World, action: Action): World {
       const day = world.tracks.find((t) => t.id === dayId);
       const stop = world.stops.find((s) => s.id === stopId);
       if (!day?.day || !stop || stop.done || day.stops.includes(stopId)) return world;
-      if (!world.tracks.some((t) => isProject(t) && t.stops.includes(stopId))) return world;
+      if (onLife(world, stopId) || !world.tracks.some((t) => isProject(t) && t.stops.includes(stopId))) return world;
       // A finished day has parked past its end square: nothing goes behind it.
       if (day.train.leg > day.stops.length - 1) return world;
       // A stop sits on one day at most: added to this one, it comes off any other.

@@ -1,6 +1,7 @@
 import { arrivalOf, endOf, governingLine } from '../model/arrive';
 import { dayFor, dayWith, isDayEnd, isProject } from '../model/day';
 import { addDays, dayOf, endOfDate, parseDate, startOfDate } from '../model/days';
+import { onLife } from '../model/life';
 import { nextIndex, trainState } from '../model/train';
 import type { Shape, World } from '../model/types';
 
@@ -208,7 +209,7 @@ export interface Candidate {
 
 /**
  * What can be planned next: for each line still running, its first pending stop at or after its
- * train's next that is on no day, soonest first, each stop once.
+ * train's next that is on no day and not on the life line, soonest first, each stop once.
  */
 export function candidates(world: World, now: number): Candidate[] {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
@@ -219,7 +220,7 @@ export function candidates(world: World, now: number): Candidate[] {
     if (from === null) continue;
     for (let i = from; i < track.stops.length; i++) {
       const stop = byId.get(track.stops[i])!;
-      if (stop.done || dayWith(world, stop.id)) continue;
+      if (stop.done || dayWith(world, stop.id) || onLife(world, stop.id)) continue;
       if (!found.has(stop.id)) {
         found.set(stop.id, {
           stopId: stop.id,

@@ -1414,3 +1414,53 @@ describe('newTrack beside the life line', () => {
     expect(next.tracks.find((t) => t.id === 'p')!.color).toBe(0);
   });
 });
+
+describe('moveGroup keeps life squares on the life line', () => {
+  test('carried squares go to the life height, whatever y the group gives them', () => {
+    const next = reduce(withLife(), { type: 'moveGroup', stops: { far: { x: 6000, y: -300 } }, origins: {}, now });
+    expect(stopOf(next, 'far')).toMatchObject({ x: 6000, y: -800 });
+  });
+
+  test('a group that would put a pending life square at or left of the life train moves nothing', () => {
+    const w = withLife();
+    // At 250 s the life train is half way along its leg to Start, at x = 250.
+    const stops = { far: { x: 100, y: -800 }, dentist: { x: 1100, y: 0 } };
+    expect(reduce(w, { type: 'moveGroup', stops, origins: {}, now: 250_000 })).toBe(w);
+  });
+
+  test('a group that would put a pending square left of the last done square moves nothing', () => {
+    const w = withDoneStops(withLife(), 'start');
+    expect(reduce(w, { type: 'moveGroup', stops: { far: { x: 400, y: -800 } }, origins: {}, now: 1000 })).toBe(w);
+  });
+
+  test('a group that carries the done squares along with it keeps the order it had', () => {
+    const w = withDoneStops(withLife(), 'start');
+    const next = reduce(w, { type: 'moveGroup', stops: { start: { x: 400, y: -800 }, far: { x: 4900, y: -800 } }, origins: {}, now: 1000 });
+    expect(stopOf(next, 'far').x).toBe(4900);
+    expect(stopOf(next, 'start').x).toBe(400);
+  });
+});
+
+describe('the day takes no square the life line lists', () => {
+  test('a day drawn through a ring or a marker is not made', () => {
+    const w = withLife();
+    expect(reduce(w, { type: 'newDay', id: 'd', endId: 'e', origin: { x: 0, y: 0 }, stops: ['wristband'], end: { x: 1, y: 1 }, now, date: '2026-11-01' })).toBe(w);
+  });
+
+  test('a ring is not added to a day, and a day drawn through a ring and a step keeps only the step', () => {
+    const w = withLife();
+    w.tracks.push({
+      id: 'day',
+      color: 2,
+      origin: { x: 1000, y: -400 },
+      stops: ['dentist', 'dayEnd'],
+      train: { leg: 0, departedAt: 0 },
+      target: 'next',
+      day: { date: '2026-11-01', budgets: [1000, 0], lengths: [3600, 1800] },
+    });
+    w.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false });
+    expect(reduce(w, { type: 'addToDay', dayId: 'day', stopId: 'wristband', now })).toBe(w);
+    const drawn = reduce(withLife(), { type: 'newDay', id: 'd', endId: 'e', origin: { x: 0, y: 0 }, stops: ['wristband', 'dentist'], end: { x: 1, y: 1 }, now, date: '2026-11-01' });
+    expect(drawn.tracks.find((t) => t.id === 'd')!.stops).toEqual(['dentist', 'e']);
+  });
+});

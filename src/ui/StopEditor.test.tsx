@@ -166,3 +166,13 @@ test('a plain stop offers no picture', () => {
   setup({ goal: false, done: false });
   expect(screen.queryByRole('button', { name: 'Picture' })).not.toBeInTheDocument();
 });
+
+test('a marker, a square that is no goal, offers a size and Delete but no shape to change it to', () => {
+  const handlers = { onEdit: vi.fn(), onDelete: vi.fn(), onUndo: vi.fn(), onClose: vi.fn(), onLeave: vi.fn() };
+  render(<StopEditor stop={{ ...stop, shape: 'square', done: false }} goal={false} done={false} holding={false} lines={[]} {...handlers} />);
+  expect(screen.queryByRole('button', { name: 'Step' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Sub-goal' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(handlers.onDelete).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: 'Large' })).toBeInTheDocument();
+});

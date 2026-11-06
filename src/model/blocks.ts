@@ -1,6 +1,7 @@
 import { endOf, slideTo } from './arrive';
 import { dayFor, dayWith, defaultLength, freshDayBudget, isDayEnd, isProject, offOtherDays, withStopBeforeEnd } from './day';
 import { dayOf, endOfDate, startOfDate } from './days';
+import { onLife } from './life';
 import { timeLeftAny } from './train';
 import type { Stop, Track, World } from './types';
 
@@ -56,12 +57,16 @@ function refit(world: World, dayId: string): World {
   };
 }
 
-/** A pending stop some project lists, and not a day's end square: the only kind a block can be. */
+/**
+ * A pending stop some project lists, not a day's end square and not a square the life line lists
+ * (a ring never slides off the life line's height): the only kind a block can be.
+ */
 function blockable(world: World, stop: Stop | undefined): stop is Stop {
   return (
     stop !== undefined &&
     !stop.done &&
     !isDayEnd(world, stop.id) &&
+    !onLife(world, stop.id) &&
     world.tracks.some((t) => isProject(t) && t.stops.includes(stop.id))
   );
 }

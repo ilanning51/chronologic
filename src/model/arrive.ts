@@ -1,6 +1,7 @@
 import { distance, type Point } from '../plane/geometry';
 import { pathLength, pointAlong, routeThrough } from '../plane/routing';
 import { isProject } from './day';
+import { onLife } from './life';
 import { invertProgress } from './motion';
 import { relocate } from './relocate';
 import { legSeconds, timeLeft, timeLeftAny, trackRoute, trainState } from './train';
@@ -210,6 +211,8 @@ export interface Slide {
  * the governing line still delivers.
  */
 export function slideTo(world: World, stopId: string, end: number, now: number): Slide | null {
+  // A square on the life line stays at the life line's height: it is never slid.
+  if (onLife(world, stopId)) return null;
   const leg = legOf(world, stopId, now);
   if (!leg) return null;
   const { earliest, latest } = reachOf(leg, now);
