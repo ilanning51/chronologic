@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
@@ -27,6 +27,7 @@ import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
 import { openingCamera } from '../plane/opening';
 import { pathLength, routeThrough } from '../plane/routing';
+import { drawnBetween } from '../plane/slide';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
 import { nearestStop, snapToAll } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
@@ -82,6 +83,12 @@ const DAY_GAP_PX = 120;
 /** How long the camera takes to fly between two views. */
 const FLY_MS = 400;
 
+/** How long the map takes to slide into place when the week window closes. */
+const SLIDE_MS = 500;
+
+const reducedMotion = () =>
+  typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 /** How often the paper is asked what time it is. */
 const DAYLIGHT_MS = 60_000;
 
@@ -100,7 +107,7 @@ function useFly(setCamera: (c: Camera) => void) {
   return useCallback(
     (from: Camera, to: Camera) => {
       cancel();
-      if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (reducedMotion()) {
         setCamera(to);
         return;
       }
@@ -156,6 +163,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const [weekOpen, setWeekOpen] = useState(false);
   const weekOpenRef = useRef(weekOpen);
   weekOpenRef.current = weekOpen;
+  /**
+   * The world as it stood when the week window opened. The plane draws it while the window is
+   * open, and slides from it to the live world, `slid` of the way, once the window closes.
+   */
+  const [heldFrom, setHeldFrom] = useState<World | null>(null);
+  const heldFromRef = useRef(heldFrom);
+  heldFromRef.current = heldFrom;
+  const [slid, setSlid] = useState(0);
+  const slideFrame = useRef<number | null>(null);
+  /** A drag that began while the map was held: the rest of it does nothing. */
+  const idleDrag = useRef(false);
   /** The tile whose brush is on, if any. App state only: never saved, off at start. */
   const [brush, setBrush] = useState<Tile | null>(null);
   const brushRef = useRef(brush);
@@ -888,11 +906,19 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         return;
       }
       case 'dragStart':
+        // While the week window is open the plane is held, so a drag there only closes the window;
+        // while the map slides into place it does nothing. Either way the rest of it is let go.
+        if (weekOpenRef.current || heldFromRef.current) {
+          setWeekOpen(false);
+          idleDrag.current = true;
+          return;
+        }
         // Every move of a drag, and whatever its drop adds, is one step for undo.
         store.begin();
         startDrag(g);
         return;
       case 'dragMove':
+        if (idleDrag.current) return;
         if (lineDraw.current) drawLineTo(g.at);
         else if (marquee.current) drawMarquee(g.at);
         else if (groupDrag.current) dragGroupTo(g.at);
@@ -904,6 +930,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         else if (g.target.kind !== 'split') dragTo(g.at);
         return;
       case 'dragEnd':
+        if (idleDrag.current) {
+          idleDrag.current = false;
+          return;
+        }
         try {
           endDragGesture(g);
         } finally {
@@ -1039,11 +1069,56 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     })();
   // The stop being named is kept too, so a zoom with its field open leaves the field a place to be.
   const shown = naming ? new Set([...pinned.current, naming.id]) : pinned.current;
+  // The map holds still behind the open week window and slides into place once it closes. Only
+  // drawing reads this world: everything that acts reads the live one.
+  const drawn = heldFrom ? drawnBetween(heldFrom, world, weekOpen ? 0 : slid) : world;
+  const drawnById = drawn === world ? byId : new Map(drawn.stops.map((s) => [s.id, s]));
   // Days after tomorrow live only in the week window.
-  const views = world.tracks
+  const views = drawn.tracks
     .filter((t) => drawnOnPlane(t, dayOf(time)))
-    .map((t) => layoutTrack(t, world, camera, time, viewport, shown));
-  const rolling = views.some((v) => !v.train.parked);
+    .map((t) => layoutTrack(t, drawn, camera, time, viewport, shown));
+  // Whether a train runs is the live world's: a line still hidden by the slide may be rolling.
+  const rolling = world.tracks.some((t) => drawnOnPlane(t, dayOf(time)) && !stateOf(t, world, time).parked);
+
+  // Opening the week window holds the map as it stands. Closing it, by any path, slides each stop
+  // and line start the window moved from there to its place now, easing out; under reduced
+  // motion, or when nothing moved, the map is simply in place. A layout effect, so no frame
+  // shows the live world before the hold or the hold after it ends.
+  useLayoutEffect(() => {
+    if (slideFrame.current !== null) window.cancelAnimationFrame(slideFrame.current);
+    slideFrame.current = null;
+    if (weekOpen) {
+      setHeldFrom(store.getState());
+      setSlid(0);
+      return;
+    }
+    const from = heldFromRef.current;
+    if (!from) return;
+    const live = store.getState();
+    if (reducedMotion() || drawnBetween(from, live, 0) === live) {
+      setHeldFrom(null);
+      return;
+    }
+    let start: number | null = null;
+    const step = (t: number) => {
+      start ??= t;
+      const k = Math.min(1, (t - start) / SLIDE_MS);
+      if (k >= 1) {
+        slideFrame.current = null;
+        setHeldFrom(null);
+        return;
+      }
+      setSlid(1 - (1 - k) ** 3);
+      slideFrame.current = window.requestAnimationFrame(step);
+    };
+    slideFrame.current = window.requestAnimationFrame(step);
+  }, [weekOpen, store]);
+  useEffect(
+    () => () => {
+      if (slideFrame.current !== null) window.cancelAnimationFrame(slideFrame.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!rolling) return;
@@ -1160,7 +1235,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (!v.anyInView) return [];
     const track = world.tracks.find((t) => t.id === v.id);
     const i = track ? targetIndex(track, byId) : null;
-    const target = track && i !== null ? byId.get(track.stops[i]) : undefined;
+    const target = track && i !== null ? drawnById.get(track.stops[i]) : undefined;
     if (!track || !target) return [];
     // The stop may be off the grown viewport and so missing from the view: use its world point.
     const spot = bubbleFor(worldToScreen(camera, target), viewport);

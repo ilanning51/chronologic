@@ -2447,3 +2447,150 @@ test('the plane draws no line for a day after tomorrow, nor its end square', () 
   expect(document.querySelector('[data-target="origin"][data-track="day2"]')).toBeNull();
   expect(document.querySelector('[data-id="dayEnd2"]')).toBeNull();
 });
+
+describe('the map behind the week window', () => {
+  const weekButton = () => screen.getByRole('button', { name: 'Week' });
+  const dialog = () => screen.queryByRole('dialog', { name: 'Week' });
+  const escape = () =>
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+  /** Moves Dentist 500 s along and 300 s down in the store, as the window does to a stop it places. */
+  const moveDentist = (store: ReturnType<typeof createStore>) =>
+    act(() => store.dispatch({ type: 'move', id: 'dentist', x: 1500, y: 300, now: WAITING }));
+
+  /** Animation frames run by hand: `frame(t)` runs the frames asked for so far at time t ms. */
+  function handFrames() {
+    let asked = new Map<number, FrameRequestCallback>();
+    let next = 0;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      asked.set(++next, cb);
+      return next;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+      asked.delete(id);
+    });
+    return (t: number) =>
+      act(() => {
+        const due = [...asked.values()];
+        asked = new Map();
+        for (const cb of due) cb(t);
+      });
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('holds still while the window is open, then slides each moved stop into place when it closes', () => {
+    const frame = handFrames();
+    const store = createStore(running());
+    render(<App store={store} now={() => WAITING} />);
+    const scale = scaleOnScreen();
+    const before = left(/^Dentist/);
+    act(() => weekButton().click());
+    moveDentist(store);
+    expect(left(/^Dentist/)).toBe(before);
+    escape();
+    expect(dialog()).toBeNull();
+    frame(1000);
+    expect(left(/^Dentist/)).toBe(before);
+    frame(1200);
+    const partway = left(/^Dentist/);
+    expect(partway).toBeGreaterThan(before);
+    expect(partway).toBeLessThan(before + 500 * scale);
+    frame(1500);
+    expect(left(/^Dentist/)).toBeCloseTo(before + 500 * scale, 6);
+  });
+
+  test('under reduced motion the stops are in place as soon as the window closes', () => {
+    reduceMotion();
+    const store = createStore(running());
+    render(<App store={store} now={() => WAITING} />);
+    const scale = scaleOnScreen();
+    const before = left(/^Dentist/);
+    act(() => weekButton().click());
+    moveDentist(store);
+    escape();
+    expect(left(/^Dentist/)).toBeCloseTo(before + 500 * scale, 6);
+  });
+
+  test('a day line made while the window is open is drawn once the slide ends', () => {
+    const frame = handFrames();
+    const store = createStore(running());
+    render(<App store={store} now={() => WAITING} />);
+    const origin = () => document.querySelector('[data-target="origin"][data-track="made"]');
+    act(() => weekButton().click());
+    moveDentist(store);
+    act(() =>
+      store.dispatch({
+        type: 'newDay',
+        id: 'made',
+        endId: 'madeEnd',
+        origin: { x: 1500, y: 0 },
+        stops: ['dentist'],
+        end: { x: 1500, y: 600 },
+        now: WAITING,
+        date: dayOf(WAITING),
+      }),
+    );
+    expect(store.getState().tracks.some((t) => t.id === 'made')).toBe(true);
+    expect(origin()).toBeNull();
+    escape();
+    frame(0);
+    frame(250);
+    expect(origin()).toBeNull();
+    frame(500);
+    expect(origin()).toBeInTheDocument();
+  });
+
+  test('a drag on the plane while the window is open closes it and moves nothing', () => {
+    const store = createStore(running());
+    render(<App store={store} now={() => WAITING} />);
+    act(() => weekButton().click());
+    act(() => dragStop(/^Dentist/, 50, 30));
+    expect(dialog()).toBeNull();
+    expect(stopNamed(store, 'dentist')).toMatchObject({ x: 1000, y: 0 });
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  });
+
+  test('a drag while the map slides moves nothing, and one after it moves the stop as ever', () => {
+    const frame = handFrames();
+    const store = createStore(running());
+    render(<App store={store} now={() => WAITING} />);
+    act(() => weekButton().click());
+    moveDentist(store);
+    escape();
+    frame(0);
+    act(() => dragStop(/^Dentist/, 50, 30));
+    expect(stopNamed(store, 'dentist')).toMatchObject({ x: 1500, y: 300 });
+    frame(500);
+    act(() => dragStop(/^Dentist/, 50, 30));
+    expect(stopNamed(store, 'dentist').x).toBeGreaterThan(1500);
+  });
+
+  test('opening the window again mid-slide shows every stop where it stands now', () => {
+    const frame = handFrames();
+    const store = createStore(running());
+    render(<App store={store} now={() => WAITING} />);
+    const scale = scaleOnScreen();
+    const before = left(/^Dentist/);
+    act(() => weekButton().click());
+    moveDentist(store);
+    escape();
+    frame(0);
+    frame(200);
+    act(() => weekButton().click());
+    expect(left(/^Dentist/)).toBeCloseTo(before + 500 * scale, 6);
+    frame(600);
+    expect(left(/^Dentist/)).toBeCloseTo(before + 500 * scale, 6);
+  });
+
+  test('a tap on a stop while the window is open still completes it', () => {
+    const store = createStore(running());
+    render(<App store={store} now={() => WAITING} />);
+    act(() => weekButton().click());
+    act(() => tapOn(screen.getByRole('button', { name: /^Dentist/ })));
+    expect(stopNamed(store, 'dentist').done).toBe(true);
+  });
+});
