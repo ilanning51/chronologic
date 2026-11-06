@@ -22,8 +22,8 @@ interface StopProps {
   sketch?: boolean;
   /** An interchange whose lines pass it side by side: a transfer across their lanes. */
   link?: Link;
-  /** Where its name is set; beneath it when nothing has placed it. */
-  place?: LabelPlace;
+  /** Where its name is set: beneath it when nothing has placed it, and nowhere when it had no clear side. */
+  place?: LabelPlace | null;
 }
 
 /** How a name is anchored on each side of its station: the anchor is its top left, top right, top middle or bottom middle. */
@@ -124,7 +124,7 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
           ))}
         </span>
       )}
-      {stop.label && stop.title && (
+      {stop.label && stop.title && place !== null && (
         <span
           aria-hidden="true"
           className={stop.projectGoal ? 'label goal-name' : 'label'}

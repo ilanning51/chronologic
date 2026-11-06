@@ -1220,7 +1220,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
           <Track key={v.id} view={v} />
         ))}
         {placedStops.map((p) => (
-          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id)} />
+          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} />
         ))}
         {ghost && <Ghost {...ghost} />}
         {dayGhost && <DayGhost points={dayGhost} />}

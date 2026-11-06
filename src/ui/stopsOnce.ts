@@ -123,7 +123,8 @@ function markOf({ stop, link }: PlacedStop): { extent: LabelItem['mark']; discs:
 
 /**
  * Where every shown name is set, beside its station on the side that covers least of the lines,
- * the other stations and the names already set, as the map sets them.
+ * the other stations and the names already set, as the map sets them. A name with no clear side
+ * is not in the result, unless it is the next stop's or a goal's.
  */
 export function labelPlaces(placed: PlacedStop[], views: TrackView[]): Map<string, LabelPlace> {
   const items: LabelItem[] = [];
@@ -132,7 +133,8 @@ export function labelPlaces(placed: PlacedStop[], views: TrackView[]): Map<strin
     const { extent, discs } = markOf(p);
     for (const d of discs) marks.push({ id: p.stop.id, x: p.stop.x + d.dx, y: p.stop.y + d.dy, r: d.r });
     if (p.stop.label && p.stop.title) {
-      items.push({ id: p.stop.id, x: p.stop.x, y: p.stop.y, mark: extent, text: p.stop.title, bold: p.stop.projectGoal });
+      const always = p.stop.next || p.stop.goal;
+      items.push({ id: p.stop.id, x: p.stop.x, y: p.stop.y, mark: extent, text: p.stop.title, bold: p.stop.projectGoal, always });
     }
   }
   const segments = views.flatMap((v) => [...v.behind, ...v.segments]);

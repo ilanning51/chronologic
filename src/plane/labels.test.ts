@@ -21,7 +21,7 @@ test('an always-id that is not in the list is ignored', () => {
 });
 
 const mark = { left: -7, top: -7, right: 7, bottom: 7 };
-const item = (id: string, x: number, y: number, text = 'Library') => ({ id, x, y, mark, text, bold: false });
+const item = (id: string, x: number, y: number, text = 'Library', always = false) => ({ id, x, y, mark, text, bold: false, always });
 
 test('a name beside a vertical line is set right of its station, its first line centred on it', () => {
   const places = placeLabels([item('a', 100, 100)], [[{ x: 100, y: 0 }, { x: 100, y: 200 }]], []);
@@ -48,6 +48,28 @@ test('a name keeps clear of another station, and of a name already set', () => {
   const both = placeLabels([item('a', 100, 100), item('c', 100, 108)], vertical, []);
   expect(both.get('a')!.side).toBe('right');
   expect(both.get('c')!.side).not.toBe('right');
+});
+
+test('a name with no clear side is left out; a next stop or a goal may cover a station, and is set first', () => {
+  // Stations packed close on every side of a, as when zoomed far out.
+  const around = [
+    { id: 'n', x: 100, y: 80, r: 7 },
+    { id: 's', x: 100, y: 120, r: 7 },
+    { id: 'e', x: 125, y: 100, r: 7 },
+    { id: 'w', x: 75, y: 100, r: 7 },
+  ];
+  expect(placeLabels([item('a', 100, 100)], [], around).has('a')).toBe(false);
+  expect(placeLabels([item('a', 100, 100, 'Library', true)], [], around).has('a')).toBe(true);
+  // An always-set name goes first, so where two names want one place, the other gives way.
+  const vertical: [{ x: number; y: number }, { x: number; y: number }][] = [[{ x: 100, y: 0 }, { x: 100, y: 400 }]];
+  const pair = placeLabels([item('a', 100, 100), item('b', 100, 104, 'Library', true)], vertical, []);
+  expect(pair.get('b')!.side).toBe('right');
+  expect(pair.get('a')?.side).not.toBe('right');
+  // But no name is set on another, whoever's it is.
+  const crowd = placeLabels([item('a', 100, 100, 'Library', true), item('b', 100, 100.5, 'Library', true)], [], []);
+  expect(crowd.size).toBe(2);
+  const boxes = [...crowd.values()].map((p) => p.side);
+  expect(new Set(boxes).size).toBe(2);
 });
 
 test('a long name of several words breaks onto two lines at its most even space; a short one stays whole', () => {

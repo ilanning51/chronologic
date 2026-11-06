@@ -55,6 +55,8 @@ export interface LabelItem {
   text: string;
   /** A goal's name, set in bold capitals with a little tracking. */
   bold: boolean;
+  /** The next stop's or a goal's name, which is set even where it has no clear side. */
+  always: boolean;
 }
 
 /** A station's mark, to keep names off: whose it is, a centre and a radius. */
@@ -121,9 +123,8 @@ export function wrapName(text: string, bold: boolean): string[] {
 /** A small lean, in pixels of line covered, toward the map's habit of setting a name right of its station, then left. */
 const LEAN: Record<LabelSide, number> = { right: 0, left: 2, below: 4, above: 6 };
 const SIDES: LabelSide[] = ['right', 'left', 'below', 'above'];
-/** What covering another station costs, and the least a name over another name costs, in pixels of line. */
+/** What covering another station costs a name that may, in pixels of line. */
 const ON_MARK = 40;
-const ON_NAME = 40;
 
 interface Box {
   x0: number;
@@ -174,29 +175,38 @@ const touches = (box: Box, m: LabelMark) => {
 };
 
 /**
- * Sets every name on the side of its station that covers least. Goals' names are set first, then
- * the rest from the top of the screen down, each keeping clear of the names before it. A
- * station's own marks are no obstacle to its name.
+ * Sets every name on the side of its station that covers least. The names that are always set,
+ * the next stops' and the goals', go first, goals before the rest, then every other name from the
+ * top of the screen down, each keeping clear of the names before it. A station's own marks are no
+ * obstacle to its name.
+ *
+ * No name is ever set on another, as the map never sets one so. A name may cross a line, since its
+ * halo parts the line. Any other name also keeps off other stations. A next stop's or a goal's name
+ * may cover a station if it must. A name with no side that meets its rule is left out. Only the
+ * names set are in the result.
  */
 export function placeLabels(items: LabelItem[], segments: [Point, Point][], marks: LabelMark[]): Map<string, LabelPlace> {
-  const order = [...items].sort((a, b) => Number(b.bold) - Number(a.bold) || a.y - b.y || a.x - b.x);
+  const order = [...items].sort(
+    (a, b) => Number(b.always) - Number(a.always) || Number(b.bold) - Number(a.bold) || a.y - b.y || a.x - b.x,
+  );
   const set: Box[] = [];
   const out = new Map<string, LabelPlace>();
   for (const item of order) {
     const lines = wrapName(item.text, item.bold);
-    let best = setOn(item, SIDES[0], lines);
+    let best: { place: LabelPlace; box: Box } | null = null;
     let least = Infinity;
     for (const side of SIDES) {
       const tried = setOn(item, side, lines);
       let cost = LEAN[side];
+      let onMark = false;
       for (const s of segments) cost += under(tried.box, s);
-      for (const m of marks) if (m.id !== item.id && touches(tried.box, m)) cost += ON_MARK;
-      for (const b of set) {
-        const o = overlap(tried.box, b);
-        if (o > 0) cost += ON_NAME + o;
+      for (const m of marks) {
+        if (m.id !== item.id && touches(tried.box, m)) [cost, onMark] = [cost + ON_MARK, true];
       }
-      if (cost < least) [best, least] = [tried, cost];
+      const onName = set.some((b) => overlap(tried.box, b) > 0);
+      if (!onName && (item.always || !onMark) && cost < least) [best, least] = [tried, cost];
     }
+    if (!best) continue;
     set.push(best.box);
     out.set(item.id, best.place);
   }
