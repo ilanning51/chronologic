@@ -1,12 +1,16 @@
 import type { Point } from '../plane/geometry';
 import type { StopView, TrackView } from '../plane/layout';
 
-/** The transfer drawn across an interchange's lanes: from the stop's point, its middle, length and angle. */
+/**
+ * The transfer drawn across an interchange's lanes: from the stop's point, its middle, length and
+ * angle, and where each lane's disc sits, from one end to the other.
+ */
 export interface Link {
   dx: number;
   dy: number;
   length: number;
   angle: number;
+  marks: { dx: number; dy: number }[];
 }
 
 /** The lanes an interchange's lines pass it in, joined from the two furthest apart; none when they all pass through its point. */
@@ -24,11 +28,18 @@ function linkOf(at: Point, lanes: Point[]): Link | undefined {
   }
   if (!best) return undefined;
   const [a, b] = best;
+  // One disc a lane, however many lines share it, in order from a to b.
+  const along = (p: Point) => (p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y);
+  const marks: Point[] = [];
+  for (const p of [...lanes].sort((p, q) => along(p) - along(q))) {
+    if (!marks.some((m) => Math.hypot(m.x - p.x, m.y - p.y) < 1)) marks.push(p);
+  }
   return {
     dx: (a.x + b.x) / 2 - at.x,
     dy: (a.y + b.y) / 2 - at.y,
     length: far,
     angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI,
+    marks: marks.map((m) => ({ dx: m.x - at.x, dy: m.y - at.y })),
   };
 }
 

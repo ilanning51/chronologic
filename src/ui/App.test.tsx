@@ -55,7 +55,7 @@ test('a done goal stays as a terminus: a large ink dot that keeps its name in in
   // A passed step is an ordinary dot.
   expect(screen.getByRole('button', { name: /^Dentist/ })).not.toHaveClass('terminus');
   const dot = /\.stop\.terminus \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
-  expect(dot).toMatch(/width:\s*var\(--square-large\)/);
+  expect(dot).toMatch(/width:\s*var\(--disc-large\)/);
   expect(dot).toMatch(/background:\s*var\(--ink\)/);
   expect(/\.stop\.terminus \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
   // The terminus rules come after the finished and done ones, so they win at equal weight.
@@ -967,12 +967,13 @@ test('a stop on two lines is drawn as a ring', () => {
   expect(shape).toHaveClass('shape', 'ring', 'circle', 'medium');
   // A stop on one line stays solid.
   expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('.shape')).not.toHaveClass('ring');
-  // The paper centre is the same shape again, 4 px in, so the ink border is as thick as a line.
-  const centre = cssRule('.shape.ring::after');
-  expect(centre).toMatch(/inset:\s*4px/);
-  expect(centre).toMatch(/background:\s*var\(--paper\)/);
-  expect(cssRule('.shape.ring.circle::after')).toMatch(/border-radius:\s*50%/);
-  expect(cssRule('.shape.ring.triangle::after')).toMatch(/clip-path:\s*polygon\(50% 0, 100% 100%, 0 100%\)/);
+  // The map's transfer: a paper capsule in a fine ink outline, its disc inside.
+  const capsule = cssRule('.stop .shape.ring');
+  expect(capsule).toMatch(/background:\s*var\(--paper\)/);
+  expect(capsule).toMatch(/inset 0 0 0 var\(--capsule-outline\) var\(--ink\)/);
+  const disc = cssRule('.stop .shape.ring::before');
+  expect(disc).toMatch(/inset:\s*calc\(var\(--capsule-pad\) \+ var\(--capsule-outline\)\)/);
+  expect(disc).toMatch(/background:\s*var\(--ink\)/);
 });
 
 test('a done interchange is a plain dot', () => {

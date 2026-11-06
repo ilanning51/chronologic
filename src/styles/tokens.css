@@ -44,11 +44,20 @@
   /* Helvetica Medium, the weight the MTA's signs are set in. */
   --plate-weight: 500;
 
-  /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
+  /* Screen sizes, in CSS px. Constant at every zoom; they match world.ts. */
   /* W, one line's width, and the map's sizes as multiples of it (vignelli.ts). */
   --track: 12px;
   --dot: 10px;
   --label: calc(var(--track) * 1.056);
+  /* A station: an ink disc one line wide, a little larger for a larger task, keylined in paper. A
+     transfer joins its discs with an ink bar inside a paper capsule with a fine ink outline. */
+  --disc-small: var(--track);
+  --disc-medium: calc(var(--track) * 1.25);
+  --disc-large: calc(var(--track) * 1.5);
+  --disc-ring: calc(var(--track) * 0.1);
+  --bar: calc(var(--track) * 0.39);
+  --capsule-pad: calc(var(--track) * 0.08);
+  --capsule-outline: calc(var(--track) * 0.087);
   /* The least hit target for anything pressable, in CSS px. */
   --tap: 44px;
   --circle-small: 14px;
