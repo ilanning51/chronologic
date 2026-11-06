@@ -3,7 +3,7 @@ import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayWith, drawnOnPlane, isDayEnd } from '../model/day';
-import { dayOf, nextMidnight } from '../model/days';
+import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
@@ -73,8 +73,7 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 /** A day line's name on a chip: today's is "today", any other's is its weekday. */
 function dayName(date: string, now: number): string {
   if (date === dayOf(now)) return 'today';
-  const [y, m, d] = date.split('-').map(Number);
-  return WEEKDAYS[new Date(y, m - 1, d).getDay()];
+  return WEEKDAYS[parseDate(date).getDay()];
 }
 
 /** How far above its first stop a drawn day starts, and below its last the end square sits, in px. */
@@ -117,10 +116,10 @@ function useFly(setCamera: (c: Camera) => void) {
   );
 }
 
-/** The v2 plane: every track and stop in screen space, redrawn as the clock ticks. */
 /** How often the open week window reads the clock when nothing else does. */
 const WEEK_TICK_MS = 30_000;
 
+/** The v2 plane: every track and stop in screen space, redrawn as the clock ticks. */
 export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const world = useWorld(store);
   const [camera, setCamera] = useState(HOME);
@@ -810,8 +809,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (n && !store.getState().stops.some((s) => s.id === n.id)) setNaming(null);
   };
 
-  /** A tap on a tile: its brush on, or off if it was on; another tile's brush goes off. */
-  /** A brush and the week window are never on together: taking up a brush closes the window. */
+  /**
+   * A tap on a tile: its brush on, or off if it was on; another tile's brush goes off. A brush and
+   * the week window are never on together: taking up a brush closes the window.
+   */
   const toggleBrush = (tile: Tile) => {
     setWeekOpen(false);
     setBrush((b) => (b === tile ? null : tile));

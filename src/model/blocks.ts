@@ -1,6 +1,6 @@
-import { arrivalOf, slideTo } from './arrive';
-import { dayFor, dayWith, defaultLength, freshDayBudget, isDayEnd, offOtherDays } from './day';
-import { addDays, dayOf, startOfDate } from './days';
+import { endOf, slideTo } from './arrive';
+import { dayFor, dayWith, defaultLength, freshDayBudget, isDayEnd, offOtherDays, withStopBeforeEnd } from './day';
+import { dayOf, endOfDate, startOfDate } from './days';
 import { timeLeftAny } from './train';
 import type { Stop, Track, World } from './types';
 
@@ -15,8 +15,8 @@ function withTrack(world: World, track: Track): World {
 }
 
 /** Whether a block ending then belongs to this date: after its midnight, up to and at the next. */
-export function endsOn(date: string, end: number): boolean {
-  return end > startOfDate(date) && end <= startOfDate(addDays(date, 1));
+function endsOn(date: string, end: number): boolean {
+  return end > startOfDate(date) && end <= endOfDate(date);
 }
 
 /**
@@ -32,11 +32,8 @@ function inArrivalOrder(world: World, dayId: string, now: number): World {
   const last = day.stops.length - 1;
   if (from >= last) return world;
   const byId = new Map(world.stops.map((s) => [s.id, s]));
-  const when = (id: string) => {
-    const stop = byId.get(id)!;
-    return stop.done ? (stop.doneAt ?? now) : arrivalOf(world, id, now);
-  };
-  const order = Array.from({ length: last - from }, (_, i) => from + i).sort((a, b) => when(day.stops[a]) - when(day.stops[b]));
+  const ends = day.stops.map((id, i) => (i >= from && i < last ? endOf(world, byId.get(id)!, now) : 0));
+  const order = Array.from({ length: last - from }, (_, i) => from + i).sort((a, b) => ends[a] - ends[b]);
   const permute = <T,>(xs: T[]) => [...xs.slice(0, from), ...order.map((i) => xs[i]), ...xs.slice(last)];
   const stops = permute(day.stops);
   if (stops.every((id, i) => id === day.stops[i])) return world;
@@ -102,14 +99,7 @@ export function place(world: World, a: PlaceAction): World {
     w = withTrack(w, { ...day, day: { ...day.day!, lengths: day.day!.lengths.map((l, j) => (j === i ? a.length : l)) } });
   } else if (day) {
     dayId = day.id;
-    const at = day.stops.length - 1;
-    const insert = <T,>(xs: T[], x: T) => [...xs.slice(0, at), x, ...xs.slice(at)];
-    const plan = day.day!;
-    w = withTrack(w, {
-      ...day,
-      stops: insert(day.stops, a.stopId),
-      day: { ...plan, budgets: insert(plan.budgets, 0), lengths: insert(plan.lengths, a.length) },
-    });
+    w = withTrack(w, withStopBeforeEnd(day, a.stopId, a.length));
   } else {
     if (w.tracks.some((t) => t.id === a.dayId) || w.stops.some((s) => s.id === a.endId)) return world;
     dayId = a.dayId;
@@ -159,5 +149,6 @@ export function unplace(world: World, a: { stopId: string; now: number }): World
   const day = dayWith(world, a.stopId);
   if (!day || isDayEnd(world, a.stopId)) return world;
   const w = refit(offOtherDays(world, [a.stopId], a.now), day.id);
-  return { ...w, lastTouched: w.tracks.some((t) => t.id === day.id) ? day.id : w.lastTouched === day.id ? null : w.lastTouched };
+  // A day that went took lastTouched with it, in clearDay.
+  return { ...w, lastTouched: w.tracks.some((t) => t.id === day.id) ? day.id : w.lastTouched };
 }

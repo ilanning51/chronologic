@@ -1,6 +1,6 @@
-import { arrivalOf, governingLine } from '../model/arrive';
+import { arrivalOf, endOf, governingLine } from '../model/arrive';
 import { dayFor, dayWith, isDayEnd } from '../model/day';
-import { addDays, dayOf, startOfDate } from '../model/days';
+import { addDays, dayOf, endOfDate, parseDate, startOfDate } from '../model/days';
 import { nextIndex, trainState } from '../model/train';
 import type { Shape, World } from '../model/types';
 
@@ -19,14 +19,9 @@ export const MIN_BLOCK_PX = 16;
 
 const LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-function parse(date: string): Date {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
 /** Monday 0 to Sunday 6. */
 function weekday(date: string): number {
-  return (parse(date).getDay() + 6) % 7;
+  return (parseDate(date).getDay() + 6) % 7;
 }
 
 /** The Monday of the calendar week the date falls in. */
@@ -60,7 +55,7 @@ export function weeksBetween(from: string, to: string): number {
 /** The height of a moment on a date's plane, by its wall clock; before the day is the top, after it the bottom. */
 export function yOf(date: string, ms: number): number {
   if (ms <= startOfDate(date)) return 0;
-  if (ms >= startOfDate(addDays(date, 1))) return DAY_HEIGHT;
+  if (ms >= endOfDate(date)) return DAY_HEIGHT;
   const t = new Date(ms);
   return (t.getHours() + t.getMinutes() / 60 + t.getSeconds() / 3600 + t.getMilliseconds() / 3_600_000) * PX_PER_HOUR;
 }
@@ -68,7 +63,7 @@ export function yOf(date: string, ms: number): number {
 /** The moment at a height on a date's plane, read as a wall-clock hour and minute. */
 export function timeAt(date: string, y: number): number {
   const minutes = (Math.min(Math.max(y, 0), DAY_HEIGHT) / PX_PER_HOUR) * 60;
-  const d = parse(date);
+  const d = parseDate(date);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, minutes).getTime();
 }
 
@@ -138,8 +133,8 @@ export function blocksOn(world: World, date: string, now: number): BlockView[] {
     const stop = byId.get(id);
     if (!stop || isDayEnd(world, id)) return;
     const length = day.day!.lengths[i];
-    const end = stop.done ? (stop.doneAt ?? now) : arrivalOf(world, id, now);
-    if (stop.done && dayOf(end) !== date && end !== startOfDate(addDays(date, 1))) return;
+    const end = endOf(world, stop, now);
+    if (stop.done && dayOf(end) !== date && end !== endOfDate(date)) return;
     const start = end - length * 1000;
     let top = yOf(date, start);
     let bottom = yOf(date, end);
@@ -161,7 +156,7 @@ export function blocksOn(world: World, date: string, now: number): BlockView[] {
       top,
       height: bottom - top,
       clippedTop: start < startOfDate(date),
-      clippedBottom: end > startOfDate(addDays(date, 1)),
+      clippedBottom: end > endOfDate(date),
       lane: 0,
       lanes: 1,
     });

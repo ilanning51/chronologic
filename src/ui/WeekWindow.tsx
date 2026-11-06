@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { reach } from '../model/arrive';
 import { dayWith, defaultLength } from '../model/day';
 import { addDays, dayOf } from '../model/days';
@@ -56,7 +56,7 @@ const EDGE_TICK_MS = 16;
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 /** The stretch handle: the bottom third of a block, between 8 and 16 px tall. */
-export function handlePx(height: number): number {
+function handlePx(height: number): number {
   return Math.min(16, Math.max(8, height / 3));
 }
 
@@ -116,7 +116,6 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
   const world = useWorld(store);
   const today = dayOf(now);
   const [selected, setSelected] = useState(() => addDays(today, 1));
-  const [monday, setMonday] = useState(() => mondayOf(addDays(today, 1)));
   const [grabbed, setGrabbed] = useState<{ grab: Grab; aim: Aim | null } | null>(null);
   const plane = useRef<HTMLDivElement>(null);
   const grab = useRef<Grab | null>(null);
@@ -124,9 +123,19 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
   selectedRef.current = selected;
   const clockRef = useRef(read ?? (() => now));
   clockRef.current = read ?? (() => now);
-  const blocks = blocksOn(world, selected, now);
-  const next = candidates(world, now);
+  const monday = mondayOf(selected);
+  // A drag redraws the window on every move; what the world says about the day only changes with it.
+  const blocks = useMemo(() => blocksOn(world, selected, now), [world, selected, now]);
+  const next = useMemo(() => candidates(world, now), [world, now]);
   const line = nowY(selected, now);
+
+  /** A pointer's height on the day plane, in its own px from midnight. */
+  const planeY = (clientY: number) => {
+    const el = plane.current!;
+    return clientY - el.getBoundingClientRect().top + el.scrollTop;
+  };
+  const planeYRef = useRef(planeY);
+  planeYRef.current = planeY;
 
   // A day opens on now when it is today, else on its first block, else at eight in the morning.
   // A day turned to in the middle of a drag keeps the hand's place instead.
@@ -142,6 +151,9 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
     let rest: number | null = null;
     let hover: { date: string; timer: number } | null = null;
     let edge: number | null = null;
+    /** The last aim worked out, by where the pointer asked for, so a move within the same quarter hour costs no dry run. */
+    let last: { key: string; aim: Aim } | null = null;
+    let shown: { grab: Grab; aim: Aim | null } | null = null;
 
     const clearHover = () => {
       if (hover) window.clearTimeout(hover.timer);
@@ -157,6 +169,8 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
       clearHover();
       stopEdge();
       grab.current = null;
+      last = null;
+      shown = null;
       setGrabbed(null);
     };
 
@@ -181,21 +195,28 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
       if (g.kind !== 'place' && under?.closest('.week-column')) return { date, end: 0, length: g.length, refused: false, off: true };
       const el = plane.current;
       if (!el || !under?.closest('.week-plane')) return null;
-      const py = y - el.getBoundingClientRect().top + el.scrollTop;
+      const py = planeYRef.current(y);
       let end =
         g.kind === 'stretch'
           ? Math.max(snapAt(date, py), g.start + MIN_LENGTH * 1000)
           : snapAt(date, py - g.offset) + g.length * 1000;
+      const key = `${date}|${end}`;
+      if (last?.key === key) return last.aim;
       const r = reach(w, g.stopId, t);
       if (r) end = Math.min(Math.max(end, r.earliest), r.latest ?? Infinity);
       const length = g.kind === 'stretch' ? Math.max(MIN_LENGTH, Math.round((end - g.start) / 1000)) : g.length;
       const aim: Aim = { date, end, length, refused: false, off: false };
-      return { ...aim, refused: reduce(w, actionFor(g, aim, t)) === w };
+      last = { key, aim: { ...aim, refused: reduce(w, actionFor(g, aim, t)) === w } };
+      return last.aim;
     };
 
     const show = () => {
       const g = grab.current;
-      if (g?.live) setGrabbed({ grab: g, aim: aimAt(g) });
+      if (!g?.live) return;
+      const aim = aimAt(g);
+      if (shown?.grab === g && shown.aim === aim) return;
+      shown = { grab: g, aim };
+      setGrabbed(shown);
     };
 
     /** Near the day plane's top or bottom edge, the plane scrolls under the held block. */
@@ -317,16 +338,7 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
     window.dispatchEvent(new CustomEvent(GRAB_EVENT, { detail: g }));
   };
 
-  /** Where a press went down, in the day plane's own px from midnight. */
-  const planeY = (e: ReactPointerEvent) => {
-    const el = plane.current!;
-    return e.clientY - el.getBoundingClientRect().top + el.scrollTop;
-  };
-
-  const step = (weeks: number) => {
-    setMonday((m) => addDays(m, 7 * weeks));
-    setSelected((d) => addDays(d, 7 * weeks));
-  };
+  const step = (weeks: number) => setSelected((d) => addDays(d, 7 * weeks));
 
   const live = grabbed?.grab.live ? grabbed : null;
   const aim = live?.aim ?? null;
@@ -404,7 +416,7 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
                       color: b.color,
                       shape: b.shape,
                       length: b.length,
-                      offset: planeY(e) - b.top,
+                      offset: planeY(e.clientY) - b.top,
                       start: b.start,
                     })
                   }

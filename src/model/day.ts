@@ -9,7 +9,6 @@ export function defaultLength(stop: Pick<Stop, 'size'> | undefined): number {
   return DEFAULT_LENGTH[stop?.size ?? 'medium'];
 }
 
-/** Every day line, in the order the world keeps them. */
 /**
  * Whether the plane draws a line: every project, today's day line, and tomorrow's. A day further
  * ahead lives only in the week window until its day comes near.
@@ -18,8 +17,17 @@ export function drawnOnPlane(track: Track, today: string): boolean {
   return !track.day || track.day.date === today || track.day.date === addDays(today, 1);
 }
 
+/** Every day line, in the order the world keeps them. */
 export function days(world: World): Track[] {
   return world.tracks.filter((t) => t.day);
+}
+
+/** The day with a stop put in just before its end square, its budget 0 and its block this long. */
+export function withStopBeforeEnd(day: Track, stopId: string, length: number): Track {
+  const at = day.stops.length - 1;
+  const insert = <T,>(xs: T[], x: T) => [...xs.slice(0, at), x, ...xs.slice(at)];
+  const plan = day.day!;
+  return { ...day, stops: insert(day.stops, stopId), day: { ...plan, budgets: insert(plan.budgets, 0), lengths: insert(plan.lengths, length) } };
 }
 
 /** The day line for this date, if there is one. */

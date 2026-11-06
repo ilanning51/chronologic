@@ -13,6 +13,7 @@ import {
   offOtherDays,
   settleDay,
   startDay,
+  withStopBeforeEnd,
 } from './day';
 import { dayOf } from './days';
 import { moveBlock, place, unplace, type PlaceAction } from './blocks';
@@ -447,17 +448,10 @@ function apply(world: World, action: Action): World {
       // A stop sits on one day at most: added to this one, it comes off any other.
       const rest = offOtherDays(world, [stopId], now, dayId);
       const here = rest.tracks.find((t) => t.id === dayId)!;
-      const plan = here.day!;
-      const at = here.stops.length - 1;
-      const insert = <T,>(xs: T[], x: T) => [...xs.slice(0, at), x, ...xs.slice(at)];
-      const added: Track = {
-        ...here,
-        stops: insert(here.stops, stopId),
-        day: { ...plan, budgets: insert(plan.budgets, 0), lengths: insert(plan.lengths, defaultLength(stop)) },
-      };
+      const added = withStopBeforeEnd(here, stopId, defaultLength(stop));
       const after: World = { ...rest, tracks: withTrack(rest, added), lastTouched: dayId };
       // Waiting at the end square, the day train now heads for this stop instead.
-      return here.train.leg === at ? freshDayBudget(after, dayId, now) : after;
+      return here.train.leg === here.stops.length - 1 ? freshDayBudget(after, dayId, now) : after;
     }
 
     case 'moveDayEnd': {

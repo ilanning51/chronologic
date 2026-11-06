@@ -6,7 +6,8 @@ function dateOf(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function parse(date: string): Date {
+/** A YYYY-MM-DD date as its local midnight. */
+export function parseDate(date: string): Date {
   const [y, m, d] = date.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
@@ -21,7 +22,12 @@ export function dayOf(now: number): string {
 
 /** The moment, in ms, a date begins: its local midnight. */
 export function startOfDate(date: string): number {
-  return parse(date).getTime();
+  return parseDate(date).getTime();
+}
+
+/** The moment, in ms, a date ends: the next date's midnight. */
+export function endOfDate(date: string): number {
+  return startOfDate(addDays(date, 1));
 }
 
 /** The next local midnight after now. Built from the date, so a clock change never shifts it by an hour. */
@@ -32,6 +38,6 @@ export function nextMidnight(now: number): number {
 
 /** The date n days after (or before, when n is negative) this one. */
 export function addDays(date: string, n: number): string {
-  const d = parse(date);
+  const d = parseDate(date);
   return dateOf(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
 }

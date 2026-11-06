@@ -15,6 +15,11 @@ export function arrivalOf(world: World, stopId: string, now: number): number {
   return now + timeLeftAny(world, stopId, now) * 1000;
 }
 
+/** When a stop's block ends, in ms: when it was done, or else when its train arrives. */
+export function endOf(world: World, stop: Stop, now: number): number {
+  return stop.done ? (stop.doneAt ?? now) : arrivalOf(world, stop.id, now);
+}
+
 /**
  * The project line whose train reaches the stop first, and the stop's index on it: the line that
  * sets the stop's arrival, so the line a slide moves it along. None for a stop on no project, or
@@ -49,6 +54,8 @@ interface Leg {
   own: number;
   before: number;
   covered: number | null;
+  /** The points past the stop and the leg's re-routed length to each, worked out on first use. */
+  past?: { d: number; length: number }[];
 }
 
 function legOf(world: World, stopId: string, now: number): Leg | null {
@@ -108,8 +115,12 @@ function routedFrom(prev: Point, q: Point): number {
   return pathLength(r, 0, r.length - 1);
 }
 
-/** Points along the walk past the stop, at their distance along it, the corners included. */
-function pastTheStop(leg: Leg): number[] {
+/**
+ * Points along the walk past the stop, at their distance along it, the corners included, each with
+ * the leg's length re-routed to it. A slide asks for them many times, so the leg keeps them.
+ */
+function pastTheStop(leg: Leg): { d: number; length: number }[] {
+  if (leg.past) return leg.past;
   const end = total(leg.walk);
   const ds = new Set<number>();
   for (let i = 0; i <= SAMPLES; i++) ds.add(leg.own + ((end - leg.own) * i) / SAMPLES);
@@ -118,13 +129,14 @@ function pastTheStop(leg: Leg): number[] {
     d += distance(leg.walk[i - 1], leg.walk[i]);
     if (d > leg.own) ds.add(d);
   }
-  return [...ds].sort((a, b) => a - b);
+  leg.past = [...ds].sort((a, b) => a - b).map((d) => ({ d, length: routedFrom(leg.prev, along(leg.walk, d)) }));
+  return leg.past;
 }
 
 /** The longest the leg can be by walking the stop on toward the next station; a goal's has no end. */
 function longest(leg: Leg): number {
   if (leg.goal) return Infinity;
-  return Math.max(leg.own, ...pastTheStop(leg).map((d) => routedFrom(leg.prev, along(leg.walk, d))));
+  return Math.max(leg.own, ...pastTheStop(leg).map((p) => p.length));
 }
 
 /**
@@ -143,13 +155,13 @@ function pointFor(leg: Leg, length: number): Point {
     if (span === 0) return { x: b.x + extra, y: b.y };
     return { x: b.x + ((b.x - a.x) / span) * extra, y: b.y + ((b.y - a.y) / span) * extra };
   }
-  const ds = pastTheStop(leg);
+  const past = pastTheStop(leg);
   const len = (d: number) => routedFrom(leg.prev, along(leg.walk, d));
-  let best = ds[0];
-  for (let i = 1; i < ds.length; i++) {
-    if (len(ds[i]) >= length) {
-      let lo = ds[i - 1];
-      let hi = ds[i];
+  let best = past[0];
+  for (let i = 1; i < past.length; i++) {
+    if (past[i].length >= length) {
+      let lo = past[i - 1].d;
+      let hi = past[i].d;
       for (let j = 0; j < 50; j++) {
         const mid = (lo + hi) / 2;
         if (len(mid) < length) lo = mid;
@@ -157,9 +169,9 @@ function pointFor(leg: Leg, length: number): Point {
       }
       return along(leg.walk, hi);
     }
-    if (len(ds[i]) > len(best)) best = ds[i];
+    if (past[i].length > best.length) best = past[i];
   }
-  return along(leg.walk, best);
+  return along(leg.walk, best.d);
 }
 
 export interface Reach {
