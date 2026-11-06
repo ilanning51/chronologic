@@ -254,6 +254,9 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
     const onMove = (e: PointerEvent) => {
       const g = grab.current;
       if (!g || e.pointerId !== g.pointerId) return;
+      // A mouse moving with no button down let go where the page could not hear it, as over a
+      // right-click menu or after Alt-Tab: the drag ends there and drops nothing.
+      if (!g.touch && e.buttons === 0) return finish();
       // What is under the pointer is read from its place, since a finger's events may stay with what it pressed.
       const under = document.elementFromPoint?.(e.clientX, e.clientY) ?? (e.target as Element | null);
       g.at = { x: e.clientX, y: e.clientY, under };
@@ -291,6 +294,9 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
       if (grab.current && e.pointerId === grab.current.pointerId) finish();
     };
 
+    // Leaving the window mid-drag, its release may never come back: the drag ends and drops nothing.
+    const onBlur = () => finish();
+
     // Once a finger's drag is live, it is the drag's: the day must not scroll under it.
     const onTouchMove = (e: TouchEvent) => {
       if (grab.current?.live) e.preventDefault();
@@ -312,6 +318,7 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('blur', onBlur);
     window.addEventListener('touchmove', onTouchMove, { passive: false });
     window.addEventListener(GRAB_EVENT, onGrab);
     return () => {
@@ -319,6 +326,7 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('blur', onBlur);
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener(GRAB_EVENT, onGrab);
     };

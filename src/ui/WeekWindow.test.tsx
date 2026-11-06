@@ -120,7 +120,7 @@ describe('dragging', () => {
   /** Presses on `from`, moves over each place in turn, and lets go over the last. */
   function drag(from: Element, fromY: number, ...over: { el: Element; y: number }[]) {
     fireEvent.pointerDown(from, { pointerId: 1, button: 0, clientX: 300, clientY: fromY });
-    for (const o of over) fireEvent.pointerMove(o.el, { pointerId: 1, clientX: 400, clientY: o.y });
+    for (const o of over) fireEvent.pointerMove(o.el, { pointerId: 1, buttons: 1, clientX: 400, clientY: o.y });
     const last = over[over.length - 1];
     fireEvent.pointerUp(last.el, { pointerId: 1, clientX: 400, clientY: last.y });
   }
@@ -185,7 +185,7 @@ describe('dragging', () => {
     // Bravo comes after Alpha, which now arrives on Sunday: nothing on Friday is in reach.
     act(() => day('2026-11-06').click());
     fireEvent.pointerDown(candidate('bravo'), { pointerId: 1, button: 0, clientX: 300, clientY: 100 });
-    fireEvent.pointerMove(dayPlane(), { pointerId: 1, clientX: 400, clientY: rowY(20) });
+    fireEvent.pointerMove(dayPlane(), { pointerId: 1, buttons: 1, clientX: 400, clientY: rowY(20) });
     expect(document.querySelector('.week-ghost')).toHaveClass('refused');
     fireEvent.pointerUp(dayPlane(), { pointerId: 1, clientX: 400, clientY: rowY(20) });
     expect(store.getState()).toBe(placed);
@@ -198,12 +198,12 @@ describe('dragging', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
     const store = open(weekLines(now));
     fireEvent.pointerDown(candidate('alpha'), { pointerId: 1, button: 0, clientX: 300, clientY: 100 });
-    fireEvent.pointerMove(day('2026-11-08'), { pointerId: 1, clientX: 400, clientY: 40 });
+    fireEvent.pointerMove(day('2026-11-08'), { pointerId: 1, buttons: 1, clientX: 400, clientY: 40 });
     act(() => {
       vi.advanceTimersByTime(500);
     });
     expect(day('2026-11-08')).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.pointerMove(dayPlane(), { pointerId: 1, clientX: 400, clientY: rowY(10) });
+    fireEvent.pointerMove(dayPlane(), { pointerId: 1, buttons: 1, clientX: 400, clientY: rowY(10) });
     fireEvent.pointerUp(dayPlane(), { pointerId: 1, clientX: 400, clientY: rowY(10) });
     expect(dayWith(store.getState(), 'alpha')?.day?.date).toBe('2026-11-08');
   });
@@ -252,6 +252,53 @@ describe('dragging', () => {
     fireEvent.pointerUp(block('alpha'), finger);
     expect(store.getState()).toBe(w);
     expect(store.canUndo()).toBe(false);
+  });
+
+  test('a mouse let go where the page could not hear it ends the drag, and the next click drops nothing', () => {
+    const w = weekLines(now);
+    const store = open(w);
+    fireEvent.pointerDown(candidate('alpha'), { pointerId: 1, button: 0, clientX: 300, clientY: 100 });
+    fireEvent.pointerMove(dayPlane(), { pointerId: 1, buttons: 1, clientX: 400, clientY: rowY(10) });
+    expect(document.querySelector('.week-ghost')).toBeInTheDocument();
+    // Back from a right-click menu with the button already up.
+    fireEvent.pointerMove(dayPlane(), { pointerId: 1, buttons: 0, clientX: 400, clientY: rowY(12) });
+    expect(document.querySelector('.week-ghost')).toBeNull();
+    fireEvent.pointerUp(dayPlane(), { pointerId: 1, clientX: 400, clientY: rowY(12) });
+    expect(store.getState()).toBe(w);
+    expect(store.canUndo()).toBe(false);
+  });
+
+  test('leaving the window mid-drag ends the drag and drops nothing', () => {
+    const w = weekLines(now);
+    const store = open(w);
+    fireEvent.pointerDown(candidate('alpha'), { pointerId: 1, button: 0, clientX: 300, clientY: 100 });
+    fireEvent.pointerMove(dayPlane(), { pointerId: 1, buttons: 1, clientX: 400, clientY: rowY(10) });
+    fireEvent.blur(window);
+    expect(document.querySelector('.week-ghost')).toBeNull();
+    fireEvent.pointerUp(dayPlane(), { pointerId: 1, clientX: 400, clientY: rowY(10) });
+    expect(store.getState()).toBe(w);
+  });
+
+  test('held near the bottom edge the day scrolls under the block, and stops once it is back mid-plane', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    open(weekLines(now));
+    const plane = dayPlane();
+    // jsdom lays nothing out: the plane is given a 600 px tall box at the top of the screen.
+    plane.getBoundingClientRect = () => ({ top: 0, bottom: 600, height: 600, left: 0, right: 800, width: 800, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(candidate('alpha'), { pointerId: 1, button: 0, clientX: 300, clientY: 100 });
+    fireEvent.pointerMove(plane, { pointerId: 1, buttons: 1, clientX: 400, clientY: 590 });
+    const before = plane.scrollTop;
+    act(() => {
+      vi.advanceTimersByTime(160);
+    });
+    expect(plane.scrollTop).toBeGreaterThan(before);
+    fireEvent.pointerMove(plane, { pointerId: 1, buttons: 1, clientX: 400, clientY: 300 });
+    const stopped = plane.scrollTop;
+    act(() => {
+      vi.advanceTimersByTime(160);
+    });
+    expect(plane.scrollTop).toBe(stopped);
+    fireEvent.pointerUp(plane, { pointerId: 1, clientX: 400, clientY: 300 });
   });
 
   test('a done block has no handle and does not drag', () => {

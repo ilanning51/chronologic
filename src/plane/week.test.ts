@@ -127,6 +127,16 @@ describe('blocks', () => {
     expect(Math.abs(block.end - at(8, 0, 30))).toBeLessThanOrEqual(S);
   });
 
+  test('a block ending at 00:30 with an hour of length is clipped at the top, its true start kept', () => {
+    const w = place(world(), 'alpha', '2026-11-07', at(7, 0, 30), 3600);
+    const [block] = blocksOn(w, '2026-11-07', now);
+    expect(block.clippedTop).toBe(true);
+    expect(block.clippedBottom).toBe(false);
+    expect(block.top).toBe(0);
+    expect(block.start).toBe(block.end - 3600 * S);
+    expect(block.start).toBeLessThan(at(7, 0));
+  });
+
   test("a done stop's block ends when it was done, muted, and only on that day", () => {
     const w = place(world(), 'alpha', '2026-11-06', at(6, 20), 3600);
     const done = reduce(w, { type: 'complete', trackId: 't1', now: at(6, 15) });

@@ -115,6 +115,40 @@ describe('placing a block', () => {
     expect(place(placed, 'e', '2026-11-08', at(8, 11), 3600, { dayId: 'q', endId: 'r' })).toBe(placed);
   });
 
+  test('a finished today, its end square passed, takes no more blocks', () => {
+    const today = place(world(), 'alpha', '2026-11-06', at(6, 20), 3600);
+    const later = now + 60 * S;
+    const alphaDone = reduce(today, { type: 'complete', trackId: 't1', now: later });
+    const finished = reduce(alphaDone, { type: 'complete', trackId: 'd', now: later });
+    const day = dayOn(finished, '2026-11-06')!;
+    expect(day.train.leg).toBe(day.stops.length);
+    expect(place(finished, 'charlie', '2026-11-06', at(6, 22), 1800, undefined, later)).toBe(finished);
+  });
+
+  test('a new day whose ids are taken is refused, not overwritten', () => {
+    const w = world();
+    expect(place(w, 'alpha', '2026-11-07', at(7, 11), 3600, { dayId: 't2', endId: 'e' })).toBe(w);
+    expect(place(w, 'alpha', '2026-11-07', at(7, 11), 3600, { dayId: 'd', endId: 'g1' })).toBe(w);
+  });
+
+  test('placing a stop again on its own date moves it there, once, with its new length', () => {
+    const once = place(world(), 'alpha', '2026-11-07', at(7, 11), 3600);
+    const again = place(once, 'alpha', '2026-11-07', at(7, 15), 1800, { dayId: 'x', endId: 'y' });
+    const days = again.tracks.filter((t) => t.day);
+    expect(days).toHaveLength(1);
+    expect(days[0].stops).toEqual(['alpha', 'e']);
+    expect(days[0].day!.lengths).toEqual([1800, 1800]);
+    near(arrivalOf(again, 'alpha', now), at(7, 15));
+  });
+
+  test('a block may end exactly at midnight, the last moment of its day, but not a moment after', () => {
+    const w = world();
+    const midnight = at(8, 0);
+    const placed = place(w, 'alpha', '2026-11-07', midnight, 3600);
+    expect(dayOn(placed, '2026-11-07')!.stops).toEqual(['alpha', 'e']);
+    expect(place(w, 'alpha', '2026-11-07', midnight + 1, 3600)).toBe(w);
+  });
+
   test('a place is one step undo takes back whole, and redo puts back', () => {
     const w = world();
     const store = createStore(w);
@@ -142,6 +176,24 @@ describe('moving and stretching a block', () => {
     near(arrivalOf(next, 'alpha', now), at(7, 11, 30));
     const day = dayOn(next, '2026-11-07')!;
     expect(day.day!.lengths[day.stops.indexOf('alpha')]).toBe(5400);
+  });
+
+  test('moving a block on a hand-drawn day leaves where that day starts and ends alone', () => {
+    const w = world();
+    w.tracks.push({
+      id: 'h',
+      color: 0,
+      origin: { x: 5000, y: -20000 },
+      stops: ['alpha', 'hend'],
+      train: { leg: 0, departedAt: now },
+      target: 'goal',
+      day: { date: '2026-11-07', budgets: [0, 0], lengths: [3600, 1800], held: true },
+    });
+    w.stops.push({ id: 'hend', title: '', shape: 'square', size: 'small', x: 250000, y: 30000, done: false });
+    const next = reduce(w, { type: 'moveBlock', stopId: 'alpha', end: at(7, 14), length: 3600, now });
+    near(arrivalOf(next, 'alpha', now), at(7, 14));
+    expect(trackOf(next, 'h').origin).toEqual({ x: 5000, y: -20000 });
+    expect(stopOf(next, 'hend')).toEqual(stopOf(w, 'hend'));
   });
 
   test("a done stop's block does not move", () => {
