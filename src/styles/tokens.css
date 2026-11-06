@@ -26,6 +26,15 @@
   --track-orange-on: var(--ink);
   --track-brown-on: var(--on-plate);
 
+  /* The map's furniture: every control is a black plate with white words and square corners, after
+     the 2025 map's title bar and legend headers. Hover and press are lighter plates, never glass. */
+  --plate: var(--ink);
+  --plate-hover: #2A2A2A;
+  --plate-press: #3D3D3D;
+  --plate-radius: 0;
+  /* Helvetica Medium, the weight the MTA's signs are set in. */
+  --plate-weight: 500;
+
   /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
   --track: 10px;
   --dot: 10px;

@@ -35,8 +35,9 @@ interface BubbleProps {
 const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal', square: 'goal' };
 
 /**
- * A paper pill on the window edge naming what a line points at, off screen in that direction. A
- * square is a goal, and a goal's name is set in bold capitals, as a terminus is on the map. A
+ * A black plate on the window edge naming what a line points at, off screen in that direction:
+ * the target's shape as a bullet in the line's colour, its name in white, the way the subway map
+ * sets a sign. A square is a goal, and a goal's name is set in bold capitals, as a terminus is on the map. A
  * goal with a picture has no pill: the bubble is the picture itself, centred in a square of the
  * line's colour, so the thing the line is for is a glance away from anywhere, framed in its line.
  */
@@ -47,7 +48,7 @@ export function Bubble({ track, color, shape, title, image, x, y, side, soonest 
   return (
     <button
       type="button"
-      className={['bubble', image !== undefined && 'picture', soonest && 'soonest'].filter(Boolean).join(' ')}
+      className={['bubble', image !== undefined && 'picture', soonest && 'soonest', day && 'day'].filter(Boolean).join(' ')}
       data-target="bubble"
       data-track={track}
       aria-label={`${title || 'Unnamed'}, ${SHAPE_WORDS[shape]}. Tap to change what this line points at.`}
@@ -57,7 +58,10 @@ export function Bubble({ track, color, shape, title, image, x, y, side, soonest 
         <img aria-hidden="true" alt="" className="mural" src={image} draggable={false} />
       ) : (
         <>
-          <span aria-hidden="true" className={`shape ${shape} medium`} />
+          {/* The bullet's keyline is drawn on this wrapper: a clipped triangle cannot carry its own. */}
+          <span aria-hidden="true" className="bullet">
+            <span className={`shape ${shape} medium`} />
+          </span>
           <span aria-hidden="true" className={shape === 'square' ? 'title goal-name' : 'title'}>
             {title}
           </span>

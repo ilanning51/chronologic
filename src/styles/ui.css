@@ -20,16 +20,21 @@
     linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
 }
 
-/* The legend: one square and its unit, bottom left, in the muted ink. */
+/* The legend: one square and its unit, bottom left, on a plate like the map's own legend. */
 .legend {
   position: absolute;
   left: 1rem;
   bottom: 1rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: var(--plate-radius);
+  background: var(--plate);
+  color: var(--on-plate);
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--muted);
   font-size: var(--label);
+  font-weight: var(--plate-weight);
   pointer-events: none;
 }
 
@@ -37,19 +42,20 @@
   display: block;
   width: 0.75rem;
   height: 0.75rem;
-  border: 1px solid var(--muted);
+  border: 1px solid var(--on-plate);
 }
 
-/* The leg's planned time, a paper-on-ink chip beneath the stop a finger is setting. */
+/* The leg's planned time, a plate beneath the stop a finger is setting. */
 .leg-time {
   position: absolute;
   transform: translateX(-50%);
   height: var(--chip);
   padding: 0 0.875rem;
-  border-radius: calc(var(--chip) / 2);
-  background: var(--ink);
-  color: var(--paper);
+  border-radius: var(--plate-radius);
+  background: var(--plate);
+  color: var(--on-plate);
   font-size: 0.9375rem;
+  font-weight: var(--plate-weight);
   line-height: var(--chip);
   white-space: nowrap;
   pointer-events: none;
@@ -251,11 +257,13 @@ button:focus-visible {
   background: var(--track-color);
 }
 
-/* The HUD: stickers on the glass, in screen space. */
+/* The HUD: the map's furniture, in screen space. */
 .hud {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* White type on black plates thickens under subpixel smoothing; this keeps it as drawn. */
+  -webkit-font-smoothing: antialiased;
 }
 
 .hud > * {
@@ -271,51 +279,33 @@ button:focus-visible {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--plate);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
 
-/* Pressed or focused, the plus lightens to the muted ink. (--track-color is never set on it.) */
+/* The plus is a round bullet, the one round thing in the furniture. Pressed or focused, a lighter plate. */
 .hud-add:focus-visible,
 .hud-add:active {
-  background: var(--muted);
+  background: var(--plate-press);
 }
 
-/* Undo and Redo: one toolbar group, top left, on the glass layer above the plane. The capsule
-   is always there; only a symbol with nothing to take back dims, so the corner never changes. */
+/* Undo and Redo: one toolbar group, top left, on a plate. The plate is always there; only a
+   symbol with nothing to take back dims, so the corner never changes. The 1 px border is the
+   plate's own colour, so the corner keeps the size HISTORY_CORNER_PX measures. */
 .hud-history {
   position: absolute;
   left: 1rem;
   top: 1rem;
   display: flex;
-  overflow: hidden; /* clips each half's fill to the pill's rounded ends */
-  border-radius: calc(var(--hit) / 2);
-  border: 1px solid rgba(43, 36, 32, 0.12);
-  background: rgba(238, 235, 229, 0.72);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  backdrop-filter: blur(24px) saturate(1.4);
-  box-shadow: 0 2px 10px rgba(43, 36, 32, 0.12);
+  border-radius: var(--plate-radius);
+  border: 1px solid var(--plate);
+  background: var(--plate);
 }
 
-/* Glass gives way to solid paper when the person asks for less transparency or more contrast. */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .hud-history {
-    background: var(--paper);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-}
-
-@media (prefers-contrast: more) {
-  .hud-history {
-    border-color: var(--ink);
-  }
-}
-
-/* Each button is one half of the pill, edge to edge, so its hover and press fill the whole half. */
+/* Each button is one half of the plate, edge to edge, so its hover and press fill the whole half. */
 .hud-segment {
   width: calc(var(--hit) + 0.5rem);
   height: var(--hit);
@@ -323,7 +313,7 @@ button:focus-visible {
   border: 0;
   border-radius: 0;
   background: none;
-  color: var(--ink);
+  color: var(--on-plate);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -331,36 +321,33 @@ button:focus-visible {
 }
 
 .hud-segment:hover:not(:disabled) {
-  background: rgba(43, 36, 32, 0.08);
+  background: var(--plate-hover);
 }
 
 .hud-segment:active:not(:disabled) {
-  background: rgba(43, 36, 32, 0.16);
+  background: var(--plate-press);
 }
 
 .hud-segment:focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--on-plate);
   outline-offset: -2px;
 }
 
-/* Nothing to take back: the symbol dims, the button keeps its place. */
+/* Nothing to take back: the symbol turns grey, the button keeps its place. */
 .hud-segment:disabled {
   cursor: default;
+  color: var(--muted);
 }
 
-.hud-segment:disabled svg {
-  opacity: 0.3;
-}
-
-/* The editor's title field: paper on ink, no outline. */
+/* The editor's title field: white on the plate, no outline. */
 .hud-editor input {
   width: 11rem;
   margin: 0 0.5rem 0 0;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--paper);
-  caret-color: var(--paper);
+  color: var(--on-plate);
+  caret-color: var(--on-plate);
   font: inherit;
   font-size: 1.0625rem;
   line-height: 1.3;
@@ -395,16 +382,33 @@ button:focus-visible {
 
 .hud-editor .shape {
   display: block;
-  background: var(--paper);
+  background: var(--on-plate);
 }
 
-.shape-button:focus-visible .shape,
-.shape-button:active .shape,
+/* Pressed, a lighter plate; chosen, the button fills white and the shape turns ink, as a chosen
+   tile does. */
+.shape-button:active {
+  background: var(--plate-press);
+}
+
+.shape-button:focus-visible {
+  outline: 2px solid var(--on-plate);
+  outline-offset: -2px;
+}
+
+.shape-button[aria-pressed='true'] {
+  background: var(--on-plate);
+}
+
 .shape-button[aria-pressed='true'] .shape {
-  background: var(--track-color);
+  background: var(--ink);
 }
 
-/* The editor: a pill of paper on ink, centered above the plus, opened by a long press. */
+.shape-button[aria-pressed='true']:focus-visible {
+  outline-color: var(--ink);
+}
+
+/* The editor: a plate, centered above the plus, opened by a long press. */
 .hud-editor {
   position: absolute;
   left: 50%;
@@ -412,8 +416,8 @@ button:focus-visible {
   transform: translateX(-50%);
   height: var(--add);
   padding: 0 0.375rem 0 1.375rem;
-  border-radius: calc(var(--add) / 2);
-  background: var(--ink);
+  border-radius: var(--plate-radius);
+  background: var(--plate);
   display: flex;
   align-items: center;
   gap: 0.125rem;
@@ -427,22 +431,29 @@ button:focus-visible {
   height: var(--tap);
   padding: 0 0.875rem;
   border: 0;
-  border-radius: calc(var(--tap) / 2);
+  border-radius: var(--plate-radius);
   background: none;
-  color: var(--paper);
+  color: var(--on-plate);
   font: inherit;
   font-size: 0.9375rem;
+  font-weight: var(--plate-weight);
   white-space: nowrap;
   cursor: pointer;
 }
 
 .pill-text:focus-visible,
 .pill-text:active {
-  background: var(--track-color);
+  background: var(--plate-press);
 }
 
-/* Leave a line: one chip per line the stop is on, a swatch of its colour ringed in paper so the
-   day's ink still shows on the ink pill. */
+/* The chosen size: white with ink words, as a chosen tile is. */
+.pill-text[aria-pressed='true'] {
+  background: var(--on-plate);
+  color: var(--ink);
+}
+
+/* Leave a line: one chip per line the stop is on, a round bullet of its colour ringed in white so
+   the day's ink still shows on the plate. */
 .line-chips {
   display: flex;
   gap: 0.125rem;
@@ -467,16 +478,16 @@ button:focus-visible {
   height: 18px;
   border-radius: 50%;
   background: var(--track-color);
-  box-shadow: 0 0 0 2px var(--paper);
+  box-shadow: 0 0 0 2px var(--on-plate);
 }
 
 .line-chip:focus-visible,
 .line-chip:active {
-  background: var(--paper);
+  background: var(--on-plate);
 }
 
-/* Hold to delete: the button fills with the track's color, then drains over HOLD_MS, so
-   letting go early reads as a cancel. Opaque, no outline. */
+/* Hold to delete: the button fills grey, then drains over HOLD_MS, so letting go early reads as
+   a cancel. White words on the grey are 5.9:1. Opaque, no outline. */
 .pill-text.hold {
   position: relative;
   overflow: hidden;
@@ -489,7 +500,7 @@ button:focus-visible {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: var(--track-color);
+  background: var(--muted);
   transform: scale(1);
   transition: none;
 }
@@ -499,15 +510,15 @@ button:focus-visible {
   transition: transform 600ms linear;
 }
 
-/* The tray: three paper-on-ink tiles beside the plus, dragged onto a line or tapped. */
+/* The tray: a plate of tiles beside the plus, dragged onto a line or tapped. */
 .hud-tray {
   position: absolute;
   right: calc(2.5rem + var(--add) + 0.75rem);
   bottom: 1rem;
   height: var(--add);
   padding: 0 0.375rem;
-  border-radius: calc(var(--add) / 2);
-  background: var(--ink);
+  border-radius: var(--plate-radius);
+  background: var(--plate);
   display: flex;
   align-items: center;
   gap: 0.125rem;
@@ -527,7 +538,7 @@ button:focus-visible {
 }
 
 .tile {
-  color: var(--paper);
+  color: var(--on-plate);
 }
 
 .tile .shape {
@@ -535,25 +546,23 @@ button:focus-visible {
   background: currentColor;
 }
 
-/* Held down, a tile's picture dims; it never goes blank. */
-.tile:active > * {
-  opacity: 0.6;
+/* Held down, a tile's picture turns grey; it never goes blank. */
+.tile:active {
+  color: var(--muted);
 }
 
 .tile:focus-visible {
-  outline: 2px solid var(--paper);
+  outline: 2px solid var(--on-plate);
   outline-offset: -2px;
-  border-radius: 50%;
 }
 
-/* The brush that is on: the tile fills with paper and its picture turns ink. */
+/* The brush that is on: the tile fills white and its picture turns ink. */
 .tile[aria-pressed='true'] {
-  background: var(--paper);
-  border-radius: 50%;
+  background: var(--on-plate);
   color: var(--ink);
 }
 
-/* On the paper-filled tile a paper ring would vanish: the focus ring turns ink. */
+/* On the white tile a white ring would vanish: the focus ring turns ink. */
 .tile[aria-pressed='true']:focus-visible {
   outline-color: var(--ink);
 }
@@ -584,13 +593,13 @@ button:focus-visible {
   background: var(--ink);
 }
 
-/* The name field: the pill, set beside the shape it names. */
+/* The name field: a plate, set beside the shape it names. */
 .name-field {
   position: absolute;
   height: var(--chip);
   padding: 0 0.875rem;
-  border-radius: calc(var(--chip) / 2);
-  background: var(--ink);
+  border-radius: var(--plate-radius);
+  background: var(--plate);
   display: flex;
   align-items: center;
 }
@@ -600,8 +609,8 @@ button:focus-visible {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--paper);
-  caret-color: var(--paper);
+  color: var(--on-plate);
+  caret-color: var(--on-plate);
   font: inherit;
   font-size: 1.0625rem;
   outline: none;
@@ -609,16 +618,18 @@ button:focus-visible {
   -webkit-user-select: text;
 }
 
-/* The edge bubble: a paper pill on the window edge, the target's shape in the track color. */
+/* The edge bubble: a plate on the window edge, the target's shape as a bullet in the line's
+   colour and its name in white. */
 .bubble {
   position: absolute;
   min-height: var(--tap);
   padding: 0 0.875rem;
   border: 0;
-  border-radius: calc(var(--tap) / 2);
-  background: var(--paper);
-  color: var(--ink);
+  border-radius: var(--plate-radius);
+  background: var(--plate);
+  color: var(--on-plate);
   font: inherit;
+  font-weight: var(--plate-weight);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -626,10 +637,31 @@ button:focus-visible {
   cursor: pointer;
 }
 
+/* A white keyline round the bullet, so the darker line colours still show on the black plate
+   (blue alone is 1.9:1 on it). Four hard shadows draw it, since a clipped triangle cannot carry
+   an outline of its own. */
+.bubble .bullet {
+  display: block;
+  flex: none;
+  filter: drop-shadow(1.5px 0 0 var(--on-plate)) drop-shadow(-1.5px 0 0 var(--on-plate))
+    drop-shadow(0 1.5px 0 var(--on-plate)) drop-shadow(0 -1.5px 0 var(--on-plate));
+}
+
 .bubble .shape {
   display: block;
   flex: none;
   background: var(--track-color);
+}
+
+/* The day's colour is the ink, which would vanish on the plate: its mark is white instead, and
+   needs no keyline. */
+.bubble.day .shape {
+  background: var(--on-plate);
+}
+
+.bubble.day .bullet,
+.bubble.soonest .bullet {
+  filter: none;
 }
 
 /* A picture bubble is no pill: the goal's picture centred in a square of the line's colour, the
@@ -651,10 +683,11 @@ button:focus-visible {
   image-rendering: pixelated;
 }
 
-/* The soonest line's bubble is filled with its colour, its words and shape in paper. */
+/* The soonest line's bubble is filled with its colour, its words and shape in that colour's own
+   text colour, ink or white, whichever reads. */
 .bubble.soonest {
   background: var(--track-color);
-  color: var(--paper);
+  color: var(--track-on);
 }
 
 /* The soonest line's picture wears a wider frame: the fill the pill would have had. */
@@ -663,7 +696,19 @@ button:focus-visible {
 }
 
 .bubble.soonest .shape {
-  background: var(--paper);
+  background: var(--track-on);
+}
+
+/* The day's colour is the plate's, so when the day is soonest its bubble turns over: white with
+   an ink keyline, its words and mark in ink. */
+.bubble.day.soonest {
+  background: var(--on-plate);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.bubble.day.soonest .shape {
+  background: var(--ink);
 }
 
 .bubble .title {
