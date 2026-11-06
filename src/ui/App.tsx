@@ -47,7 +47,7 @@ import { Plane } from './Plane';
 import { SelectionBox } from './SelectionBox';
 import { Stop } from './Stop';
 import { StopEditor } from './StopEditor';
-import { stopsOnce } from './stopsOnce';
+import { labelPlaces, stopsOnce } from './stopsOnce';
 import { Track } from './Track';
 import { Tray } from './Tray';
 import { WeekButton } from './WeekButton';
@@ -1205,6 +1205,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     </>
   );
 
+  // Each stop once, and its name set beside it on the side that covers least.
+  const placedStops = stopsOnce(views);
+  const places = labelPlaces(placedStops, views);
+
   // The week window and its button sit beside the plane, not in it, so neither a press nor a wheel
   // on them ever reaches the map.
   return (
@@ -1215,8 +1219,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         {views.map((v) => (
           <Track key={v.id} view={v} />
         ))}
-        {stopsOnce(views).map((p) => (
-          <Stop key={p.stop.id} {...p} />
+        {placedStops.map((p) => (
+          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id)} />
         ))}
         {ghost && <Ghost {...ghost} />}
         {dayGhost && <DayGhost points={dayGhost} />}

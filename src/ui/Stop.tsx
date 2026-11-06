@@ -2,6 +2,8 @@ import type { CSSProperties } from 'react';
 import { colorVar } from '../model/palette';
 import type { Shape, Size } from '../model/types';
 import type { StopView } from '../plane/layout';
+import type { LabelPlace } from '../plane/labels';
+import { LABEL_GAP_PX } from '../plane/labels';
 import { VIGNELLI } from '../plane/vignelli';
 import { DISC_PX, TRACK_WIDTH } from '../plane/world';
 import type { Link } from './stopsOnce';
@@ -20,7 +22,17 @@ interface StopProps {
   sketch?: boolean;
   /** An interchange whose lines pass it side by side: a transfer across their lanes. */
   link?: Link;
+  /** Where its name is set; beneath it when nothing has placed it. */
+  place?: LabelPlace;
 }
+
+/** How a name is anchored on each side of its station: the anchor is its top left, top right, top middle or bottom middle. */
+const ANCHOR: Record<LabelPlace['side'], { transform?: string; textAlign: 'left' | 'right' | 'center' }> = {
+  right: { textAlign: 'left' },
+  left: { transform: 'translateX(-100%)', textAlign: 'right' },
+  below: { transform: 'translateX(-50%)', textAlign: 'center' },
+  above: { transform: 'translate(-50%, -100%)', textAlign: 'center' },
+};
 
 const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal', square: 'goal' };
 const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', large: 'large' };
@@ -39,21 +51,19 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
  * A stop on two or more lines is a transfer, as on the map: its disc in a paper capsule with a fine
  * ink outline. Where its lines pass side by side the capsule is laid across every lane, with a disc
  * one line wide on each lane, joined by an ink bar.
+ *
+ * The name is set beside the station where `place` puts it, after the map: on whichever side
+ * covers least, broken onto two lines when it is long.
  */
 /** The paper a transfer leaves around the discs inside it, top and bottom, outline included. */
 const LINK_PAD = (VIGNELLI.capsulePad + VIGNELLI.capsuleOutline) * TRACK_WIDTH;
-/** Where a label hangs below the stop's point, as the stylesheet sets it, and the least gap it keeps below a transfer. */
-const LABEL_TOP = 22;
-const LABEL_GAP = 4;
-
-export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link }: StopProps) {
+export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link, place }: StopProps) {
   // A transfer's discs are one line wide whatever the task's size, as the map's are, so on lanes
   // 1.1 lines apart they stand just clear of each other.
   const tall = DISC_PX[link ? 'small' : stop.size] + 2 * LINK_PAD;
   const kind = ['ring', stop.shape, stop.size];
   const [first, ...others] = link?.marks ?? [];
-  // A transfer reaching down past the label's place pushes the label below it.
-  const below = link ? Math.abs(link.dy) + (Math.abs(Math.sin((link.angle * Math.PI) / 180)) * link.length + tall) / 2 : 0;
+  const set: LabelPlace = place ?? { side: 'below', lines: [stop.title], dx: 0, dy: DISC_PX[stop.size] / 2 + LABEL_GAP_PX };
   const name = [
     stop.title || 'Unnamed',
     SHAPE_WORDS[stop.shape],
@@ -118,9 +128,10 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
         <span
           aria-hidden="true"
           className={stop.projectGoal ? 'label goal-name' : 'label'}
-          style={below + LABEL_GAP > LABEL_TOP ? { top: below + LABEL_GAP } : undefined}
+          data-side={set.side}
+          style={{ left: set.dx, top: set.dy, ...ANCHOR[set.side] }}
         >
-          {stop.title}
+          {set.lines.map((line, i) => (i === 0 ? line : [<br key={i} />, line]))}
         </span>
       )}
     </button>

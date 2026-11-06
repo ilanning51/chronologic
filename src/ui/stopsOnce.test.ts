@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { StopView, TrackView } from '../plane/layout';
-import { stopsOnce } from './stopsOnce';
+import { labelPlaces, stopsOnce } from './stopsOnce';
 
 const stopAt = (lane: { x: number; y: number }, ring = true): StopView => ({
   id: 's',
@@ -42,4 +42,14 @@ test('a transfer has one disc a lane, in order across, however many lines share 
 test('an interchange whose lines all pass through its point has no transfer, only its ring', () => {
   const [placed] = stopsOnce([viewOf('a', stopAt({ x: 100, y: 100 })), viewOf('b', stopAt({ x: 100, y: 100 }))]);
   expect(placed.link).toBeUndefined();
+});
+
+test("a transfer's name is set clear of the whole capsule, not only the disc at its point", () => {
+  const lines = [viewOf('a', stopAt({ x: 100, y: 88 })), viewOf('b', stopAt({ x: 100, y: 112 }))].map((v) => ({ ...v, behind: [], segments: [] }));
+  const placed = stopsOnce(lines);
+  const place = labelPlaces(placed, lines).get('s')!;
+  expect(place.side).toBe('right');
+  // The capsule's discs are one line wide, so its right edge is half a line, the capsule's margin and the gap past the point.
+  expect(place.dx).toBeGreaterThan(6);
+  expect(place.dy).toBeLessThan(0);
 });

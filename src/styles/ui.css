@@ -320,16 +320,15 @@
   pointer-events: none;
 }
 
-/* The label hangs beneath the shape, centered on the stop's point, haloed in paper so a line
-   passing under it never runs through its words. */
+/* The name, set beside its station where the placement puts it (labels.ts), at the map's size and
+   leading, haloed in paper so a line passing near it never runs through its words. */
 .stop .label {
   position: absolute;
   left: 0;
-  top: 22px;
-  transform: translateX(-50%);
+  top: 0;
   font-size: var(--label);
   white-space: nowrap;
-  line-height: 1.25;
+  line-height: 1.05;
   text-shadow:
     -1px -1px 0 var(--paper),
     1px -1px 0 var(--paper),

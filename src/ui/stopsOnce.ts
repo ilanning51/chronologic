@@ -1,5 +1,8 @@
 import type { Point } from '../plane/geometry';
+import { type LabelItem, type LabelMark, type LabelPlace, placeLabels } from '../plane/labels';
 import type { StopView, TrackView } from '../plane/layout';
+import { VIGNELLI } from '../plane/vignelli';
+import { DISC_PX, TRACK_WIDTH } from '../plane/world';
 
 /**
  * The transfer drawn across an interchange's lanes: from the stop's point, its middle, length and
@@ -88,4 +91,50 @@ export function stopsOnce(views: TrackView[]): PlacedStop[] {
       ...(link ? { link } : {}),
     };
   });
+}
+
+/** The paper ring about a disc, and the capsule a transfer's disc sits in, outline included, in pixels. */
+const RING_PX = TRACK_WIDTH * VIGNELLI.discRing;
+const CAPSULE_PX = TRACK_WIDTH * (VIGNELLI.capsulePad + VIGNELLI.capsuleOutline);
+/** A goal's mural above its disc, as --mural sets it, and the paper between them. */
+const MURAL_PX = 72;
+const MURAL_GAP_PX = 6;
+
+/** How far a stop's mark reaches from its point each way, and the discs it is drawn as. */
+function markOf({ stop, link }: PlacedStop): { extent: LabelItem['mark']; discs: { dx: number; dy: number; r: number }[] } {
+  let discs: { dx: number; dy: number; r: number }[];
+  if (link) {
+    const r = DISC_PX.small / 2 + CAPSULE_PX;
+    discs = link.marks.map((m) => ({ ...m, r }));
+  } else {
+    const disc = stop.done ? DISC_PX[stop.terminus ? 'large' : 'small'] : DISC_PX[stop.size];
+    discs = [{ dx: 0, dy: 0, r: disc / 2 + (stop.ring && !stop.done ? CAPSULE_PX : 0) + RING_PX }];
+  }
+  const extent = {
+    left: Math.min(...discs.map((d) => d.dx - d.r)),
+    top: Math.min(...discs.map((d) => d.dy - d.r)),
+    right: Math.max(...discs.map((d) => d.dx + d.r)),
+    bottom: Math.max(...discs.map((d) => d.dy + d.r)),
+  };
+  // A goal's picture stands above its disc, so no name goes there.
+  if (stop.image !== undefined) extent.top = Math.min(extent.top, -(DISC_PX.large / 2 + MURAL_GAP_PX + MURAL_PX));
+  return { extent, discs };
+}
+
+/**
+ * Where every shown name is set, beside its station on the side that covers least of the lines,
+ * the other stations and the names already set, as the map sets them.
+ */
+export function labelPlaces(placed: PlacedStop[], views: TrackView[]): Map<string, LabelPlace> {
+  const items: LabelItem[] = [];
+  const marks: LabelMark[] = [];
+  for (const p of placed) {
+    const { extent, discs } = markOf(p);
+    for (const d of discs) marks.push({ id: p.stop.id, x: p.stop.x + d.dx, y: p.stop.y + d.dy, r: d.r });
+    if (p.stop.label && p.stop.title) {
+      items.push({ id: p.stop.id, x: p.stop.x, y: p.stop.y, mark: extent, text: p.stop.title, bold: p.stop.projectGoal });
+    }
+  }
+  const segments = views.flatMap((v) => [...v.behind, ...v.segments]);
+  return placeLabels(items, segments, marks);
 }
