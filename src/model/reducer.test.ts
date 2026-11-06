@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_GOAL_SECONDS, EMPTY, reduce, undoable } from './reducer';
-import { dayState, legSeconds, timeLeftAny, trackRoute, trainState } from './train';
-import { running as fixtureRunning, twoLines, withDay as fixtureDay, withWeek } from '../test/fixtures';
+import { dayState, legSeconds, lifeState, timeLeftAny, trackRoute, trainState } from './train';
+import { running as fixtureRunning, twoLines, withDay as fixtureDay, withLife, withWeek } from '../test/fixtures';
 import type { Stop, World } from './types';
 
 function stop(id: string, shape: Stop['shape'], x: number, y: number, done = false): Stop {
@@ -1144,5 +1144,263 @@ describe('when a stop was done', () => {
     const back = reduce(done, { type: 'undo', stopId: 'shared', now: 8000 });
     expect(stopOf(back, 'shared').done).toBe(false);
     expect('doneAt' in stopOf(back, 'shared')).toBe(false);
+  });
+});
+
+/** withLife with Wristband back on its own line, at its own height: only Start and Far are on the life line. */
+function ringless(): World {
+  const w = withLife();
+  w.stops = w.stops.map((s) => (s.id === 'wristband' ? { ...s, y: 0 } : s));
+  w.tracks = w.tracks.map((t) => (t.life ? { ...t, stops: ['start', 'far'], life: { y: -800, budgets: [0, 0] } } : t));
+  return w;
+}
+
+const lifeOf = (w: World) => w.tracks.find((t) => t.life)!;
+const withDoneStops = (w: World, ...ids: string[]): World => ({ ...w, stops: w.stops.map((s) => (ids.includes(s.id) ? { ...s, done: true, doneAt: 1 } : s)) });
+const setLifeTrain = (w: World, train: { leg: number; departedAt: number }, budgets?: number[]): World => ({
+  ...w,
+  tracks: w.tracks.map((t) => (t.life ? { ...t, train, life: { ...t.life, budgets: budgets ?? t.life.budgets } } : t)),
+});
+
+describe('join onto the life line', () => {
+  test('a goal released right of the life train goes to the life height and into the stops by x', () => {
+    const w = ringless();
+    const next = reduce(w, { type: 'join', trackId: 'life', stopId: 'wristband', leg: 0, x: 3000, y: 77, now: 250_000 });
+    expect(stopOf(next, 'wristband')).toMatchObject({ x: 3000, y: -800 });
+    expect(lifeOf(next).stops).toEqual(['start', 'wristband', 'far']);
+    expect(lifeOf(next).life!.budgets).toHaveLength(3);
+    // The project's other stops stay where they were.
+    expect(stopOf(next, 'dentist')).toEqual(stopOf(w, 'dentist'));
+  });
+
+  test('a goal released at or left of the life train is refused', () => {
+    const w = ringless();
+    // At 250 s the life train is half way along its 500 s leg to Start, at x = 250.
+    expect(reduce(w, { type: 'join', trackId: 'life', stopId: 'wristband', leg: 0, x: 100, y: -800, now: 250_000 })).toBe(w);
+  });
+
+  test('a circle or a triangle is refused', () => {
+    const w = ringless();
+    expect(reduce(w, { type: 'join', trackId: 'life', stopId: 'dentist', leg: 0, x: 3000, y: -800, now: 250_000 })).toBe(w);
+  });
+});
+
+describe('move on the life line', () => {
+  test('a ring keeps the life height whatever y it is given, and only its project\'s last leg changes', () => {
+    const w = withLife();
+    const route = (world: World) => trackRoute(world.tracks[0], byId(world));
+    const next = reduce(w, { type: 'move', id: 'wristband', x: 4000, y: 0, now });
+    expect(stopOf(next, 'wristband')).toMatchObject({ x: 4000, y: -800 });
+    expect(legSeconds(route(next), 0)).toBe(legSeconds(route(w), 0));
+    expect(legSeconds(route(next), 1)).not.toBe(legSeconds(route(w), 1));
+    for (const id of ['start', 'far', 'dentist']) expect(stopOf(next, id)).toEqual(stopOf(w, id));
+  });
+
+  test('a marker moved past its neighbour re-sorts the life stops', () => {
+    const next = reduce(withLife(), { type: 'move', id: 'far', x: 2000, y: 5, now });
+    expect(lifeOf(next).stops).toEqual(['start', 'far', 'wristband']);
+    expect(stopOf(next, 'far').y).toBe(-800);
+  });
+
+  test('a square dragged between the life train and its target becomes what the train heads for, from the same place', () => {
+    // Start done, the train just set off for Wristband on a budget of 42.
+    const w = setLifeTrain(withDoneStops(withLife(), 'start'), { leg: 1, departedAt: now }, [0, 42, 0]);
+    const stood = lifeState(lifeOf(w), w, now).at.x;
+    const next = reduce(w, { type: 'move', id: 'far', x: 2000, y: -800, now });
+    expect(lifeOf(next).stops).toEqual(['start', 'far', 'wristband']);
+    expect(lifeOf(next).train.leg).toBe(1);
+    expect(lifeOf(next).life!.budgets[1]).toBe(0);
+    expect(lifeState(lifeOf(next), next, now).at.x).toBeCloseTo(stood, 3);
+  });
+
+  test('a pending square dropped at or left of the life train is refused', () => {
+    const w = withLife();
+    // At 250 s the train is at x = 250.
+    expect(reduce(w, { type: 'move', id: 'far', x: 250, y: -800, now: 250_000 })).toBe(w);
+    expect(reduce(w, { type: 'move', id: 'far', x: 100, y: -800, now: 250_000 })).toBe(w);
+  });
+
+  test('a pending square dropped left of the last done square is refused, right of it is not', () => {
+    // Wristband is done out of order at x 3000 while the train still heads for Start.
+    const w = withDoneStops(withLife(), 'wristband');
+    expect(reduce(w, { type: 'move', id: 'far', x: 2000, y: -800, now: 250_000 })).toBe(w);
+    expect(stopOf(reduce(w, { type: 'move', id: 'far', x: 3500, y: -800, now: 250_000 }), 'far').x).toBe(3500);
+  });
+});
+
+describe('moveGroup on the life line', () => {
+  test('life squares carried past each other are sorted by x and the train heads for the first undone one right of where it stood', () => {
+    const w = setLifeTrain(withDoneStops(withLife(), 'start'), { leg: 1, departedAt: now }, [0, 42, 0]);
+    const stood = lifeState(lifeOf(w), w, now).at.x;
+    const next = reduce(w, { type: 'moveGroup', stops: { far: { x: 2000, y: -800 } }, origins: {}, now });
+    expect(lifeOf(next).stops).toEqual(['start', 'far', 'wristband']);
+    expect(lifeOf(next).train.leg).toBe(1);
+    expect(lifeState(lifeOf(next), next, now).at.x).toBeCloseTo(stood, 3);
+  });
+});
+
+describe('moveGoal on the life line', () => {
+  test('a ring is moved by move, so moveGoal returns the same world', () => {
+    const w = withLife();
+    expect(reduce(w, { type: 'moveGoal', trackId: 't1', x: 4000, y: -800, now })).toBe(w);
+  });
+});
+
+describe('addStop on the life line', () => {
+  test('a square past a parked life train gives the train a leg that sets off now', () => {
+    const w = setLifeTrain(withDoneStops(withLife(), 'start', 'wristband', 'far'), { leg: 3, departedAt: 7 });
+    const next = reduce(w, { type: 'addStop', trackId: 'life', id: 'm', shape: 'square', leg: 3, x: 9000, y: 0, now });
+    expect(stopOf(next, 'm')).toMatchObject({ x: 9000, y: -800, shape: 'square', done: false });
+    expect(lifeOf(next).stops).toEqual(['start', 'wristband', 'far', 'm']);
+    expect(lifeOf(next).train).toEqual({ leg: 3, departedAt: now });
+  });
+
+  test('an empty life line takes a square', () => {
+    const w: World = { tracks: [{ ...lifeOf(withLife()), stops: [], life: { y: -800, budgets: [] } }], stops: [], lastTouched: null };
+    const next = reduce(w, { type: 'addStop', trackId: 'life', id: 'm', shape: 'square', leg: 0, x: 100, y: 0, now });
+    expect(lifeOf(next).stops).toEqual(['m']);
+    expect(lifeOf(next).life!.budgets).toHaveLength(1);
+  });
+
+  test('a circle or a triangle is refused there, and a square is refused on a project line', () => {
+    const w = withLife();
+    expect(reduce(w, { type: 'addStop', trackId: 'life', id: 'c', shape: 'circle', leg: 0, x: 9000, y: 0, now })).toBe(w);
+    expect(reduce(w, { type: 'addStop', trackId: 'life', id: 'tr', shape: 'triangle', leg: 0, x: 9000, y: 0, now })).toBe(w);
+    expect(reduce(w, { type: 'addStop', trackId: 't1', id: 'sq', shape: 'square', leg: 0, x: 500, y: 0, now })).toBe(w);
+  });
+
+  test('a square dropped at or left of the life train is refused', () => {
+    const w = withLife();
+    expect(reduce(w, { type: 'addStop', trackId: 'life', id: 'm', shape: 'square', leg: 0, x: 100, y: 0, now: 250_000 })).toBe(w);
+  });
+});
+
+describe('complete through the life line', () => {
+  /** t1's train on its goal, Dentist done, the life train waiting at Start. */
+  function ringReady(): World {
+    const w = withDoneStops(withLife(), 'dentist');
+    w.tracks = w.tracks.map((t) => (t.id === 't1' ? { ...t, train: { leg: 1, departedAt: now } } : t));
+    return w;
+  }
+
+  test('a ring completed by its project leaves the life train waiting; tapping the marker then sends it past the ring', () => {
+    const ringDone = reduce(ringReady(), { type: 'complete', trackId: 't1', now });
+    expect(stopOf(ringDone, 'wristband').done).toBe(true);
+    expect(lifeOf(ringDone).train.leg).toBe(0);
+    expect(stopOf(ringDone, 'start').done).toBe(false);
+
+    const markerDone = reduce(ringDone, { type: 'complete', trackId: 'life', now });
+    expect(stopOf(markerDone, 'start').done).toBe(true);
+    expect(lifeOf(markerDone).train).toEqual({ leg: 2, departedAt: now });
+    // Rolling toward Far in real time: it has not arrived the moment it sets off.
+    expect(lifeState(lifeOf(markerDone), markerDone, now)).toMatchObject({ leg: 2, waiting: false });
+  });
+
+  test('a ring is never completed through the life line, even when it is the life line\'s next', () => {
+    const w = withDoneStops(setLifeTrain(withLife(), { leg: 1, departedAt: now }), 'start');
+    expect(reduce(w, { type: 'complete', trackId: 'life', now })).toBe(w);
+  });
+
+  test('a bare marker that is next completes before the life train has arrived', () => {
+    const w = withLife();
+    const next = reduce(w, { type: 'complete', trackId: 'life', now: 100_000 });
+    expect(stopOf(next, 'start')).toMatchObject({ done: true, doneAt: 100_000 });
+  });
+
+  test('a bare marker past the next square is not completed', () => {
+    const w = withDoneStops(setLifeTrain(withLife(), { leg: 1, departedAt: now }), 'start');
+    // The next square is the ring; Far, beyond it, stays undone.
+    expect(reduce(w, { type: 'complete', trackId: 'life', now })).toBe(w);
+    expect(stopOf(w, 'far').done).toBe(false);
+  });
+});
+
+describe('delete with a life line', () => {
+  test('deleting a project whose goal is a ring keeps the square on the life line as a marker', () => {
+    const w = withLife();
+    w.stops = w.stops.map((s) => (s.id === 'wristband' ? { ...s, image: 'data:image/png;base64,AA' } : s));
+    const next = reduce(w, { type: 'delete', id: 'wristband', now });
+    expect(next.tracks.map((t) => t.id)).toEqual(['life']);
+    expect(lifeOf(next).stops).toEqual(['start', 'wristband', 'far']);
+    expect(stopOf(next, 'wristband')).toMatchObject({ title: 'Wristband', size: 'large', done: false, image: 'data:image/png;base64,AA' });
+    expect(next.stops.some((s) => s.id === 'dentist')).toBe(false);
+  });
+
+  test('a done ring stays done on the life line', () => {
+    const w = withDoneStops(withLife(), 'dentist', 'wristband');
+    const next = reduce(w, { type: 'delete', id: 'wristband', now });
+    expect(stopOf(next, 'wristband').done).toBe(true);
+  });
+
+  test('a ring the life train is heading for stays where the train stood', () => {
+    const w = setLifeTrain(withDoneStops(withLife(), 'start'), { leg: 1, departedAt: now }, [0, 10_000, 0]);
+    const later = now + 1000;
+    const before = lifeState(lifeOf(w), w, later);
+    const next = reduce(w, { type: 'delete', id: 'wristband', now: later });
+    const after = lifeState(lifeOf(next), next, later);
+    expect(after.at.x).toBeCloseTo(before.at.x, 3);
+  });
+
+  test('the square also leaves a day line that listed it, so the day does not keep a marker', () => {
+    const w = withLife();
+    w.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 900, y: 900, done: false });
+    w.tracks.push({
+      id: 'day',
+      color: 2,
+      origin: { x: 1000, y: -400 },
+      stops: ['dentist', 'wristband', 'dayEnd'],
+      train: { leg: 0, departedAt: 0 },
+      target: 'next',
+      day: { date: '2026-11-01', budgets: [0, 0, 0], lengths: [3600, 3600, 1800] },
+    });
+    const next = reduce(w, { type: 'delete', id: 'wristband', now });
+    expect(next.tracks.find((t) => t.id === 'day')!.stops).toEqual(['dayEnd']);
+    expect(lifeOf(next).stops).toContain('wristband');
+  });
+
+  test('deleting the rightmost bare marker removes that square only, never the life line', () => {
+    const w = withLife();
+    const next = reduce(w, { type: 'delete', id: 'far', now });
+    expect(lifeOf(next).stops).toEqual(['start', 'wristband']);
+    expect(lifeOf(next).life!.budgets).toHaveLength(2);
+    expect(next.stops.some((s) => s.id === 'far')).toBe(false);
+    expect(next.tracks.map((t) => t.id)).toEqual(['t1', 'life']);
+  });
+});
+
+describe('leave the life line', () => {
+  test('a ring leaves the life line only and its project keeps it, from the middle of the line', () => {
+    const w = withLife();
+    const next = reduce(w, { type: 'leave', trackId: 'life', stopId: 'wristband', now });
+    expect(lifeOf(next).stops).toEqual(['start', 'far']);
+    expect(lifeOf(next).life!.budgets).toHaveLength(2);
+    expect(next.tracks.find((t) => t.id === 't1')).toEqual(w.tracks[0]);
+    expect(next.stops).toContainEqual(stopOf(w, 'wristband'));
+  });
+
+  test('a ring leaves from the last place on the life line too', () => {
+    const w = withLife();
+    w.stops = w.stops.map((s) => (s.id === 'wristband' ? { ...s, x: 6000 } : s));
+    lifeOf(w).stops = ['start', 'far', 'wristband'];
+    const next = reduce(w, { type: 'leave', trackId: 'life', stopId: 'wristband', now });
+    expect(lifeOf(next).stops).toEqual(['start', 'far']);
+    expect(next.tracks.find((t) => t.id === 't1')!.stops).toEqual(['dentist', 'wristband']);
+  });
+});
+
+describe('not done on the life line', () => {
+  test('a bare marker un-done sends the life train for it again, set off now', () => {
+    const w = setLifeTrain(withDoneStops(withLife(), 'start'), { leg: 1, departedAt: 1000 });
+    const next = reduce(w, { type: 'undo', stopId: 'start', now });
+    expect(stopOf(next, 'start').done).toBe(false);
+    expect(lifeOf(next).train).toEqual({ leg: 0, departedAt: now });
+  });
+});
+
+describe('newTrack beside the life line', () => {
+  test('colours by the project lines, so the life line does not shift the first colour', () => {
+    const w: World = { tracks: [{ ...lifeOf(withLife()), stops: [], life: { y: -800, budgets: [] } }], stops: [], lastTouched: null };
+    const next = reduce(w, { type: 'newTrack', id: 'p', goalId: 'g', title: '', origin: { x: 0, y: 0 }, now });
+    expect(next.tracks.find((t) => t.id === 'p')!.color).toBe(0);
   });
 });

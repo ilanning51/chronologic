@@ -1,6 +1,7 @@
 import type { Point } from '../plane/geometry';
 import { legSpan, pathLength, pointAlong, routeThrough, type Route } from '../plane/routing';
 import { isProject } from './day';
+import { isRing, lifeRoute } from './life';
 import { invertProgress, progress } from './motion';
 import type { Stop, Track, Train, World } from './types';
 
@@ -125,11 +126,40 @@ export function dayState(day: Track, world: World, now: number): TrainState {
 }
 
 /**
- * Where any track's train is: the day train is the shadow of the projects, every other train
- * keeps its own clock. Every reader that does not care which kind goes through here.
+ * Where the life train is. On a leg into a ring it is the day train's shadow of the project time.
+ * On a leg into a bare marker no project has a clock to shadow, so it rides real time along the leg
+ * with the project trains' motion profile and waits at the marker.
+ */
+export function lifeState(life: Track, world: World, now: number): TrainState {
+  const byId = new Map(world.stops.map((s) => [s.id, s]));
+  const route = lifeRoute(life, byId);
+  const { leg, departedAt } = life.train;
+  if (leg >= life.stops.length) return parkedState(life, route, leg, departedAt);
+  const { from, to } = legSpan(route, leg);
+  const length = pathLength(route.vertices, from, to);
+  const stopId = life.stops[leg];
+  let fraction: number;
+  let waiting: boolean;
+  if (isRing(world, stopId)) {
+    const budget = life.life?.budgets[leg] ?? 0;
+    fraction = budget === 0 ? 1 : Math.min(1, Math.max(0, 1 - timeLeftAny(world, stopId, now) / budget));
+    waiting = fraction === 1;
+  } else {
+    const tau = length === 0 ? 1 : (now - departedAt) / 1000 / length;
+    fraction = progress(tau);
+    waiting = tau >= 1;
+  }
+  return { leg, parked: false, waiting, seconds: fraction * length, fraction, departedAt, ...pointAlong(route.vertices, from, to, fraction) };
+}
+
+/**
+ * Where any track's train is: the day train and the life train are shadows of the projects, every
+ * other train keeps its own clock. Every reader that does not care which kind goes through here.
  */
 export function stateOf(track: Track, world: World, now: number): TrainState {
-  return track.day ? dayState(track, world, now) : trainState(track, new Map(world.stops.map((s) => [s.id, s])), now);
+  if (track.day) return dayState(track, world, now);
+  if (track.life) return lifeState(track, world, now);
+  return trainState(track, new Map(world.stops.map((s) => [s.id, s])), now);
 }
 
 /** A train on `leg` that has covered `seconds` of a leg `legLength` long, as of now. */
