@@ -1,6 +1,7 @@
 import { distance, type Point } from './geometry';
 import { nearestOnRoute } from './routing';
-import { legSeconds, trackRoute, trainState } from '../model/train';
+import { legSeconds, trainState } from '../model/train';
+import { routeOf } from './metro';
 import type { Stop, World } from '../model/types';
 
 export type Snap = { trackId: string; leg: number; offset: number; at: Point };
@@ -24,7 +25,7 @@ export function snapToAll(world: World, p: Point, now: number, radius: number, i
     if (track.day || (ignore !== undefined && track.stops.includes(ignore))) continue;
     const state = trainState(track, byId, now);
     if (state.parked) continue;
-    const route = trackRoute(track, byId);
+    const route = routeOf(world, track);
     const hit = nearestOnRoute(route, p);
     if (hit.dist > radius || hit.leg < state.leg) continue;
     if (hit.leg === state.leg && hit.offset <= state.seconds) continue;

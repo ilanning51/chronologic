@@ -2,7 +2,7 @@ import { crowdAt } from '../model/crowd';
 import { drawnOnPlane } from '../model/day';
 import { addDays, dayOf } from '../model/days';
 import { tracksOf } from '../model/reducer';
-import { nextIndex, stateOf, trackRoute } from '../model/train';
+import { nextIndex, stateOf } from '../model/train';
 import type { Shape, Size, Track, World } from '../model/types';
 import { type Camera, worldToScreen } from './camera';
 import { CLIP_MARGIN_PX, clipSegment } from './clip';
@@ -10,6 +10,7 @@ import type { Point } from './geometry';
 import { gridFor } from './grid';
 import { labelsWithRoom } from './labels';
 import { showsAt } from './level';
+import { routeOf, trainOn } from './metro';
 import { cutAt, legSpan } from './routing';
 
 export interface StopView {
@@ -89,7 +90,7 @@ export function layoutTrack(
   };
   const inside = (p: Point) => p.x >= grown.x && p.x <= grown.x + grown.w && p.y >= grown.y && p.y <= grown.y + grown.h;
 
-  const route = trackRoute(track, byId);
+  const route = routeOf(world, track);
   const vertices = route.vertices.map((v) => worldToScreen(camera, v));
   const state = stateOf(track, world, now);
 
@@ -146,8 +147,9 @@ export function layoutTrack(
     crowd: index === state.leg ? crowd : 0,
   }));
 
-  const trainAt = worldToScreen(camera, state.at);
-  const train: TrainView = { x: trainAt.x, y: trainAt.y, angle: state.angle, waiting: state.waiting, parked: state.parked };
+  const drawn = trainOn(route, state);
+  const trainAt = worldToScreen(camera, drawn.at);
+  const train: TrainView = { x: trainAt.x, y: trainAt.y, angle: drawn.angle, waiting: state.waiting, parked: state.parked };
 
   return {
     id: track.id,
