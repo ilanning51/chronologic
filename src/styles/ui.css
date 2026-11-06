@@ -775,7 +775,7 @@ button:focus-visible {
   background: var(--muted);
 }
 
-/* The week window: paper in a thick ink frame, centred over the plane (Figma screen 4:4). */
+/* The week window: paper in a thick ink frame, square as the map's own panels, centred over the plane. */
 .week {
   position: fixed;
   left: 50%;
@@ -788,8 +788,8 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   padding: 1.25rem 1.25rem 0;
-  border: 4px solid var(--ink);
-  border-radius: 22px;
+  border: 4px solid var(--plate);
+  border-radius: var(--plate-radius);
   background: var(--paper);
   overflow: hidden;
 }
@@ -797,7 +797,7 @@ button:focus-visible {
 .week-name,
 .week-heading {
   margin: 0;
-  color: var(--muted);
+  color: var(--ink);
   font-size: var(--label);
   font-weight: 700;
   text-transform: uppercase;
@@ -819,7 +819,7 @@ button:focus-visible {
   background: none;
   color: var(--ink);
   font: inherit;
-  font-weight: 700;
+  font-weight: var(--plate-weight);
   cursor: pointer;
 }
 
@@ -831,7 +831,7 @@ button:focus-visible {
 .week-day {
   position: relative;
   flex: 1;
-  border-radius: calc(var(--hit) / 2);
+  border-radius: var(--plate-radius);
 }
 
 .week-day.past {
@@ -850,18 +850,18 @@ button:focus-visible {
   bottom: 0.3rem;
   width: 1rem;
   height: 3px;
-  border-radius: 1.5px;
   transform: translateX(-50%);
   background: var(--track-red);
 }
 
+/* The chosen day is a plate: white words on black, today's red rule still beneath. */
 .week-day[aria-pressed='true'] {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--plate);
+  color: var(--on-plate);
 }
 
 .week-day.today[aria-pressed='true'] {
-  color: var(--paper);
+  color: var(--on-plate);
 }
 
 .week-body {
@@ -950,27 +950,17 @@ button:focus-visible {
   gap: 0.5rem;
   padding: 0.375rem 0.5rem;
   border: 1px solid var(--paper);
-  border-radius: 3px;
+  border-radius: var(--plate-radius);
   overflow: hidden;
-  color: var(--paper);
   font-size: var(--label);
+  font-weight: var(--plate-weight);
   cursor: grab;
   touch-action: pan-y;
 }
 
 .week-block .shape {
-  background: var(--paper);
+  background: currentColor;
   margin-top: 1px;
-}
-
-.week-block.clipped-top {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
-.week-block.clipped-bottom {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
 }
 
 .week-block.done {
@@ -1022,5 +1012,4 @@ button:focus-visible {
 /* Over the Next stops column, a held block would come off its day. */
 .week-column.taking {
   background: var(--grid);
-  border-radius: 12px;
 }
