@@ -38,11 +38,11 @@ const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal
 const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', large: 'large' };
 
 /**
- * One task on the plane, drawn as the map draws a station: an ink disc one line wide, keylined in
- * paper, the same for every task whatever its size or kind; the editor, the tray and the bubbles
- * still show those. A label sits beside it when there is room. A project's goal's name is set in
- * bold capitals, and once done it stays as a terminus, an ink disc with its name in ink, the way a
- * system map keeps its termini. A
+ * One task on the plane, drawn as the map draws a station: an ink disc one line wide, set straight
+ * on its line's colour, a step larger for a larger task, with its kind as a white glyph inside it, nothing for a
+ * step, a triangle for a sub-goal and a square for a goal. Once done it is a plain disc, and a label
+ * sits beside it when there is room. A project's goal's name is set in bold capitals, and once done
+ * it stays as a terminus, a large ink disc with its name, the way a system map keeps its termini. A
  * goal with a picture carries it as a mural above the disc, the thing the line is for. The disc's
  * centre sits on the stop's screen point. The next stop is raised above the rest, so where hit
  * targets crowd it is the one a tap finds. Where a train has long waited, a small crowd of muted
@@ -50,7 +50,7 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
  *
  * A stop on two or more lines is a transfer, as on the map: its disc in a paper capsule with a fine
  * ink outline. Where its lines pass side by side the capsule is laid across every lane, with a disc
- * on each lane, joined by an ink bar.
+ * one line wide on each lane, joined by an ink bar.
  *
  * The name is set beside the station where `place` puts it, after the map: on whichever side
  * covers least, broken onto two lines when it is long.
@@ -58,11 +58,12 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
 /** The paper a transfer leaves around the discs inside it, top and bottom, outline included. */
 const LINK_PAD = (VIGNELLI.capsulePad + VIGNELLI.capsuleOutline) * TRACK_WIDTH;
 export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link, place }: StopProps) {
-  // On lanes 1.1 lines apart, a transfer's one-line discs stand just clear of each other.
-  const tall = DISC_PX + 2 * LINK_PAD;
+  // A transfer's discs are one line wide whatever the task's size, as the map's are, so on lanes
+  // 1.1 lines apart they stand just clear of each other.
+  const tall = DISC_PX[link ? 'small' : stop.size] + 2 * LINK_PAD;
   const kind = ['ring', stop.shape, stop.size];
   const [first, ...others] = link?.marks ?? [];
-  const set: LabelPlace = place ?? { side: 'below', lines: [stop.title], dx: 0, dy: DISC_PX / 2 + LABEL_GAP_PX };
+  const set: LabelPlace = place ?? { side: 'below', lines: [stop.title], dx: 0, dy: DISC_PX[stop.size] / 2 + LABEL_GAP_PX };
   const name = [
     stop.title || 'Unnamed',
     SHAPE_WORDS[stop.shape],

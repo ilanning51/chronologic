@@ -188,9 +188,10 @@
   background: var(--muted);
 }
 
-/* A station: an ink disc one line wide, set straight on its line's colour with no paper around
-   it. The rules for the stop's own shapes come after the shared ones above, so at equal weight
-   they win, and the tray's and the bubbles' glyphs keep their shapes. */
+/* A station, as the map draws one: an ink disc one line wide, a step larger for a larger task,
+   set straight on its line's colour with no paper around it. The rules for the stop's own shapes
+   come after the shared ones above, so at equal weight they win, and the tray's and the bubbles'
+   glyphs keep their shapes. */
 .stop .shape,
 .stop .disc,
 .ghost .shape {
@@ -205,13 +206,44 @@
   transform: translate(-50%, -50%);
 }
 
-/* Every station is the same disc, one line wide, whatever the task's size or kind, as on the map.
-   The size classes are named here only to outweigh the shared shapes' sizes above. */
-.stop .shape.small, .stop .shape.medium, .stop .shape.large, .stop .shape.dot,
-.stop .disc,
-.ghost .shape.small, .ghost .shape.medium, .ghost .shape.large {
-  width: var(--disc);
-  height: var(--disc);
+.stop .shape.small, .stop .disc.small, .ghost .shape.small { width: var(--disc-small); height: var(--disc-small); }
+.stop .shape.medium, .stop .disc.medium, .ghost .shape.medium { width: var(--disc-medium); height: var(--disc-medium); }
+.stop .shape.large, .stop .disc.large, .ghost .shape.large { width: var(--disc-large); height: var(--disc-large); }
+
+/* A passed station is a plain disc, the smallest. */
+.stop .shape.dot {
+  width: var(--disc-small);
+  height: var(--disc-small);
+}
+
+/* The stop's kind, a white glyph in its disc: a triangle for a sub-goal, a square for a goal. */
+.stop .shape.triangle::after,
+.stop .disc.triangle::after,
+.ghost .shape.triangle::after,
+.stop .shape.square::after,
+.stop .disc.square::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--paper);
+}
+
+.stop .shape.triangle::after,
+.stop .disc.triangle::after,
+.ghost .shape.triangle::after {
+  /* A triangle's weight sits low, so it is set a little below the middle to look centred. */
+  top: 54%;
+  width: 52%;
+  height: 46%;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.stop .shape.square::after,
+.stop .disc.square::after {
+  width: 40%;
+  height: 40%;
 }
 
 /* A stop on two or more lines is a transfer, as on the map: its disc inside a paper capsule with a
@@ -221,12 +253,11 @@
   box-shadow: inset 0 0 0 var(--capsule-outline) var(--ink);
 }
 
-.stop .shape.ring.small, .stop .shape.ring.medium, .stop .shape.ring.large {
-  width: calc(var(--disc) + 2 * (var(--capsule-pad) + var(--capsule-outline)));
-  height: calc(var(--disc) + 2 * (var(--capsule-pad) + var(--capsule-outline)));
-}
+.stop .shape.ring.small { width: calc(var(--disc-small) + 2 * (var(--capsule-pad) + var(--capsule-outline))); height: calc(var(--disc-small) + 2 * (var(--capsule-pad) + var(--capsule-outline))); }
+.stop .shape.ring.medium { width: calc(var(--disc-medium) + 2 * (var(--capsule-pad) + var(--capsule-outline))); height: calc(var(--disc-medium) + 2 * (var(--capsule-pad) + var(--capsule-outline))); }
+.stop .shape.ring.large { width: calc(var(--disc-large) + 2 * (var(--capsule-pad) + var(--capsule-outline))); height: calc(var(--disc-large) + 2 * (var(--capsule-pad) + var(--capsule-outline))); }
 
-/* The disc inside the capsule. */
+/* The disc inside the capsule; the kind's glyph lies on top of it. */
 .stop .shape.ring::before {
   content: '';
   position: absolute;
@@ -236,11 +267,12 @@
 }
 
 /* Where the lines pass side by side the capsule is the transfer laid across them, so each disc in
-   it is bare: the ring's own capsule stands down and leaves only its disc. */
+   it is bare and one line wide, as the map's are: the ring's own capsule stands down and leaves
+   only its disc. */
 .stop.linked .shape.ring,
 .stop.linked .disc {
-  width: var(--disc);
-  height: var(--disc);
+  width: var(--disc-small);
+  height: var(--disc-small);
   background: var(--ink);
   box-shadow: none;
 }
@@ -277,7 +309,7 @@
 .stop .mural {
   position: absolute;
   left: 0;
-  top: calc(-1 * (var(--disc) / 2 + 6px));
+  top: calc(-1 * (var(--disc-large) / 2 + 6px));
   width: var(--mural);
   height: var(--mural);
   transform: translate(-50%, -100%);
@@ -315,10 +347,10 @@
   letter-spacing: 0.04em;
 }
 
-/* A done goal stays on the map as an ink disc with its name in ink, however its line dims. */
+/* A done goal stays on the map as a large ink disc with its name in ink, however its line dims. */
 .stop.terminus .shape.dot {
-  width: var(--disc);
-  height: var(--disc);
+  width: var(--disc-large);
+  height: var(--disc-large);
   background: var(--ink);
 }
 

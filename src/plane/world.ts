@@ -1,3 +1,4 @@
+import type { Size } from '../model/types';
 import { VIGNELLI } from './vignelli';
 
 /**
@@ -19,8 +20,12 @@ export const TAP_PX = 44;
 /** A finished stop, drawn as a dot whatever its shape. */
 export const DOT = 10;
 
-/** A station's disc across, in screen pixels: one line wide, as every station on the map is. Matches --disc in the tokens. */
-export const DISC_PX = TRACK_WIDTH * VIGNELLI.disc;
+/**
+ * A station's disc across, in screen pixels, by the task's size: one line wide, as the map's are,
+ * and a step larger for a larger task, small enough steps that every disc still reads as a station.
+ * Matches --disc-* in the tokens.
+ */
+export const DISC_PX: Record<Size, number> = { small: TRACK_WIDTH, medium: TRACK_WIDTH * 1.12, large: TRACK_WIDTH * 1.25 };
 
 /** How close, in screen pixels, a drawing finger has to pass a stop to pick it up. */
 export const SNAP_PX = 24;
