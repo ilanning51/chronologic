@@ -15,6 +15,7 @@ import {
   startDay,
 } from './day';
 import { dayOf } from './days';
+import { moveBlock, place, unplace, type PlaceAction } from './blocks';
 import { keepTrain } from './relocate';
 import { legSeconds, nextIndex, rebase, timeLeftAny, trackRoute, trainState } from './train';
 import type { BubbleTarget, Size, Stop, Track, World } from './types';
@@ -56,6 +57,9 @@ export type Action =
   | { type: 'addToDay'; dayId: string; stopId: string; now: number } // appends before the day's-end square
   | { type: 'moveDayEnd'; dayId: string; x: number; y: number; now: number }
   | { type: 'clearDay'; dayId: string; now: number }
+  | ({ type: 'place' } & PlaceAction) // a stop onto a date as a block ending at `end`
+  | { type: 'moveBlock'; stopId: string; end: number; length: number; now: number }
+  | { type: 'unplace'; stopId: string; now: number }
   | { type: 'tick'; now: number }; // clears every day whose date has passed and begins today's
 
 export const EMPTY: World = { tracks: [], stops: [], lastTouched: null };
@@ -134,7 +138,7 @@ export function undoable(world: World, stopId: string, now: number): boolean {
 }
 
 /** The actions that can change the day's next stop; each ends by settling the day. */
-const SETTLES = new Set<Action['type']>(['newDay', 'addToDay', 'complete', 'undo', 'leave', 'delete']);
+const SETTLES = new Set<Action['type']>(['newDay', 'addToDay', 'complete', 'undo', 'leave', 'delete', 'place', 'moveBlock', 'unplace']);
 
 export function reduce(world: World, action: Action): World {
   const next = apply(world, action);
@@ -466,6 +470,15 @@ function apply(world: World, action: Action): World {
 
     case 'clearDay':
       return clearDay(world, action.dayId);
+
+    case 'place':
+      return place(world, action);
+
+    case 'moveBlock':
+      return moveBlock(world, action);
+
+    case 'unplace':
+      return unplace(world, action);
 
     case 'tick': {
       // Days before today go, unfinished stops and all; today's day, if it was waiting, begins.
