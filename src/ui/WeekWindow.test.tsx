@@ -4,7 +4,7 @@ import { arrivalOf, reach } from '../model/arrive';
 import { dayWith } from '../model/day';
 import { reduce } from '../model/reducer';
 import { createStore } from '../store/store';
-import { PX_PER_HOUR } from '../plane/week';
+import { DAY_HEIGHT, PX_PER_HOUR, yOf } from '../plane/week';
 import type { World } from '../model/types';
 import { weekLines } from '../test/fixtures';
 import { WeekWindow } from './WeekWindow';
@@ -310,5 +310,57 @@ describe('dragging', () => {
     expect(document.querySelector('[data-handle]')).toBeNull();
     drag(block('alpha'), rowY(10) + 5, { el: dayPlane(), y: rowY(14) });
     expect(store.getState()).toBe(w);
+  });
+
+  describe('the hours a held block cannot reach', () => {
+    const shades = () => [...document.querySelectorAll<HTMLElement>('.week-reach')].map((el) => ({ top: parseFloat(el.style.top), height: parseFloat(el.style.height) }));
+    /** Bravo close behind Alpha, so Alpha must arrive on Saturday before Bravo does. */
+    const close = () => {
+      const w = weekLines(now);
+      w.stops = w.stops.map((s) => (s.id === 'bravo' ? { ...s, x: 110000 } : s));
+      return w;
+    };
+    const hold = (from: Element, over: Element, y: number) => {
+      fireEvent.pointerDown(from, { pointerId: 1, button: 0, clientX: 300, clientY: 100 });
+      fireEvent.pointerMove(over, { pointerId: 1, buttons: 1, clientX: 400, clientY: y });
+    };
+
+    test('none are shaded while nothing is held', () => {
+      open(close());
+      expect(shades()).toEqual([]);
+    });
+
+    test("held, a block's day is shaded from its line's latest arrival down, and the shade goes with the drop", () => {
+      const w = close();
+      const latest = reach(w, 'alpha', now)!.latest!;
+      open(w);
+      hold(candidate('alpha'), dayPlane(), rowY(10));
+      const top = yOf('2026-11-07', latest);
+      expect(shades()).toContainEqual({ top, height: DAY_HEIGHT - top });
+      fireEvent.pointerUp(dayPlane(), { pointerId: 1, clientX: 400, clientY: rowY(10) });
+      expect(shades()).toEqual([]);
+    });
+
+    test('a goal, which can run on without end, is shaded only before its earliest', () => {
+      open(weekLines(now));
+      // Dream can be pulled in as far as now, so today is shaded down to noon and no further.
+      act(() => day('2026-11-06').click());
+      hold(candidate('dream'), dayPlane(), rowY(14));
+      expect(shades()).toEqual([{ top: 0, height: 12 * PX_PER_HOUR }]);
+    });
+
+    test('turning the plane to another day mid-drag shades that day instead', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+      open(close());
+      hold(candidate('alpha'), dayPlane(), rowY(10));
+      expect(shades()).not.toContainEqual({ top: 0, height: DAY_HEIGHT });
+      fireEvent.pointerMove(day('2026-11-08'), { pointerId: 1, buttons: 1, clientX: 400, clientY: 40 });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(day('2026-11-08')).toHaveAttribute('aria-pressed', 'true');
+      // Alpha's latest falls on Saturday, so none of Sunday is in reach.
+      expect(shades()).toEqual([{ top: 0, height: DAY_HEIGHT }]);
+    });
   });
 });
