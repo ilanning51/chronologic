@@ -49,12 +49,9 @@
   --track: 12px;
   --dot: 10px;
   --label: calc(var(--track) * 1.056);
-  /* A station: an ink disc one line wide, a little larger for a larger task, keylined in paper. A
-     transfer joins its discs with an ink bar inside a paper capsule with a fine ink outline. */
-  --disc-small: var(--track);
-  --disc-medium: calc(var(--track) * 1.25);
-  --disc-large: calc(var(--track) * 1.5);
-  --disc-ring: calc(var(--track) * 0.1);
+  /* A station: an ink disc one line wide on its line's colour, whatever the task. A transfer joins
+     its discs with an ink bar inside a paper capsule with a fine ink outline. */
+  --disc: var(--track);
   --bar: calc(var(--track) * 0.39);
   --capsule-pad: calc(var(--track) * 0.08);
   --capsule-outline: calc(var(--track) * 0.087);

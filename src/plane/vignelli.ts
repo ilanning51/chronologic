@@ -8,7 +8,8 @@
  * - casing: the white stroke under every line, 10.06 pt, so 0.11 W shows each side of it.
  * - bendCut: where a ribbon turns, its innermost line leaves the straight 0.75 W before the corner;
  *   every line outside it turns about the same centre, so the curves are concentric.
- * - disc: a station is a black disc one W across, keylined in white 0.1 W wide.
+ * - disc: a station is a black disc one W across. (The map keylines it in white 0.1 W wide; here
+ *   the disc sits straight on its line's colour, by Ian's choice.)
  * - bar, capsulePad, capsuleOutline: a transfer joins its discs with a bar 0.39 W thick, inside a
  *   white capsule 0.08 W clear of the discs, outlined in black 0.087 W.
  * - labelSize, labelGap, labelLeading, capCentre: names are set at 1.056 W, 0.25 W clear of the disc,
@@ -19,7 +20,6 @@ export const VIGNELLI = {
   casing: 0.11,
   bendCut: 0.75,
   disc: 1,
-  discRing: 0.1,
   bar: 0.39,
   capsulePad: 0.08,
   capsuleOutline: 0.087,

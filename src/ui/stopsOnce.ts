@@ -93,8 +93,7 @@ export function stopsOnce(views: TrackView[]): PlacedStop[] {
   });
 }
 
-/** The paper ring about a disc, and the capsule a transfer's disc sits in, outline included, in pixels. */
-const RING_PX = TRACK_WIDTH * VIGNELLI.discRing;
+/** The capsule a transfer's disc sits in, outline included, in pixels. */
 const CAPSULE_PX = TRACK_WIDTH * (VIGNELLI.capsulePad + VIGNELLI.capsuleOutline);
 /** A goal's mural above its disc, as --mural sets it, and the paper between them. */
 const MURAL_PX = 72;
@@ -104,11 +103,10 @@ const MURAL_GAP_PX = 6;
 function markOf({ stop, link }: PlacedStop): { extent: LabelItem['mark']; discs: { dx: number; dy: number; r: number }[] } {
   let discs: { dx: number; dy: number; r: number }[];
   if (link) {
-    const r = DISC_PX.small / 2 + CAPSULE_PX;
+    const r = DISC_PX / 2 + CAPSULE_PX;
     discs = link.marks.map((m) => ({ ...m, r }));
   } else {
-    const disc = stop.done ? DISC_PX[stop.terminus ? 'large' : 'small'] : DISC_PX[stop.size];
-    discs = [{ dx: 0, dy: 0, r: disc / 2 + (stop.ring && !stop.done ? CAPSULE_PX : 0) + RING_PX }];
+    discs = [{ dx: 0, dy: 0, r: DISC_PX / 2 + (stop.ring && !stop.done ? CAPSULE_PX : 0) }];
   }
   const extent = {
     left: Math.min(...discs.map((d) => d.dx - d.r)),
@@ -117,7 +115,7 @@ function markOf({ stop, link }: PlacedStop): { extent: LabelItem['mark']; discs:
     bottom: Math.max(...discs.map((d) => d.dy + d.r)),
   };
   // A goal's picture stands above its disc, so no name goes there.
-  if (stop.image !== undefined) extent.top = Math.min(extent.top, -(DISC_PX.large / 2 + MURAL_GAP_PX + MURAL_PX));
+  if (stop.image !== undefined) extent.top = Math.min(extent.top, -(DISC_PX / 2 + MURAL_GAP_PX + MURAL_PX));
   return { extent, discs };
 }
 

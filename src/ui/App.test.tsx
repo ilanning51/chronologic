@@ -55,7 +55,7 @@ test('a done goal stays as a terminus: a large ink dot that keeps its name in in
   // A passed step is an ordinary dot.
   expect(screen.getByRole('button', { name: /^Dentist/ })).not.toHaveClass('terminus');
   const dot = /\.stop\.terminus \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
-  expect(dot).toMatch(/width:\s*var\(--disc-large\)/);
+  expect(dot).toMatch(/width:\s*var\(--disc\)/);
   expect(dot).toMatch(/background:\s*var\(--ink\)/);
   expect(/\.stop\.terminus \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
   // The terminus rules come after the finished and done ones, so they win at equal weight.
