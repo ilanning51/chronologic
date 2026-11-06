@@ -86,6 +86,9 @@ const FLY_MS = 400;
 /** How long the map takes to slide into place when the week window closes. */
 const SLIDE_MS = 500;
 
+/** Fast at first, settling at the end: k from 0 to 1 eases out along a cubic. */
+const easeOut = (k: number) => 1 - (1 - k) ** 3;
+
 const reducedMotion = () =>
   typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -114,7 +117,7 @@ function useFly(setCamera: (c: Camera) => void) {
       const start = performance.now();
       const step = (t: number) => {
         const k = Math.min(1, (t - start) / FLY_MS);
-        setCamera(k >= 1 ? to : interpolate(from, to, 1 - (1 - k) ** 3));
+        setCamera(k >= 1 ? to : interpolate(from, to, easeOut(k)));
         frame.current = k >= 1 ? null : window.requestAnimationFrame(step);
       };
       frame.current = window.requestAnimationFrame(step);
@@ -1078,7 +1081,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     .filter((t) => drawnOnPlane(t, dayOf(time)))
     .map((t) => layoutTrack(t, drawn, camera, time, viewport, shown));
   // Whether a train runs is the live world's: a line still hidden by the slide may be rolling.
-  const rolling = world.tracks.some((t) => drawnOnPlane(t, dayOf(time)) && !stateOf(t, world, time).parked);
+  const rolling =
+    drawn === world
+      ? views.some((v) => !v.train.parked)
+      : world.tracks.some((t) => drawnOnPlane(t, dayOf(time)) && !stateOf(t, world, time).parked);
 
   // Opening the week window holds the map as it stands. Closing it, by any path, slides each stop
   // and line start the window moved from there to its place now, easing out; under reduced
@@ -1108,7 +1114,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         setHeldFrom(null);
         return;
       }
-      setSlid(1 - (1 - k) ** 3);
+      setSlid(easeOut(k));
       slideFrame.current = window.requestAnimationFrame(step);
     };
     slideFrame.current = window.requestAnimationFrame(step);
