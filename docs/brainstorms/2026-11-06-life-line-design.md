@@ -167,3 +167,14 @@ The others are not built and not decided:
 - crowds only on the main line;
 - a siding: a tile dropped on bare paper becomes a lineless stop;
 - a cab view on tapping the train (unpicked in the rewards batch).
+
+## Resolved in planning
+
+Planning found four places where the notes above disagree with each other or with the app, and settled them.
+
+- A marker has no default distance. The 90 days above would put the first marker about 78,000 pixels off the screen at the opening zoom. A marker lands where the square tile is let go, which must be right of the life train, and its leg is that distance in time.
+- A ring leaves the life line by the Life chip in the editor, the existing interchange rule, and not by dragging it off. A drag on the life line moves along it only. Leaving leaves nothing behind, and the project keeps its goal. Deleting the project is different: the square stays on the life line as a marker, with its name, picture, size and done flag.
+- A bare marker completes on a tap whether or not the life train has arrived, as every next stop does; the "must be waiting" above is dropped. A ring's tap belongs to its project, so the life line never completes a ring, which would end the goal before its steps.
+- The zoom range reaches 5e-7, because at the old floor the 5-year unit could not be reached on a landscape phone. Framing a project never zooms wider than the 30-day unit, or a leg of years would open on a view with nothing of it in sight. The by-line rule that hides project lines and rings lives in the layout, not in the per-shape levels.
+
+A done ring on the life line becomes a landmark, a small ink square with its name, and not a dot as the "Ian's decisions" list says of a ring further along that is completed early.
