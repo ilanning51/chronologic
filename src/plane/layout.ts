@@ -10,10 +10,10 @@ import type { Point } from './geometry';
 import { gridFor } from './grid';
 import { labelsWithRoom } from './labels';
 import { showsAt } from './level';
-import { shiftLine } from './draw';
+import { roundLine, shiftLine } from './draw';
 import { lanesOf, routeOf } from './metro';
 import { cutAt, pathLength, pointAlong } from './routing';
-import { LANE_PX } from './world';
+import { BEND_PX, LANE_PX } from './world';
 
 export interface StopView {
   id: string;
@@ -92,15 +92,18 @@ export function layoutTrack(
   };
   const inside = (p: Point) => p.x >= grown.x && p.x <= grown.x + grown.w && p.y >= grown.y && p.y <= grown.y + grown.h;
 
-  // The line as the map draws it, in screen pixels: its chosen bends, and its lane wherever it
-  // shares a road. A line not on the plane has the road to itself.
+  // The line as the map draws it, in screen pixels: its chosen bends, its lane wherever it shares
+  // a road, and every bend rounded. A line not on the plane has the road to itself.
   const lanes = lanesOf(world, today).get(track.id);
   const route = lanes?.route ?? routeOf(world, track, today);
   const shift = lanes?.shift ?? route.vertices.slice(1).map(() => ({ x: 0, y: 0 }));
-  const line = shiftLine(
-    route.vertices.map((v) => worldToScreen(camera, v)),
-    route.stationAt,
-    shift.map((o) => ({ x: o.x * LANE_PX, y: o.y * LANE_PX })),
+  const line = roundLine(
+    shiftLine(
+      route.vertices.map((v) => worldToScreen(camera, v)),
+      route.stationAt,
+      shift.map((o) => ({ x: o.x * LANE_PX, y: o.y * LANE_PX })),
+    ),
+    BEND_PX,
   );
   const state = stateOf(track, world, now);
 
