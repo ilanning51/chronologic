@@ -1,5 +1,5 @@
 import { crowdAt } from '../model/crowd';
-import { drawnOnPlane } from '../model/day';
+import { drawnOnPlane, isProject } from '../model/day';
 import { addDays, dayOf } from '../model/days';
 import { tracksOf } from '../model/reducer';
 import { nextIndex, stateOf, trackRoute } from '../model/train';
@@ -140,8 +140,8 @@ export function layoutTrack(
     label: labeled.has(stop.id),
     next: index === next,
     goal: index === goalIndex,
-    projectGoal: index === goalIndex && !track.day,
-    terminus: index === goalIndex && !track.day && stop.done,
+    projectGoal: index === goalIndex && isProject(track),
+    terminus: index === goalIndex && isProject(track) && stop.done,
     ring: !stop.done && tracksOf(world, stop.id).filter(({ track: t }) => drawnOnPlane(t, today)).length >= 2,
     crowd: index === state.leg ? crowd : 0,
   }));
@@ -155,7 +155,7 @@ export function layoutTrack(
     finished: state.parked,
     day: track.day !== undefined,
     tomorrow: track.day !== undefined && track.day.date === addDays(today, 1),
-    sketch: !track.day && track.stops.length === 1,
+    sketch: isProject(track) && track.stops.length === 1,
     segments,
     behind,
     origin: vertices[0],

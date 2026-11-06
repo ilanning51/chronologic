@@ -1,3 +1,4 @@
+import { isProject } from '../model/day';
 import { nextIndex, timeLeft, trainState } from '../model/train';
 import type { Track, World } from '../model/types';
 
@@ -12,7 +13,7 @@ export function soonestTrack(world: World, now: number): Track | null {
   let best: { track: Track; left: number } | null = null;
 
   for (const track of world.tracks) {
-    if (track.day || trainState(track, byId, now).parked) continue;
+    if (!isProject(track) || trainState(track, byId, now).parked) continue;
     const next = nextIndex(track, byId);
     // Rolling through done stops to a done goal: nothing is left to arrive at.
     if (next === null) continue;

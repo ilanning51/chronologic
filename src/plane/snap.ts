@@ -1,5 +1,6 @@
 import { distance, type Point } from './geometry';
 import { nearestOnRoute } from './routing';
+import { isProject } from '../model/day';
 import { legSeconds, trackRoute, trainState } from '../model/train';
 import type { Stop, World } from '../model/types';
 
@@ -21,7 +22,7 @@ export function snapToAll(world: World, p: Point, now: number, radius: number, i
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const hits: (Snap & { dist: number })[] = [];
   for (const track of world.tracks) {
-    if (track.day || (ignore !== undefined && track.stops.includes(ignore))) continue;
+    if (!isProject(track) || (ignore !== undefined && track.stops.includes(ignore))) continue;
     const state = trainState(track, byId, now);
     if (state.parked) continue;
     const route = trackRoute(track, byId);

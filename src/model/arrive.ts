@@ -1,5 +1,6 @@
 import { distance, type Point } from '../plane/geometry';
 import { pathLength, pointAlong, routeThrough } from '../plane/routing';
+import { isProject } from './day';
 import { invertProgress } from './motion';
 import { relocate } from './relocate';
 import { legSeconds, timeLeft, timeLeftAny, trackRoute, trainState } from './train';
@@ -30,7 +31,7 @@ export function governingLine(world: World, stopId: string, now: number): { trac
   let best: { track: Track; index: number; left: number } | null = null;
   for (const track of world.tracks) {
     const index = track.stops.indexOf(stopId);
-    if (track.day || index < 0) continue;
+    if (!isProject(track) || index < 0) continue;
     const state = trainState(track, byId, now);
     if (state.parked || index < state.leg) continue;
     const left = timeLeft(track, stopId, byId, now);

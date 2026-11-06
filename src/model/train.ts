@@ -1,5 +1,6 @@
 import type { Point } from '../plane/geometry';
 import { legSpan, pathLength, pointAlong, routeThrough, type Route } from '../plane/routing';
+import { isProject } from './day';
 import { invertProgress, progress } from './motion';
 import type { Stop, Track, Train, World } from './types';
 
@@ -87,7 +88,7 @@ export function timeLeftAny(world: World, stopId: string, now: number): number {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   let best: number | null = null;
   for (const track of world.tracks) {
-    if (track.day || !track.stops.includes(stopId)) continue;
+    if (!isProject(track) || !track.stops.includes(stopId)) continue;
     const left = timeLeft(track, stopId, byId, now);
     if (best === null || left < best) best = left;
   }

@@ -1,5 +1,5 @@
 import { arrivalOf, endOf, governingLine } from '../model/arrive';
-import { dayFor, dayWith, isDayEnd } from '../model/day';
+import { dayFor, dayWith, isDayEnd, isProject } from '../model/day';
 import { addDays, dayOf, endOfDate, parseDate, startOfDate } from '../model/days';
 import { nextIndex, trainState } from '../model/train';
 import type { Shape, World } from '../model/types';
@@ -94,7 +94,7 @@ export function hourLabel(hour: number): string {
 
 /** The colour of the line a stop belongs to: the line that reaches it first, or for a done stop its first project. */
 function colorOf(world: World, stopId: string, now: number): number | null {
-  const line = governingLine(world, stopId, now)?.track ?? world.tracks.find((t) => !t.day && t.stops.includes(stopId));
+  const line = governingLine(world, stopId, now)?.track ?? world.tracks.find((t) => isProject(t) && t.stops.includes(stopId));
   return line ? line.color : null;
 }
 
@@ -214,7 +214,7 @@ export function candidates(world: World, now: number): Candidate[] {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const found = new Map<string, Candidate>();
   for (const track of world.tracks) {
-    if (track.day || trainState(track, byId, now).parked) continue;
+    if (!isProject(track) || trainState(track, byId, now).parked) continue;
     const from = nextIndex(track, byId);
     if (from === null) continue;
     for (let i = from; i < track.stops.length; i++) {

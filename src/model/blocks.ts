@@ -1,5 +1,5 @@
 import { endOf, slideTo } from './arrive';
-import { dayFor, dayWith, defaultLength, freshDayBudget, isDayEnd, offOtherDays, withStopBeforeEnd } from './day';
+import { dayFor, dayWith, defaultLength, freshDayBudget, isDayEnd, isProject, offOtherDays, withStopBeforeEnd } from './day';
 import { dayOf, endOfDate, startOfDate } from './days';
 import { timeLeftAny } from './train';
 import type { Stop, Track, World } from './types';
@@ -62,7 +62,7 @@ function blockable(world: World, stop: Stop | undefined): stop is Stop {
     stop !== undefined &&
     !stop.done &&
     !isDayEnd(world, stop.id) &&
-    world.tracks.some((t) => !t.day && t.stops.includes(stop.id))
+    world.tracks.some((t) => isProject(t) && t.stops.includes(stop.id))
   );
 }
 

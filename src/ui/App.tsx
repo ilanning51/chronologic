@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
-import { dayWith, drawnOnPlane, isDayEnd } from '../model/day';
+import { dayWith, drawnOnPlane, isDayEnd, isProject, isShadow } from '../model/day';
 import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
@@ -65,7 +65,7 @@ export interface AppProps {
  * at hand: a goal also on the day is still a goal, whichever line comes first.
  */
 function homeOf(world: World, stopId: string) {
-  return tracksOf(world, stopId).find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
+  return tracksOf(world, stopId).find(({ track, index }) => isProject(track) && index === track.stops.length - 1)?.track;
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -397,7 +397,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const byId = new Map(state.stops.map((s) => [s.id, s]));
     const home = homeOf(state, stop.id);
     const goal = home !== undefined;
-    const projects = tracksOf(state, stop.id).filter(({ track: t }) => !t.day);
+    const projects = tracksOf(state, stop.id).filter(({ track: t }) => isProject(t));
     const project = projects.find(({ track: t, index }) => nextIndex(t, byId) === index) ?? projects[0];
     const track = home ?? project?.track;
     if (!track) return;
@@ -432,7 +432,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const under = screenToWorld(cameraRef.current, at);
     const train = trainState(track, new Map(state.stops.map((s) => [s.id, s])), now());
     // Only a train still on the first leg has a leg that changes; any other keeps its own clock.
-    const first = !track.day && !train.parked && train.leg === 0;
+    const first = isProject(track) && !train.parked && train.leg === 0;
     originDrag.current = {
       track: trackId,
       grip: { x: track.origin.x - under.x, y: track.origin.y - under.y },
@@ -455,7 +455,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     // moves and the other stays. A leg with both ends in the group, or neither, keeps its clock.
     const keep: Record<string, number> = {};
     for (const t of state.tracks) {
-      if (t.day) continue;
+      if (!isProject(t)) continue;
       const train = trainState(t, byId, now());
       if (train.parked) continue;
       const fromMoves = train.leg === 0 ? t.id in origins : t.stops[train.leg - 1] in stops;
@@ -585,7 +585,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const stop = state.stops.find((s) => s.id === stopId);
     if (!stop || stop.done || isDayEnd(state, stopId)) return;
     const tracks = tracksOf(state, stopId)
-      .filter(({ track }) => !track.day)
+      .filter(({ track }) => isProject(track))
       .map(({ track }) => track.id);
     if (tracks.length === 0) return;
     splitDrag.current = { shape: stop.shape === 'square' ? 'triangle' : 'circle', size: stop.size, tracks, hits: [] };
@@ -670,7 +670,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const dayCandidates = (skip: string[]) => {
     const state = store.getState();
     return state.stops.filter(
-      (s) => !s.done && !skip.includes(s.id) && state.tracks.some((t) => !t.day && t.stops.includes(s.id)),
+      (s) => !s.done && !skip.includes(s.id) && state.tracks.some((t) => isProject(t) && t.stops.includes(s.id)),
     );
   };
 
@@ -1085,7 +1085,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
           .filter(({ track, index }) => index !== track.stops.length - 1)
           .map(({ track }) => ({
             trackId: track.id,
-            color: track.day ? null : track.color,
+            color: isShadow(track) ? null : track.color,
             // A chip is named by its line, so chips the same shape can be told apart by ear.
             name: track.day ? dayName(track.day.date, time) : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
           }))

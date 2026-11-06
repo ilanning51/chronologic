@@ -44,6 +44,16 @@ export interface DayPlan {
   placed?: true;
 }
 
+/**
+ * What makes a track the life line: one per world, a straight horizontal track at height `y`
+ * through the squares that stand for a whole life's goals. `budgets` runs alongside `stops`, the
+ * project time the life train shadows on each leg, as a day's does.
+ */
+export interface LifePlan {
+  y: number;
+  budgets: number[];
+}
+
 export interface Track {
   id: string;
   /** Index into the palette. */
@@ -55,6 +65,8 @@ export interface Track {
   target: BubbleTarget;
   /** Set on a day track, one per date. It never keeps a stop alive. */
   day?: DayPlan;
+  /** Set on the life line, one per world. It never keeps a stop alive. */
+  life?: LifePlan;
 }
 
 export interface World {

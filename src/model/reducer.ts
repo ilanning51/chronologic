@@ -10,6 +10,8 @@ import {
   defaultLength,
   freshDayBudget,
   isDayEnd,
+  isProject,
+  isShadow,
   offOtherDays,
   settleDay,
   startDay,
@@ -135,7 +137,7 @@ export function undoable(world: World, stopId: string, now: number): boolean {
   const byId = stopsById(world);
   if (!byId.get(stopId)?.done) return false;
   const found = tracksOf(world, stopId);
-  return found.length > 0 && found.every(({ track, index }) => track.day || index >= trainState(track, byId, now).leg - 1);
+  return found.length > 0 && found.every(({ track, index }) => isShadow(track) || index >= trainState(track, byId, now).leg - 1);
 }
 
 /** The actions that can change the day's next stop; each ends by settling the day. */
@@ -300,7 +302,7 @@ function apply(world: World, action: Action): World {
       if (found.length === 0) return world;
       if (isDayEnd(world, id)) return clearDay(world, dayWith(world, id)!.id);
       // A goal's home is a project: a stop last on the day line is only the day's last errand.
-      const home = found.find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
+      const home = found.find(({ track, index }) => isProject(track) && index === track.stops.length - 1)?.track;
       if (home) {
         const rest: World = {
           ...world,
@@ -308,12 +310,12 @@ function apply(world: World, action: Action): World {
           lastTouched: world.lastTouched === home.id ? null : world.lastTouched,
         };
         // Only projects keep a stop alive: the goal goes, and every stop no other project lists.
-        const gone = home.stops.filter((s) => s === id || !rest.tracks.some((t) => !t.day && t.stops.includes(s)));
+        const gone = home.stops.filter((s) => s === id || !rest.tracks.some((t) => isProject(t) && t.stops.includes(s)));
         return gone.reduce((w, s) => withoutStop(w, s, now), rest);
       }
       const byId = stopsById(world);
       // A parked day train blocks nothing: it shadows the projects, it does not hold their stops.
-      if (found.some(({ track }) => !track.day && trainState(track, byId, now).parked)) return world;
+      if (found.some(({ track }) => isProject(track) && trainState(track, byId, now).parked)) return world;
       return withoutStop(world, id, now);
     }
 
@@ -322,7 +324,7 @@ function apply(world: World, action: Action): World {
       const track = world.tracks.find((t) => t.id === trackId);
       const stop = world.stops.find((s) => s.id === stopId);
       // Only projects take a join: the day is filled by the sun drag and the day's-end drag.
-      if (!track || track.day || !stop || stop.done || track.stops.includes(stopId)) return world;
+      if (!track || isShadow(track) || !stop || stop.done || track.stops.includes(stopId)) return world;
       // Ahead of the derived train and before the goal, so a square never lands last.
       const state = trainState(track, stopsById(world), now);
       if (leg < state.leg || leg > track.stops.length - 1) return world;
@@ -343,7 +345,7 @@ function apply(world: World, action: Action): World {
       // A track's last stop is its goal, a square's home: that one stays.
       if (!track || index < 0 || index === track.stops.length - 1) return world;
       // Only projects keep a stop alive, so leaving its last project is delete, day and all.
-      const kept = world.tracks.some((t) => t.id !== trackId && !t.day && t.stops.includes(stopId));
+      const kept = world.tracks.some((t) => t.id !== trackId && isProject(t) && t.stops.includes(stopId));
       if (!kept) return reduce(world, { type: 'delete', id: stopId, now });
       return { ...withoutStop(world, stopId, now, trackId), lastTouched: trackId };
     }
@@ -358,7 +360,7 @@ function apply(world: World, action: Action): World {
       // A line whose next stop this is departs too; where it lies further ahead, the train
       // passes through it later. The day train is left to settleDay, which writes its budget.
       const tracks = world.tracks.map((t) => {
-        if (t.day) return t;
+        if (isShadow(t)) return t;
         if (t.id === trackId) return { ...t, train: { leg: next + 1, departedAt: now } };
         const i = t.stops.indexOf(doneId);
         return i >= 0 && nextIndex(t, byId) === i ? { ...t, train: { leg: i + 1, departedAt: now } } : t;
@@ -386,12 +388,12 @@ function apply(world: World, action: Action): World {
       const undone: World = {
         tracks: world.tracks.map((t) => {
           const i = t.stops.indexOf(id);
-          if (t.day || i < 0 || i !== trainState(t, byId, now).leg - 1) return t;
+          if (isShadow(t) || i < 0 || i !== trainState(t, byId, now).leg - 1) return t;
           const length = legSeconds(trackRoute(t, after), i);
           return { ...t, train: rebase(i, length, length, now) };
         }),
         stops,
-        lastTouched: (tracksOf(world, id).find(({ track }) => !track.day) ?? tracksOf(world, id)[0]).track.id,
+        lastTouched: (tracksOf(world, id).find(({ track }) => isProject(track)) ?? tracksOf(world, id)[0]).track.id,
       };
       // The day train waits there too, on budget 0, however far past it it was.
       return dayBackTo(undone, id, now);
@@ -416,7 +418,7 @@ function apply(world: World, action: Action): World {
       const byId = stopsById(cleared);
       // Pending stops some project lists, each once, in the order drawn. The old end square is gone.
       const picked = [...new Set(action.stops)].filter(
-        (s) => byId.get(s)?.done === false && cleared.tracks.some((t) => !t.day && t.stops.includes(s)),
+        (s) => byId.get(s)?.done === false && cleared.tracks.some((t) => isProject(t) && t.stops.includes(s)),
       );
       if (picked.length === 0) return world;
       // A stop sits on one day at most: drawn onto this one, it comes off any other.
@@ -442,7 +444,7 @@ function apply(world: World, action: Action): World {
       const day = world.tracks.find((t) => t.id === dayId);
       const stop = world.stops.find((s) => s.id === stopId);
       if (!day?.day || !stop || stop.done || day.stops.includes(stopId)) return world;
-      if (!world.tracks.some((t) => !t.day && t.stops.includes(stopId))) return world;
+      if (!world.tracks.some((t) => isProject(t) && t.stops.includes(stopId))) return world;
       // A finished day has parked past its end square: nothing goes behind it.
       if (day.train.leg > day.stops.length - 1) return world;
       // A stop sits on one day at most: added to this one, it comes off any other.
