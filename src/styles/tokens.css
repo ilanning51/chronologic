@@ -1,18 +1,20 @@
 :root {
-  /* Colors. Opaque only, measured against paper in the design doc. */
-  --paper: #EEEBE5;
-  --ink: #2B2420;
-  --muted: #6B635C;
+  /* Colors, after the New York subway map. Opaque only. The ink is 18.9:1 on the day paper and
+     the muted grey 5.9:1, 5.1:1 on the night paper; daylight.ts drifts --paper and --grid. */
+  --paper: #FFFFFF;
+  --ink: #111111;
+  --muted: #636466;
   /* The grid's hairlines: a shade off the paper, so a square is seen and never read. */
-  --grid: #E0DCD5;
-  --track-blue: #2440A4;
-  --track-ochre: #A67C00;
-  --track-green: #1F7A3A;
-  --track-red: #C4251F;
-  --track-plum: #6B2D8B;
-  --track-teal: #0F6E7A;
-  --track-rust: #B5500F;
-  --track-slate: #3D4F63;
+  --grid: #EDEDED;
+  /* The MTA trunk colours, in palette.ts order. */
+  --track-blue: #0039A6;
+  --track-yellow: #FCCC0A;
+  --track-green: #00933C;
+  --track-red: #EE352E;
+  --track-purple: #B933AD;
+  --track-lime: #6CBE45;
+  --track-orange: #FF6319;
+  --track-brown: #996633;
 
   /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
   --track: 10px;

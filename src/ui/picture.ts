@@ -13,8 +13,8 @@ import { DAY_PAPER } from '../plane/daylight';
 export const PICTURE_PX = 16;
 
 /** The ink and the muted ink, as tokens.css sets them. */
-const INK = '#2B2420';
-const MUTED = '#6B635C';
+const INK = '#111111';
+const MUTED = '#636466';
 
 /** The inks a picture may be painted in: paper, ink, muted, and the eight track colours. */
 export const INKS: readonly string[] = [DAY_PAPER, INK, MUTED, ...PALETTE.map((c) => c.color)];
