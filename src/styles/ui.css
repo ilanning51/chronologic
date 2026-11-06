@@ -941,3 +941,28 @@ button:focus-visible {
   border-top: 2px solid var(--track-red);
   pointer-events: none;
 }
+
+/* The stretch handle: the block's bottom third, between 8 and 16 px. */
+.week-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  cursor: ns-resize;
+}
+
+/* A block in the hand: its ghost stands in for it until the drop. */
+.week-block.lifted {
+  visibility: hidden;
+}
+
+.week-ghost {
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Over the Next stops column, a held block would come off its day. */
+.week-column.taking {
+  background: var(--grid);
+  border-radius: 12px;
+}

@@ -1215,7 +1215,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         {ghost && <Ghost {...ghost} />}
         {dayGhost && <DayGhost points={dayGhost} />}
       </Plane>
-      {weekOpen && <WeekWindow world={world} now={time} />}
+      {weekOpen && <WeekWindow store={store} now={time} clock={now} />}
       <WeekButton open={weekOpen} onToggle={toggleWeek} />
     </>
   );
