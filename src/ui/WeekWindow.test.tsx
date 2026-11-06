@@ -85,7 +85,7 @@ describe('the day plane', () => {
     const block = document.querySelector('[data-block="alpha"]') as HTMLElement;
     expect(block).toHaveTextContent('alpha');
     expect(block).toHaveTextContent('10:00 – 11:00');
-    expect(block.style.background).toBe('var(--track-blue)');
+    expect(block.style.background).toBe('var(--track-blue-fill)');
     // Another day has nothing on it.
     act(() => day('2026-11-08').click());
     expect(document.querySelector('[data-block]')).toBeNull();

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { colorVar, onColorVar } from '../model/palette';
+import { colorVar, fillVar, onColorVar } from '../model/palette';
 import type { Shape } from '../model/types';
 
 /** Anchors the pill by the edge it hangs from, so it always lies inside the window. */
@@ -45,6 +45,8 @@ export function Bubble({ track, color, shape, title, image, x, y, side, soonest 
   const ink = day ? 'var(--ink)' : sketch ? 'var(--muted)' : colorVar(color);
   // Words set on that colour: white on the ink and the muted grey, else the line's own.
   const on = day || sketch ? 'var(--on-plate)' : onColorVar(color);
+  // The line's colour where words sit on it, a shade darker for blue and brown.
+  const fill = day ? 'var(--ink)' : sketch ? 'var(--muted)' : fillVar(color);
   return (
     <button
       type="button"
@@ -52,7 +54,7 @@ export function Bubble({ track, color, shape, title, image, x, y, side, soonest 
       data-target="bubble"
       data-track={track}
       aria-label={`${title || 'Unnamed'}, ${SHAPE_WORDS[shape]}. Tap to change what this line points at.`}
-      style={{ left: x, top: y, transform: ANCHOR[side], ['--track-color' as string]: ink, ['--track-on' as string]: on } as CSSProperties}
+      style={{ left: x, top: y, transform: ANCHOR[side], ['--track-color' as string]: ink, ['--track-on' as string]: on, ['--track-fill' as string]: fill } as CSSProperties}
     >
       {image !== undefined ? (
         <img aria-hidden="true" alt="" className="mural" src={image} draggable={false} />

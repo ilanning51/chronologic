@@ -1,5 +1,12 @@
 import { expect, test } from 'vitest';
-import { colorVar, onColorVar, PALETTE } from './palette';
+import { colorVar, fillVar, INK, onColorVar, PALETTE } from './palette';
+
+test("a fill is the line's own colour, or a shade of it a few steps darker", () => {
+  for (const { color, fill } of PALETTE) {
+    const step = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16) - parseInt(fill.slice(i, i + 2), 16));
+    expect(step.every((d) => d >= 0 && d <= 12)).toBe(true);
+  }
+});
 
 test('eight distinct opaque track colours, each with a pitch, as CSS variables', () => {
   expect(PALETTE).toHaveLength(8);
@@ -22,16 +29,17 @@ const contrast = (a: string, b: string) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-test("words on a line's colour are whichever of ink and white reads better, at 4.5:1 or more", () => {
-  for (const { color, on } of PALETTE) {
-    expect(['#111111', '#FFFFFF']).toContain(on);
-    const other = on === '#111111' ? '#FFFFFF' : '#111111';
-    expect(contrast(color, on)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(color, on)).toBeGreaterThan(contrast(color, other));
+test("words on a line's fill are whichever of ink and white reads better, at 4.5:1 or more", () => {
+  for (const { fill, on } of PALETTE) {
+    expect([INK, '#FFFFFF']).toContain(on);
+    const other = on === INK ? '#FFFFFF' : INK;
+    expect(contrast(fill, on)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(fill, on)).toBeGreaterThan(contrast(fill, other));
   }
-  // Yellow takes ink, as the N, Q, R and W bullets do; blue takes white.
-  expect(PALETTE[1].on).toBe('#111111');
-  expect(PALETTE[0].on).toBe('#FFFFFF');
+  // Yellow takes ink, as the N, Q, R and W bullets do; red takes white, as the 1, 2 and 3 do.
+  expect(PALETTE[1].on).toBe(INK);
+  expect(PALETTE[3].on).toBe('#FFFFFF');
+  expect(fillVar(0)).toBe('var(--track-blue-fill)');
   expect(onColorVar(0)).toBe('var(--track-blue-on)');
   expect(onColorVar(9)).toBe('var(--track-yellow-on)'); // wraps
 });

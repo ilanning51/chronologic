@@ -3,7 +3,7 @@ import { reach } from '../model/arrive';
 import { dayWith, defaultLength } from '../model/day';
 import { addDays, dayOf } from '../model/days';
 import { newId } from '../model/ids';
-import { colorVar, onColorVar } from '../model/palette';
+import { colorVar, fillVar, onColorVar } from '../model/palette';
 import { type Action, reduce } from '../model/reducer';
 import type { Shape } from '../model/types';
 import {
@@ -60,8 +60,9 @@ function handlePx(height: number): number {
   return Math.min(16, Math.max(8, height / 3));
 }
 
+/** A block is filled with its line's colour, the shade words read on. */
 function fill(color: number | null, muted: boolean): string {
-  return muted || color === null ? 'var(--muted)' : colorVar(color);
+  return muted || color === null ? 'var(--muted)' : fillVar(color);
 }
 
 /** Words on a block take its colour's own text colour, as words on a route bullet do; paper on the muted grey. */

@@ -1054,7 +1054,9 @@ test('the soonest line fills its bubble', () => {
   expect(bubble('day')).toHaveClass('day');
   expect(bubble('t1')).not.toHaveClass('day');
   const filled = cssRule('.bubble.soonest');
-  expect(filled).toMatch(/background:\s*var\(--track-color\)/);
+  // Filled with the shade of the line that words read on.
+  expect(bubble('t1').style.getPropertyValue('--track-fill')).toBe('var(--track-blue-fill)');
+  expect(filled).toMatch(/background:\s*var\(--track-fill\)/);
   expect(filled).toMatch(/color:\s*var\(--track-on\)/);
   expect(cssRule('.bubble.soonest .shape')).toMatch(/background:\s*var\(--track-on\)/);
 });

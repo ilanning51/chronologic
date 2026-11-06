@@ -2,25 +2,34 @@
   /* Colors, after the New York subway map. Opaque only. The ink is 18.9:1 on the day paper and
      the muted grey 5.9:1, 5.1:1 on the night paper; daylight.ts drifts --paper and --grid. */
   --paper: #FFFFFF;
-  --ink: #111111;
+  --ink: #1C1B1A;
   --muted: #636466;
   /* The grid's hairlines: a shade off the paper, so a square is seen and never read. */
   --grid: #EDEDED;
-  /* The MTA trunk colours, in palette.ts order. */
-  --track-blue: #0039A6;
-  --track-yellow: #FCCC0A;
-  --track-green: #00933C;
-  --track-red: #EE352E;
-  --track-purple: #B933AD;
-  --track-lime: #6CBE45;
-  --track-orange: #FF6319;
-  --track-brown: #996633;
-  /* Words on a line's colour, palette.ts's `on`: whichever of ink and white reads better. */
+  /* The MTA trunk colours as the 2025 map prints them, in palette.ts order. */
+  --track-blue: #007EC5;
+  --track-yellow: #FFD200;
+  --track-green: #009862;
+  --track-red: #E70B40;
+  --track-purple: #AF378A;
+  --track-lime: #72B030;
+  --track-orange: #F18402;
+  --track-brown: #A7752A;
+  /* A line's colour where words sit on it, palette.ts's `fill`: blue and brown a shade darker. */
+  --track-blue-fill: #007CC2;
+  --track-yellow-fill: var(--track-yellow);
+  --track-green-fill: var(--track-green);
+  --track-red-fill: var(--track-red);
+  --track-purple-fill: var(--track-purple);
+  --track-lime-fill: var(--track-lime);
+  --track-orange-fill: var(--track-orange);
+  --track-brown-fill: #9C6D27;
+  /* Words on a line's fill, palette.ts's `on`: whichever of ink and white reads better. */
   --on-plate: #FFFFFF;
   --track-blue-on: var(--on-plate);
   --track-yellow-on: var(--ink);
   --track-green-on: var(--ink);
-  --track-red-on: var(--ink);
+  --track-red-on: var(--on-plate);
   --track-purple-on: var(--on-plate);
   --track-lime-on: var(--ink);
   --track-orange-on: var(--ink);
@@ -36,9 +45,10 @@
   --plate-weight: 500;
 
   /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
-  --track: 10px;
+  /* W, one line's width, and the map's sizes as multiples of it (vignelli.ts). */
+  --track: 12px;
   --dot: 10px;
-  --label: 13px;
+  --label: calc(var(--track) * 1.056);
   /* The least hit target for anything pressable, in CSS px. */
   --tap: 44px;
   --circle-small: 14px;
@@ -65,7 +75,8 @@
   --add: 3.5rem;
   --chip: 2.25rem;
 
-  --font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  /* The 2025 map is set in Neue Haas Grotesk Display, Helvetica's first cut; Helvetica Neue stands in. */
+  --font: 'Neue Haas Grotesk Display Pro', 'Neue Haas Grotesk Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 html, body, #root {

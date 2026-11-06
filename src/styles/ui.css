@@ -731,7 +731,7 @@ button:focus-visible {
 /* The soonest line's bubble is filled with its colour, its words and shape in that colour's own
    text colour, ink or white, whichever reads. */
 .bubble.soonest {
-  background: var(--track-color);
+  background: var(--track-fill);
   color: var(--track-on);
 }
 

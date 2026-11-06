@@ -16,14 +16,14 @@ test('a colour snaps to the nearest ink: an ink to itself, white to paper, black
     expect(nearestInk(r, g, b)).toBe(ink);
   }
   expect(nearestInk(255, 255, 255)).toBe(DAY_PAPER);
-  expect(nearestInk(0, 0, 0)).toBe('#111111');
-  expect(nearestInk(40, 70, 180)).toBe('#0039A6');
-  expect(nearestInk(200, 40, 30)).toBe('#EE352E');
+  expect(nearestInk(0, 0, 0)).toBe('#1C1B1A');
+  expect(nearestInk(40, 70, 180)).toBe('#007EC5');
+  expect(nearestInk(200, 40, 30)).toBe('#E70B40');
 });
 
 test('paint snaps every pixel and makes it opaque, leaving the given buffer alone', () => {
   const pixels = new Uint8ClampedArray([255, 255, 255, 10, 0, 0, 0, 255, 35, 72, 170, 128]);
   const painted = paint(pixels);
-  expect([...painted]).toEqual([0xff, 0xff, 0xff, 255, 0x11, 0x11, 0x11, 255, 0x00, 0x39, 0xa6, 255]);
+  expect([...painted]).toEqual([0xff, 0xff, 0xff, 255, 0x1c, 0x1b, 0x1a, 255, 0x00, 0x7e, 0xc5, 255]);
   expect(pixels[3]).toBe(10);
 });
