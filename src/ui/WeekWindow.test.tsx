@@ -240,6 +240,20 @@ describe('dragging', () => {
     expect(store.canUndo()).toBe(false);
   });
 
+  test('a finger that rests on a block and lifts without moving changes nothing', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    const w = saturday();
+    const store = open(w);
+    const finger = { pointerId: 2, button: 0, pointerType: 'touch', clientX: 300, clientY: rowY(10) + 5 };
+    fireEvent.pointerDown(block('alpha'), finger);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    fireEvent.pointerUp(block('alpha'), finger);
+    expect(store.getState()).toBe(w);
+    expect(store.canUndo()).toBe(false);
+  });
+
   test('a done block has no handle and does not drag', () => {
     const w = saturday();
     w.stops = w.stops.map((s) => (s.id === 'alpha' ? { ...s, done: true, doneAt: at(7, 10, 30) } : s));

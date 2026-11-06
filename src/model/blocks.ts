@@ -100,6 +100,8 @@ export function place(world: World, a: PlaceAction): World {
   } else if (day) {
     dayId = day.id;
     w = withTrack(w, withStopBeforeEnd(day, a.stopId, a.length));
+    // Waiting at the end square, the day train now heads for this stop instead, as with addToDay.
+    if (!day.day!.held && day.train.leg === day.stops.length - 1) w = freshDayBudget(w, dayId, a.now);
   } else {
     if (w.tracks.some((t) => t.id === a.dayId) || w.stops.some((s) => s.id === a.endId)) return world;
     dayId = a.dayId;

@@ -150,6 +150,19 @@ describe('moving and stretching a block', () => {
     expect(reduce(w, { type: 'moveBlock', stopId: 'alpha', end: at(7, 15), length: 3600, now })).toBe(w);
   });
 
+  test('placing on today after its blocks are done heads the waiting day train for the new stop', () => {
+    const today = place(world(), 'alpha', '2026-11-06', at(6, 20), 3600);
+    const later = now + 60 * S;
+    const done = reduce(today, { type: 'complete', trackId: 't1', now: later });
+    expect(dayOn(done, '2026-11-06')!.train.leg).toBe(1);
+    const next = place(done, 'charlie', '2026-11-06', at(6, 22), 1800, undefined, later);
+    const day = dayOn(next, '2026-11-06')!;
+    expect(day.stops).toEqual(['alpha', 'charlie', 'e']);
+    expect(day.train).toEqual({ leg: 1, departedAt: later });
+    expect(day.day!.budgets[1]).toBe(timeLeftAny(next, 'charlie', later));
+    expect(day.day!.budgets[1]).toBeGreaterThan(0);
+  });
+
   test("on today, moving the second block before the first heads the day train for it on a fresh budget", () => {
     const today = place(place(world(), 'alpha', '2026-11-06', at(6, 20), 3600), 'charlie', '2026-11-06', at(6, 22), 1800);
     expect(dayOn(today, '2026-11-06')!.stops).toEqual(['alpha', 'charlie', 'e']);

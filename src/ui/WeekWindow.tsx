@@ -79,6 +79,8 @@ interface Grab {
   pointerId: number;
   from: { x: number; y: number };
   touch: boolean;
+  /** For a finger, whether it has moved since the press, past the slop; a rest alone is not a drop. */
+  moved?: boolean;
   /** Whether the press has become a drag. */
   live: boolean;
   /** Where the pointer is now, and what is under it. */
@@ -263,6 +265,8 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
         }
         if (moved < DRAG_PX) return;
         g.live = true;
+      } else if (g.touch && !g.moved) {
+        g.moved = Math.hypot(e.clientX - g.from.x, e.clientY - g.from.y) > TOUCH_SLOP_PX;
       }
       followDays(g);
       followEdge(g);
@@ -272,7 +276,8 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
     const onUp = (e: PointerEvent) => {
       const g = grab.current;
       if (!g || e.pointerId !== g.pointerId) return;
-      const aim = g.live ? aimAt(g) : null;
+      // A finger that rested and lifted where it pressed only tapped, and a tap changes nothing.
+      const aim = g.live && (!g.touch || g.moved) ? aimAt(g) : null;
       finish();
       if (!aim || aim.refused) return;
       // One drop is one step. A refused one changes nothing, so nothing is recorded, and the step
