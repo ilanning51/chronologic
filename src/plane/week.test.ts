@@ -5,8 +5,10 @@ import type { Shape, Size, World } from '../model/types';
 import {
   blocksOn,
   candidates,
+  clock,
   DAY_HEIGHT,
   dayLabel,
+  hourLabel,
   mondayOf,
   nowY,
   PX_PER_HOUR,
@@ -78,6 +80,14 @@ describe('the day plane', () => {
     expect(snapAt('2026-11-07', (9 + 40 / 60) * PX_PER_HOUR)).toBe(at(7, 9, 45));
     expect(snapAt('2026-11-07', (9 + 50 / 60) * PX_PER_HOUR)).toBe(at(7, 9, 45));
     expect(snapAt('2026-11-07', -10)).toBe(at(7, 0));
+  });
+
+  test('reads its times on the twelve-hour clock', () => {
+    expect(clock(at(7, 9))).toBe('9:00');
+    expect(clock(at(7, 14, 30))).toBe('2:30');
+    expect(clock(at(7, 0, 15))).toBe('12:15');
+    expect(clock(at(7, 11) - 400)).toBe('11:00');
+    expect([0, 8, 12, 23].map(hourLabel)).toEqual(['12 AM', '8 AM', '12 PM', '11 PM']);
   });
 
   test('has a now line on today only', () => {

@@ -4,8 +4,8 @@ import { addDays, dayOf, startOfDate } from '../model/days';
 import { nextIndex, trainState } from '../model/train';
 import type { Shape, World } from '../model/types';
 
-/** How tall an hour is on the day plane. */
-export const PX_PER_HOUR = 64;
+/** How tall an hour is on the day plane, as in the Figma screen. */
+export const PX_PER_HOUR = 48;
 /** The whole day: always 24 rows, laid out by the wall clock. */
 export const DAY_HEIGHT = 24 * PX_PER_HOUR;
 /** Every time the hand sets lands on a quarter hour. */
@@ -83,12 +83,18 @@ export function nowY(date: string, now: number): number | null {
   return dayOf(now) === date ? yOf(date, now) : null;
 }
 
-/** "9:30 am", "12 pm". */
+/**
+ * A block's time on the twelve-hour clock, as its row reads: "9:00", "12:30". Rounded to the
+ * minute, since a train due at 11:00 may arrive a moment either side of it.
+ */
 export function clock(ms: number): string {
-  const t = new Date(ms);
-  const h = t.getHours() % 12 || 12;
-  const m = t.getMinutes();
-  return `${h}${m ? `:${String(m).padStart(2, '0')}` : ''} ${t.getHours() < 12 ? 'am' : 'pm'}`;
+  const t = new Date(Math.round(ms / 60_000) * 60_000);
+  return `${t.getHours() % 12 || 12}:${String(t.getMinutes()).padStart(2, '0')}`;
+}
+
+/** An hour row's label: "12 AM" to "11 PM". */
+export function hourLabel(hour: number): string {
+  return `${hour % 12 || 12} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
 /** The colour of the line a stop belongs to: the line that reaches it first, or for a done stop its first project. */

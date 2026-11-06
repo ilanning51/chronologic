@@ -49,6 +49,8 @@ import { StopEditor } from './StopEditor';
 import { stopsOnce } from './stopsOnce';
 import { Track } from './Track';
 import { Tray } from './Tray';
+import { WeekButton } from './WeekButton';
+import { WeekWindow } from './WeekWindow';
 
 export interface AppProps {
   store: Store;
@@ -116,6 +118,9 @@ function useFly(setCamera: (c: Camera) => void) {
 }
 
 /** The v2 plane: every track and stop in screen space, redrawn as the clock ticks. */
+/** How often the open week window reads the clock when nothing else does. */
+const WEEK_TICK_MS = 30_000;
+
 export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const world = useWorld(store);
   const [camera, setCamera] = useState(HOME);
@@ -148,6 +153,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   /** Whether the tray of tiles is open. */
   const [trayOpen, setTrayOpen] = useState(false);
+  /** Whether the week window is open over the plane. App state only: it opens closed. */
+  const [weekOpen, setWeekOpen] = useState(false);
+  const weekOpenRef = useRef(weekOpen);
+  weekOpenRef.current = weekOpen;
   /** The tile whose brush is on, if any. App state only: never saved, off at start. */
   const [brush, setBrush] = useState<Tile | null>(null);
   const brushRef = useRef(brush);
@@ -214,6 +223,11 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.key === 'Escape') {
+        // With the week window open, Escape closes it and nothing else.
+        if (weekOpenRef.current) {
+          setWeekOpen(false);
+          return;
+        }
         setSelection(null);
         setBrush(null);
         dropStroke();
@@ -227,7 +241,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         history(key === 'y' || e.shiftKey ? 'redo' : 'undo');
         return;
       }
-      if ((e.key === 'Backspace' || e.key === 'Delete') && selectionRef.current) {
+      if ((e.key === 'Backspace' || e.key === 'Delete') && selectionRef.current && !weekOpenRef.current) {
         e.preventDefault();
         deleteSelected();
       }
@@ -797,7 +811,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   };
 
   /** A tap on a tile: its brush on, or off if it was on; another tile's brush goes off. */
-  const toggleBrush = (tile: Tile) => setBrush((b) => (b === tile ? null : tile));
+  /** A brush and the week window are never on together: taking up a brush closes the window. */
+  const toggleBrush = (tile: Tile) => {
+    setWeekOpen(false);
+    setBrush((b) => (b === tile ? null : tile));
+  };
+
+  /** Opening the week window puts any brush down, so a press on the plane behind it is a plain one. */
+  const toggleWeek = () => {
+    if (!weekOpen) setBrush(null);
+    setWeekOpen(!weekOpen);
+  };
 
   const onGesture = (g: Gesture) => {
     endTitleStep();
@@ -825,6 +849,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         ) {
           setSelection(null);
           setEditing(null);
+          setWeekOpen(false);
           // A tap elsewhere commits an open name. A touchscreen blurs only after this tap, so blur now.
           (document.activeElement as HTMLElement | null)?.blur();
           // A brush keeps the tray open; the step brushes place a stop where the tap fell.
@@ -1026,6 +1051,13 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     return () => window.clearInterval(id);
   }, [rolling, camera.scale, now, store]);
 
+  // The open week window keeps its now line and its blocks current even when every train is parked.
+  useEffect(() => {
+    if (!weekOpen) return;
+    const id = window.setInterval(() => setTime(now()), WEEK_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [weekOpen, now]);
+
   // Midnight turns the day over even when every train is parked and nothing else ticks.
   const [midnight, setMidnight] = useState(0);
   useEffect(() => {
@@ -1167,18 +1199,24 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     </>
   );
 
+  // The week window and its button sit beside the plane, not in it, so neither a press nor a wheel
+  // on them ever reaches the map.
   return (
-    <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
-      <Grid camera={camera} />
-      {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
-      {views.map((v) => (
-        <Track key={v.id} view={v} />
-      ))}
-      {stopsOnce(views).map((p) => (
-        <Stop key={p.stop.id} {...p} />
-      ))}
-      {ghost && <Ghost {...ghost} />}
-      {dayGhost && <DayGhost points={dayGhost} />}
-    </Plane>
+    <>
+      <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
+        <Grid camera={camera} />
+        {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
+        {views.map((v) => (
+          <Track key={v.id} view={v} />
+        ))}
+        {stopsOnce(views).map((p) => (
+          <Stop key={p.stop.id} {...p} />
+        ))}
+        {ghost && <Ghost {...ghost} />}
+        {dayGhost && <DayGhost points={dayGhost} />}
+      </Plane>
+      {weekOpen && <WeekWindow world={world} now={time} />}
+      <WeekButton open={weekOpen} onToggle={toggleWeek} />
+    </>
   );
 }

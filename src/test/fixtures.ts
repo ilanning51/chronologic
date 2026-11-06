@@ -1,4 +1,4 @@
-import type { World } from '../model/types';
+import type { Shape, Size, World } from '../model/types';
 
 /** One running track: Dentist (a medium circle) then Wristband (a large square, the goal). */
 export function running(): World {
@@ -79,4 +79,38 @@ export function withWeek(): World {
   });
   world.stops.push({ id: 'dayEnd2', title: '', shape: 'square', size: 'small', x: 3000, y: 900, done: false });
   return world;
+}
+
+/**
+ * Three project lines long enough that their stops fall on the days ahead of `now`. t1 from (0, 0):
+ * Alpha, Bravo, then its goal. t2 from (0, 50000): Charlie, then its goal. t3 is a sketch: only
+ * its goal, Dream. Every train set off 500 s before `now`.
+ */
+export function weekLines(now: number): World {
+  const stop = (id: string, x: number, y: number, shape: Shape = 'circle', size: Size = 'medium') => ({
+    id,
+    title: id,
+    shape,
+    size,
+    x,
+    y,
+    done: false,
+  });
+  const departedAt = now - 500_000;
+  return {
+    tracks: [
+      { id: 't1', color: 0, origin: { x: 0, y: 0 }, stops: ['alpha', 'bravo', 'g1'], train: { leg: 0, departedAt }, target: 'goal' },
+      { id: 't2', color: 1, origin: { x: 0, y: 50000 }, stops: ['charlie', 'g2'], train: { leg: 0, departedAt }, target: 'goal' },
+      { id: 't3', color: 2, origin: { x: 0, y: 90000 }, stops: ['dream'], train: { leg: 0, departedAt }, target: 'goal' },
+    ],
+    stops: [
+      stop('alpha', 100000, 0),
+      stop('bravo', 300000, 0, 'triangle', 'small'),
+      stop('g1', 600000, 0, 'square', 'large'),
+      stop('charlie', 120000, 50000),
+      stop('g2', 600000, 50000, 'square', 'large'),
+      stop('dream', 900000, 90000, 'square', 'large'),
+    ],
+    lastTouched: null,
+  };
 }
