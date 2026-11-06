@@ -179,11 +179,23 @@ export function nextIndex(track: Track, byId: Map<string, Stop>): number | null 
   return null;
 }
 
-/** The index of the stop the track's edge bubble points at, or null once the train is parked. */
-export function targetIndex(track: Track, byId: Map<string, Stop>): number | null {
+/**
+ * The index of the stop the track's edge bubble points at, or null once the train is parked. The
+ * life line points at its next undone square or its last one, never at a sub-goal; `hidden` names
+ * squares the level does not draw, which "next" passes over, so the bubble never points at nothing.
+ */
+export function targetIndex(track: Track, byId: Map<string, Stop>, hidden?: (stopId: string) => boolean): number | null {
   const next = nextIndex(track, byId);
   if (next === null) return null;
   const goal = track.stops.length - 1;
+  if (track.life) {
+    if (track.target !== 'next') return goal;
+    for (let i = next; i < goal; i++) {
+      const id = track.stops[i];
+      if (!byId.get(id)?.done && !hidden?.(id)) return i;
+    }
+    return goal;
+  }
   if (track.target === 'next') return next;
   if (track.target === 'goal') return goal;
   for (let i = next; i < goal; i++) {

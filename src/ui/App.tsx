@@ -5,6 +5,7 @@ import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayWith, drawnOnPlane, isDayEnd, isProject, isShadow } from '../model/day';
 import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
+import { isRing, lifeOf } from '../model/life';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
 import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
@@ -22,6 +23,8 @@ import {
 } from '../plane/camera';
 import type { Gesture, Tile } from '../plane/gestures';
 import { distance, type Point } from '../plane/geometry';
+import { gridFor, GRID_MIN_PX, YEAR } from '../plane/grid';
+import { PROJECT_MIN_SCALE, RINGS_HIDDEN_FROM } from '../plane/level';
 import { bubbleFor, clearOf } from '../plane/bubbles';
 import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
@@ -974,10 +977,26 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
     const stops = new Map(state.stops.map((s) => [s.id, s]));
-    const i = targetIndex(track, stops);
+    const i = targetIndex(track, stops, hiddenOnLife(state));
     const target = i === null ? undefined : stops.get(track.stops[i]);
-    if (target?.image !== undefined) fitLine(track.id);
-    else store.dispatch({ type: 'cycleTarget', trackId });
+    if (target?.image === undefined) store.dispatch({ type: 'cycleTarget', trackId });
+    else if (track.life) flyToMarker(target);
+    else fitLine(track.id);
+  };
+
+  /**
+   * The squares the life line does not draw at the current zoom, which its bubble never points at:
+   * from the 1-year unit up, the rings.
+   */
+  const hiddenOnLife = (state: World, scale = cameraRef.current.scale) => (id: string) =>
+    gridFor(scale).seconds >= RINGS_HIDDEN_FROM && isRing(state, id);
+
+  /** Flies to a life marker without ever landing wider than the 1-year unit, so the marker is drawn. */
+  const flyToMarker = (marker: Point) => {
+    const c = cameraRef.current;
+    stash.current = null;
+    pinned.current = new Set();
+    fly(c, centerOn(c, marker, viewport, Math.max(c.scale, GRID_MIN_PX / YEAR)));
   };
 
   /** Flies out, never in, until the line's start and every stop on it are in view with room around them. */
@@ -991,7 +1010,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     // Leaving a followed train or a pinned level by this flight is the hand moving the camera.
     stash.current = null;
     pinned.current = new Set();
-    fly(c, fitPoints(c, points, viewport));
+    const fit = fitPoints(c, points, viewport);
+    // A project is not drawn past the 30-day unit, so the fit stops there rather than leaving it blank.
+    if (!isProject(track) || fit.scale >= PROJECT_MIN_SCALE) return fly(c, fit);
+    fly(c, centerOn(c, screenToWorld(fit, { x: viewport.w / 2, y: viewport.h / 2 }), viewport, PROJECT_MIN_SCALE));
   };
 
   /** A long press on a bubble flies to the stop it points at, keeping the current scale. */
@@ -1000,7 +1022,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
     const stops = new Map(state.stops.map((s) => [s.id, s]));
-    const i = targetIndex(track, stops);
+    const i = targetIndex(track, stops, hiddenOnLife(state));
     const target = i === null ? undefined : stops.get(track.stops[i]);
     if (!target) return;
     const c = cameraRef.current;
@@ -1159,9 +1181,14 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const bubbles = views.flatMap((v) => {
     if (!v.anyInView) return [];
     const track = world.tracks.find((t) => t.id === v.id);
-    const i = track ? targetIndex(track, byId) : null;
+    const i = track ? targetIndex(track, byId, hiddenOnLife(world, camera.scale)) : null;
     const target = track && i !== null ? byId.get(track.stops[i]) : undefined;
     if (!track || !target) return [];
+    // The life train waiting at the square its bubble points at fills the bubble, as the soonest line's is.
+    const filled = track.life ? (() => {
+          const state = stateOf(track, world, time);
+          return i === state.leg && state.waiting;
+        })() : v.id === soonest?.id;
     // The stop may be off the grown viewport and so missing from the view: use its world point.
     const spot = bubbleFor(worldToScreen(camera, target), viewport);
     const at = spot && clearOf(spot, HISTORY_CORNER_PX);
@@ -1173,7 +1200,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             color={v.color}
             day={v.day && !v.tomorrow}
             sketch={v.sketch || v.tomorrow}
-            soonest={v.id === soonest?.id}
+            life={track.life !== undefined}
+            soonest={filled}
             shape={target.shape}
             title={target.title}
             image={target.image}
@@ -1213,7 +1241,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         {views.map((v) => (
           <Track key={v.id} view={v} />
         ))}
-        {stopsOnce(views).map((p) => (
+        {stopsOnce(views, lifeOf(world)?.id).map((p) => (
           <Stop key={p.stop.id} {...p} />
         ))}
         {ghost && <Ghost {...ghost} />}

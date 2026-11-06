@@ -290,3 +290,34 @@ describe('the life train', () => {
     expect(stateOf(life, w, 125_000)).toEqual(lifeState(life, w, 125_000));
   });
 });
+
+describe('the life line bubble target', () => {
+  /** Start done, the life train on its leg into Wristband (a ring), then Far. */
+  function lifeAtRing() {
+    const world = withLife();
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    const life = world.tracks.find((t) => t.life)!;
+    life.train = { leg: 1, departedAt: 0 };
+    return { life, byId: new Map(world.stops.map((s) => [s.id, s])) };
+  }
+
+  test('next is the first undone square and goal is the last square', () => {
+    const { life, byId: stops } = lifeAtRing();
+    expect(targetIndex({ ...life, target: 'next' }, stops)).toBe(1);
+    expect(targetIndex({ ...life, target: 'goal' }, stops)).toBe(2);
+  });
+
+  test('squares the level does not draw are passed over for next, and the last square is the fallback', () => {
+    const { life, byId: stops } = lifeAtRing();
+    const ring = (id: string) => id === 'wristband';
+    expect(targetIndex({ ...life, target: 'next' }, stops, ring)).toBe(2);
+    stops.get('far')!.done = true;
+    // Only the hidden ring is left undone: the target is the last square.
+    expect(targetIndex({ ...life, target: 'next' }, stops, ring)).toBe(2);
+  });
+
+  test('a parked life train has no target', () => {
+    const { life, byId: stops } = lifeAtRing();
+    expect(targetIndex({ ...life, train: { leg: 3, departedAt: 0 } }, stops)).toBeNull();
+  });
+});

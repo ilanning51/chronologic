@@ -10,7 +10,7 @@ import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
 import { TRACK_WIDTH } from '../plane/world';
-import { running, twoLines, withDay, withWeek } from '../test/fixtures';
+import { running, twoLines, withDay, withLife, withWeek } from '../test/fixtures';
 import { App } from './App';
 
 window.innerWidth = 1000;
@@ -2446,4 +2446,101 @@ test('the plane draws no line for a day after tomorrow, nor its end square', () 
   expect(document.querySelector('[data-target="origin"][data-track="day"]')).toBeInTheDocument();
   expect(document.querySelector('[data-target="origin"][data-track="day2"]')).toBeNull();
   expect(document.querySelector('[data-id="dayEnd2"]')).toBeNull();
+});
+
+describe('the life line bubble', () => {
+  const LONG_AFTER = 1e13;
+
+  /**
+   * Start done, the life train on its leg into Far (x 5e9, off screen), and Wristband, t1's goal,
+   * a ring further right. The camera opens on t1, so Far is out of sight to the right.
+   */
+  function lifeOffScreen() {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.stops.find((s) => s.id === 'far')!.x = 5e9;
+    world.stops.find((s) => s.id === 'wristband')!.x = 1e10;
+    life.stops = ['start', 'far', 'wristband'];
+    life.train = { leg: 1, departedAt: 0 };
+    return world;
+  }
+  const lifeBubble = () => document.querySelector('[data-target="bubble"][data-track="life"]') as HTMLElement | null;
+
+  test('is in ink, names the next undone square, and is filled while the life train waits there', () => {
+    render(<App store={createStore(lifeOffScreen())} now={() => LONG_AFTER} />);
+    const bubble = lifeBubble()!;
+    expect(bubble).toHaveAccessibleName(/^Far, goal/);
+    expect(bubble.style.getPropertyValue('--track-color')).toBe('var(--ink)');
+    expect(bubble).toHaveClass('soonest');
+  });
+
+  test('is not filled while the life train is still rolling', () => {
+    render(<App store={createStore(lifeOffScreen())} now={() => 1000} />);
+    expect(lifeBubble()).not.toHaveClass('soonest');
+  });
+
+  test('a tap cycles its target between the next square and the last, never through a sub-goal', () => {
+    const store = createStore(lifeOffScreen());
+    render(<App store={store} now={() => LONG_AFTER} />);
+    const life = () => store.getState().tracks.find((t) => t.life)!;
+    expect(life().target).toBe('next');
+    act(() => tapOn(lifeBubble()!));
+    expect(life().target).toBe('goal');
+    expect(lifeBubble()).toHaveAccessibleName(/^Wristband, goal/);
+    act(() => tapOn(lifeBubble()!));
+    expect(life().target).toBe('next');
+  });
+
+  test('a picture bubble flies to its marker and lands no wider than the 1-year unit', () => {
+    reduceMotion();
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    world.tracks = world.tracks.filter((t) => t.id !== 't1');
+    life.stops = ['start', 'far'];
+    life.life = { y: -800, budgets: [0, 0] };
+    life.target = 'goal';
+    const far = world.stops.find((s) => s.id === 'far')!;
+    far.x = 3e9;
+    far.image = PICTURE;
+    render(<App store={createStore(world)} now={() => 100_000} />);
+    for (let i = 0; i < 40 && document.querySelector('.legend')!.textContent !== '5 years'; i++) {
+      act(() => {
+        fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 2500 });
+      });
+    }
+    expect(document.querySelector('.legend')!.textContent).toBe('5 years');
+    expect(lifeBubble()).toHaveClass('picture');
+    act(() => tapOn(lifeBubble()!));
+    expect(document.querySelector('.legend')!.textContent).toBe('1 year');
+    expect(screen.getByRole('button', { name: /^Far/ })).toBeInTheDocument();
+  });
+
+  test('from the 1-year unit up the bubble passes over the rings the level does not draw', () => {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    // Start done and the life train heading for Wristband, a ring: from the 1-year unit up it is
+    // not drawn, so the bubble points at Far, the next bare marker.
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.stops.find((s) => s.id === 'far')!.x = 3e9;
+    life.train = { leg: 1, departedAt: 0 };
+    render(<App store={createStore(world)} now={() => 100_000} />);
+    for (let i = 0; i < 400 && document.querySelector('.legend')!.textContent !== '1 year'; i++) {
+      act(() => {
+        fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 100 });
+      });
+    }
+    expect(document.querySelector('.legend')!.textContent).toBe('1 year');
+    expect(lifeBubble()).toHaveAccessibleName(/^Far, goal/);
+  });
+
+  test('tap-to-fit on a project line never zooms wider than the 30-day unit', () => {
+    reduceMotion();
+    const world = running();
+    world.stops[1].x = 1e9;
+    world.stops[1].image = PICTURE;
+    render(<App store={createStore(world)} now={() => 500_000} />);
+    act(() => tapOn(document.querySelector('[data-target="bubble"]')!));
+    expect(document.querySelector('.legend')!.textContent).toBe('30 days');
+  });
 });

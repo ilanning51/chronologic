@@ -478,7 +478,8 @@ function apply(world: World, action: Action): World {
       if (!track) return world;
       return {
         ...world,
-        tracks: withTrack(world, { ...track, target: NEXT_TARGET[track.target] }),
+        // The life line has no sub-goals: it points at its next square or its last.
+        tracks: withTrack(world, { ...track, target: track.life ? (track.target === 'next' ? 'goal' : 'next') : NEXT_TARGET[track.target] }),
         lastTouched: track.id,
       };
     }

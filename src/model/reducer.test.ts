@@ -342,6 +342,16 @@ describe('cycleTarget', () => {
     expect(seen).toEqual(['subgoal', 'goal', 'next', 'subgoal']);
     expect(w.lastTouched).toBe(trackId);
   });
+
+  test('on the life line goes between the next square and the last, with no sub-goal between', () => {
+    let w = withLife();
+    const seen: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      w = reduce(w, { type: 'cycleTarget', trackId: 'life' });
+      seen.push(w.tracks.find((t) => t.life)!.target);
+    }
+    expect(seen).toEqual(['goal', 'next', 'goal']);
+  });
 });
 
 describe('shared stops', () => {
