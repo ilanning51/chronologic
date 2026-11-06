@@ -20,7 +20,6 @@ import {
 import { dayOf } from './days';
 import { moveBlock, place, unplace, type PlaceAction } from './blocks';
 import {
-  freshLifeBudget,
   holdLifePlace,
   isRing,
   keepLife,
@@ -146,7 +145,7 @@ function withoutStop(world: World, id: string, now: number, only?: string): Worl
   };
   // Read against the rebased project trains: the day's budget is their time left from now.
   const freshened = fresh.reduce((w, dayId) => freshDayBudget(w, dayId, now), merged);
-  return freshLife ? freshLifeBudget(freshened, now) : freshened;
+  return freshLife ? keepLife(world, freshened, now) : freshened;
 }
 
 /**

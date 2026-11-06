@@ -99,20 +99,31 @@ export function keepLife(before: World, after: World, now: number): World {
   const heading = was.stops[was.train.leg];
   // The first undone square right of where the train stood, or the one it was heading for.
   const nearest = track.stops.findIndex((id) => !done.has(id) && (id === heading || afterById.get(id)!.x > trainX));
-  if (nearest >= 0 && track.stops[nearest] !== heading) {
-    const id = track.stops[nearest];
-    if (isRing(after, id)) {
-      budgets[nearest] = timeLeftAny(after, id, now);
-      return departLife(after, track, nearest, budgets, now);
-    }
-    // A leg into a marker keeps the place the train stands at.
-    const route = lifeRoute(track, afterById);
-    const startX = nearest === 0 ? track.origin.x : afterById.get(track.stops[nearest - 1])!.x;
-    const kept = rebase(nearest, trainX - startX, legSeconds(route, nearest), now);
-    return replaceLife(after, { ...track, train: kept, life: { ...track.life, budgets } });
-  }
-  const leg = track.stops.indexOf(was.stops[was.train.leg]);
-  return replaceLife(after, { ...track, train: { ...was.train, leg }, life: { ...track.life, budgets } });
+  if (nearest >= 0 && track.stops[nearest] !== heading) return headFrom(after, track, nearest, budgets, trainX, now);
+  // The square it headed for came off the line and nothing undone is ahead of the train.
+  if (nearest < 0 && !track.stops.includes(heading)) return freshLifeBudget(after, now);
+  const leg = track.stops.indexOf(heading);
+  const kept = replaceLife(after, { ...track, train: { ...was.train, leg }, life: { ...track.life, budgets } });
+  // Its target is the same, but a leg that changed length would carry the train with it.
+  if (Math.abs(lifeTrainX(kept, lifeOf(kept)!, now) - trainX) < 1e-6) return kept;
+  return headFrom(after, track, leg, budgets, trainX, now);
+}
+
+/**
+ * The life train heads for the square at `leg` from where it stands, at `trainX`, so it never goes
+ * back. Into a marker its leg is rebased to that place on real time. Into a ring the leg's budget is
+ * set so that the share of it the project time left has run down is the share of the leg already run.
+ */
+function headFrom(world: World, life: LifeTrack, leg: number, budgets: number[], trainX: number, now: number): World {
+  const byId = new Map(world.stops.map((s) => [s.id, s]));
+  const startX = leg === 0 ? life.origin.x : byId.get(life.stops[leg - 1])!.x;
+  const length = legSeconds(lifeRoute(life, byId), leg);
+  const run = Math.min(length, Math.max(0, trainX - startX));
+  const id = life.stops[leg];
+  if (!isRing(world, id)) return replaceLife(world, { ...life, train: rebase(leg, run, length, now), life: { ...life.life, budgets } });
+  const share = length === 0 ? 1 : run / length;
+  budgets[leg] = share >= 1 ? 0 : timeLeftAny(world, id, now) / (1 - share);
+  return departLife(world, life, leg, budgets, now);
 }
 
 function replaceLife(world: World, life: Track): World {
@@ -121,9 +132,8 @@ function replaceLife(world: World, life: Track): World {
 
 /**
  * The life line after the square at `index` came off it: one budget per stop, the rest aligned by
- * index. The train's leg moves by index alone; if the square was the one it headed for, it heads
- * for the following one, its budget written by `freshLifeBudget` once the rest of the world has
- * settled.
+ * index. The train's leg moves by index alone; if the square was the one it headed for, `keepLife`
+ * finds it the next square from where it stood once the rest of the world has settled.
  */
 export function lifeWithout(life: Track, index: number): { track: Track; fresh: boolean } {
   const { leg } = life.train;

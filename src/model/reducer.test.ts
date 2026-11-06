@@ -1464,3 +1464,41 @@ describe('the day takes no square the life line lists', () => {
     expect(drawn.tracks.find((t) => t.id === 'd')!.stops).toEqual(['dentist', 'e']);
   });
 });
+
+describe('the life train keeps its place', () => {
+  // Start done and Wristband, the project's goal, moved past Far: the life train runs the marker leg
+  // from Start to Far on real time.
+  const markerLeg = (): World => {
+    const w = withDoneStops(withLife(), 'start');
+    const moved: World = { ...w, stops: w.stops.map((s) => (s.id === 'wristband' ? { ...s, x: 6000 } : s)) };
+    const reordered: World = { ...moved, tracks: moved.tracks.map((t) => (t.life ? { ...t, stops: ['start', 'far', 'wristband'] } : t)) };
+    return setLifeTrain(reordered, { leg: 1, departedAt: 0 });
+  };
+  const trainX = (w: World, at: number) => lifeState(lifeOf(w), w, at).at.x;
+  const at = 2_000_000;
+
+  test('a ring moved between the life train and its marker becomes its target from where the train stood', () => {
+    const w = markerLeg();
+    const stood = trainX(w, at);
+    const next = reduce(w, { type: 'move', id: 'wristband', x: 4000, y: -800, now: at });
+    expect(lifeOf(next).stops).toEqual(['start', 'wristband', 'far']);
+    expect(lifeOf(next).train.leg).toBe(1);
+    expect(trainX(next, at)).toBeCloseTo(stood, 3);
+  });
+
+  test('the marker the life train heads for, dragged further out, leaves the train where it stood', () => {
+    const w = markerLeg();
+    const stood = trainX(w, at);
+    const next = reduce(w, { type: 'move', id: 'far', x: 5800, y: -800, now: at });
+    expect(lifeOf(next).train.leg).toBe(1);
+    expect(trainX(next, at)).toBeCloseTo(stood, 3);
+  });
+
+  test('deleting the marker the life train heads for leaves the train where it stood', () => {
+    const w = markerLeg();
+    const stood = trainX(w, at);
+    const next = reduce(w, { type: 'delete', id: 'far', now: at });
+    expect(lifeOf(next).stops).toEqual(['start', 'wristband']);
+    expect(trainX(next, at)).toBeCloseTo(stood, 3);
+  });
+});
