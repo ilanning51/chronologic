@@ -15,6 +15,16 @@
   --track-lime: #6CBE45;
   --track-orange: #FF6319;
   --track-brown: #996633;
+  /* Words on a line's colour, palette.ts's `on`: whichever of ink and white reads better. */
+  --on-plate: #FFFFFF;
+  --track-blue-on: var(--on-plate);
+  --track-yellow-on: var(--ink);
+  --track-green-on: var(--ink);
+  --track-red-on: var(--ink);
+  --track-purple-on: var(--on-plate);
+  --track-lime-on: var(--ink);
+  --track-orange-on: var(--ink);
+  --track-brown-on: var(--on-plate);
 
   /* Screen sizes, in CSS px. Constant at every zoom; they match SHAPE_PX and world.ts. */
   --track: 10px;

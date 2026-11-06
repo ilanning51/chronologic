@@ -155,6 +155,7 @@ test("a sketch's bubble is muted, like its line", () => {
   const bubble = document.querySelector('[data-target="bubble"]') as HTMLElement;
   expect(bubble).toBeInTheDocument();
   expect(bubble.style.getPropertyValue('--track-color')).toBe('var(--muted)');
+  expect(bubble.style.getPropertyValue('--track-on')).toBe('var(--on-plate)');
 });
 
 test("choosing a picture in the goal's editor keeps the shrunk one on the goal", async () => {
@@ -1045,6 +1046,10 @@ test('the soonest line fills its bubble', () => {
   expect(bubble('t2')).not.toHaveClass('soonest');
   expect(bubble('day')).not.toHaveClass('soonest');
   expect(bubble('day').style.getPropertyValue('--track-color')).toBe('var(--ink)');
+  // Words on a line's colour take that colour's own text colour: white on blue, ink on yellow.
+  expect(bubble('t1').style.getPropertyValue('--track-on')).toBe('var(--track-blue-on)');
+  expect(bubble('t2').style.getPropertyValue('--track-on')).toBe('var(--track-yellow-on)');
+  expect(bubble('day').style.getPropertyValue('--track-on')).toBe('var(--on-plate)');
   const filled = cssRule('.bubble.soonest');
   expect(filled).toMatch(/background:\s*var\(--track-color\)/);
   expect(filled).toMatch(/color:\s*var\(--paper\)/);
