@@ -1133,3 +1133,16 @@ describe('a day line for each date', () => {
     expect(trackOf(next, 'day').day!.lengths).toEqual([3600, 1800]);
   });
 });
+
+describe('when a stop was done', () => {
+  test('completing a stop records when, undoing it takes that away, and a shared stop has one time', () => {
+    const w = twoLines();
+    const done = reduce(w, { type: 'complete', trackId: 't2', now: 7000 });
+    expect(stopOf(done, 'shared').doneAt).toBe(7000);
+    // Shared is also on t1, where it is further ahead: one stop, one time.
+    expect(done.stops.filter((s) => s.doneAt !== undefined).map((s) => s.id)).toEqual(['shared']);
+    const back = reduce(done, { type: 'undo', stopId: 'shared', now: 8000 });
+    expect(stopOf(back, 'shared').done).toBe(false);
+    expect('doneAt' in stopOf(back, 'shared')).toBe(false);
+  });
+});

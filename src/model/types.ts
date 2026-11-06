@@ -14,6 +14,8 @@ export interface Stop {
   x: number;
   y: number;
   done: boolean;
+  /** When it was done (ms epoch), for drawing its block at that time. Gone again when undone. */
+  doneAt?: number;
   /**
    * A goal's picture, as a small data URL: the thing the line is for, shown as the goal's mural
    * on the plane and in its bubble on the edge. Only a square ever carries one.

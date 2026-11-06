@@ -379,7 +379,7 @@ function apply(world: World, action: Action): World {
       });
       return {
         tracks,
-        stops: world.stops.map((s) => (s.id === doneId ? { ...s, done: true } : s)),
+        stops: world.stops.map((s) => (s.id === doneId ? { ...s, done: true, doneAt: now } : s)),
         lastTouched: trackId,
       };
     }
@@ -388,7 +388,12 @@ function apply(world: World, action: Action): World {
       const { stopId: id, now } = action;
       if (!undoable(world, id, now)) return world;
       const byId = stopsById(world);
-      const stops = world.stops.map((s) => (s.id === id ? { ...s, done: false } : s));
+      // Not done any more, so no time it was done either.
+      const stops = world.stops.map((s) => {
+        if (s.id !== id) return s;
+        const { doneAt: _, ...rest } = s;
+        return { ...rest, done: false };
+      });
       const after = stopsById({ ...world, stops });
       // Each project train past the stop goes back to wait at it; one still short of it is left
       // alone. Legs are the derived trains': a train that rolled through it has it just behind.

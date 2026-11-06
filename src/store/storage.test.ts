@@ -285,3 +285,11 @@ test('two days on one date, lengths out of step with stops, or an end square on 
   bad((w) => { w.tracks[3].day!.held = 'yes' as never; });
   bad((w) => { w.tracks[1].stops = ['shared', 'dayEnd2', 'goal2']; });
 });
+
+test('when a stop was done round-trips, and a time that is not a number is refused', () => {
+  const world = sample();
+  world.stops[0].doneAt = 400;
+  expect(loadOf(world)).toEqual(world);
+  world.stops[0].doneAt = '400' as never;
+  expect(loadOf(world)).toEqual(EMPTY);
+});

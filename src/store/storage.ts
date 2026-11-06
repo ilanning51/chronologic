@@ -35,6 +35,7 @@ function isStop(v: unknown): v is Stop {
     isNumber(v.x) &&
     isNumber(v.y) &&
     typeof v.done === 'boolean' &&
+    (v.doneAt === undefined || isNumber(v.doneAt)) &&
     (v.image === undefined || (typeof v.image === 'string' && v.image.startsWith('data:image/')))
   );
 }
