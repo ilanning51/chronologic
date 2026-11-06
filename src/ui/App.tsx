@@ -25,6 +25,7 @@ import { distance, type Point } from '../plane/geometry';
 import { bubbleFor, clearOf } from '../plane/bubbles';
 import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
+import { routeOf, trainOn } from '../plane/metro';
 import { openingCamera } from '../plane/opening';
 import { pathLength, routeThrough } from '../plane/routing';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
@@ -46,7 +47,7 @@ import { Plane } from './Plane';
 import { SelectionBox } from './SelectionBox';
 import { Stop } from './Stop';
 import { StopEditor } from './StopEditor';
-import { stopsOnce } from './stopsOnce';
+import { labelPlaces, stopsOnce } from './stopsOnce';
 import { Track } from './Track';
 import { Tray } from './Tray';
 import { WeekButton } from './WeekButton';
@@ -1021,7 +1022,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
     // The day train is a shadow: it is where dayState says, not where its legs' own clock would be.
-    const at = stateOf(track, state, now()).at;
+    const at = trainOn(routeOf(state, track, dayOf(now())), stateOf(track, state, now())).at;
     stash.current = c;
     fly(c, centerOn(c, at, viewport, MOTION_SCALE));
   };
@@ -1184,11 +1185,12 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   });
   const hud = (
     <>
+      {/* The legend is a solid plate and takes no input: drawn first, it lies under any bubble in its corner. */}
+      <Legend camera={camera} />
       {bubbles}
       {legTime && <LegTime {...legTime} />}
       {editor}
       <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={() => history('undo')} onRedo={() => history('redo')} />
-      <Legend camera={camera} />
       <Tray
         open={trayOpen}
         brush={brush}
@@ -1203,6 +1205,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     </>
   );
 
+  // Each stop once, and its name set beside it on the side that covers least.
+  const placedStops = stopsOnce(views);
+  const places = labelPlaces(placedStops, views);
+
   // The week window and its button sit beside the plane, not in it, so neither a press nor a wheel
   // on them ever reaches the map.
   return (
@@ -1213,8 +1219,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         {views.map((v) => (
           <Track key={v.id} view={v} />
         ))}
-        {stopsOnce(views).map((p) => (
-          <Stop key={p.stop.id} {...p} />
+        {placedStops.map((p) => (
+          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} />
         ))}
         {ghost && <Ghost {...ghost} />}
         {dayGhost && <DayGhost points={dayGhost} />}

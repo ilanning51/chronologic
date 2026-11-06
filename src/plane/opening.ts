@@ -2,6 +2,7 @@ import { dayOf } from '../model/days';
 import { legSeconds, stateOf, trackRoute, type TrainState } from '../model/train';
 import type { Track, World } from '../model/types';
 import { type Camera, centerOn, fitLeg, HOME } from './camera';
+import { routeOf, trainOn } from './metro';
 import { soonestTrack } from './soonest';
 
 /**
@@ -25,6 +26,6 @@ export function openingCamera(world: World, now: number, viewport: { w: number; 
     // A waiting train is about to set off on the next leg; at the last stop there is none.
     const leg = state.waiting && state.leg + 1 < track.stops.length ? state.leg + 1 : state.leg;
     const scale = fitLeg(legSeconds(trackRoute(track, byId), leg), viewport.w);
-    return centerOn(HOME, state.at, viewport, scale);
+    return centerOn(HOME, trainOn(routeOf(world, track, dayOf(now)), state).at, viewport, scale);
   }
 }
