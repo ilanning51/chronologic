@@ -13,7 +13,7 @@ import { showsAt } from './level';
 import { roundLine, shiftLine } from './draw';
 import { lanesOf, routeOf } from './metro';
 import { cutAt, pathLength, pointAlong } from './routing';
-import { BEND_PX, LANE_PX } from './world';
+import { BEND_CUT_PX, LANE_PX } from './world';
 
 export interface StopView {
   id: string;
@@ -103,13 +103,15 @@ export function layoutTrack(
   const lanes = lanesOf(world, today).get(track.id);
   const route = lanes?.route ?? routeOf(world, track, today);
   const shift = lanes?.shift ?? route.vertices.slice(1).map(() => ({ x: 0, y: 0 }));
+  const width = lanes?.width ?? shift.map(() => 1);
   const line = roundLine(
     shiftLine(
       route.vertices.map((v) => worldToScreen(camera, v)),
       route.stationAt,
       shift.map((o) => ({ x: o.x * LANE_PX, y: o.y * LANE_PX })),
+      width.map((n) => ((n - 1) / 2) * LANE_PX),
     ),
-    BEND_PX,
+    BEND_CUT_PX,
   );
   const state = stateOf(track, world, now);
 

@@ -8,8 +8,12 @@ import { VIGNELLI } from './vignelli';
 export const TRACK_WIDTH = 12;
 /** How far apart, centre to centre, lines run where they share a road: a tenth of a line of paper between them. */
 export const LANE_PX = TRACK_WIDTH * VIGNELLI.lanePitch;
-/** The radius of every bend, in screen pixels, the same at any zoom as the map's curves are. */
-export const BEND_PX = 32;
+/**
+ * How far before a corner, in screen pixels, the innermost line of a turn leaves the straight: the
+ * map's tightest curves, the same at any zoom. A 45 degree turn sweeps a radius of 22 px, a right
+ * angle 9 px.
+ */
+export const BEND_CUT_PX = TRACK_WIDTH * VIGNELLI.bendCut;
 export const TRAIN = { length: 30, width: 20, radius: 6 };
 /** The least hit target for anything pressable, matching --tap in the tokens. */
 export const TAP_PX = 44;

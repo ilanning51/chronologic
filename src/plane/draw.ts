@@ -6,9 +6,13 @@ export interface Drawn {
   stationAt: number[];
 }
 
-/** A line moved into its lanes: also how far each point sits toward the inside of the turn it makes there. */
+/**
+ * A line moved into its lanes. At each point it also keeps how far it sits toward the inside of the
+ * turn it makes there, and half the width of the ribbon it turns with, both in pixels.
+ */
 export interface Shifted extends Drawn {
   inside: number[];
+  half: number[];
 }
 
 const add = (a: Point, b: Point): Point => ({ x: a.x + b.x, y: a.y + b.y });
@@ -27,7 +31,7 @@ const MITER_LIMIT = 4;
  * a straight road changes lane, because a line joined or left it, the line steps across at 45
  * degrees, centred on the change. A station is the point its vertex became, the middle of a step.
  */
-export function shiftLine(vertices: Point[], stationAt: number[], shift: Point[]): Shifted {
+export function shiftLine(vertices: Point[], stationAt: number[], shift: Point[], half: number[] = []): Shifted {
   const dirs = vertices.slice(1).map((b, k) => {
     const d = { x: b.x - vertices[k].x, y: b.y - vertices[k].y };
     const l = length(d);
@@ -45,7 +49,8 @@ export function shiftLine(vertices: Point[], stationAt: number[], shift: Point[]
   const points: Point[] = [];
   const at: number[] = [];
   const inside: number[] = [];
-  const put = (...ps: Point[]) => ps.forEach((p) => (points.push(p), inside.push(0)));
+  const halves: number[] = [];
+  const put = (...ps: Point[]) => ps.forEach((p) => (points.push(p), inside.push(0), halves.push(0)));
   vertices.forEach((v, j) => {
     const p = before(j);
     const q = after(j);
@@ -85,22 +90,25 @@ export function shiftLine(vertices: Point[], stationAt: number[], shift: Point[]
       // How far this lane is toward the inside of the turn, across each of its two segments.
       const toward = Math.sign(turn);
       inside[inside.length - 1] = (dot(o1, times(perp(u1), toward)) + dot(o2, times(perp(u2), toward))) / 2;
+      halves[halves.length - 1] = Math.max(half[p] ?? 0, half[q] ?? 0);
     }
   });
-  return { points, stationAt: stationAt.map((j) => at[j]), inside };
+  return { points, stationAt: stationAt.map((j) => at[j]), inside, half: halves };
 }
 
 /** The bend is drawn in steps of at most this angle, 7.5 degrees, too fine to see. */
 const STEP = Math.PI / 24;
 
 /**
- * Rounds every bend of a line the way the map does, each a circular arc of the same radius.
- * A lane toward the inside of a turn takes a smaller radius by as much as it is inside, so a
- * ribbon turns as concentric arcs about one centre. An arc never takes more than half of either
- * segment beside it. A bend made at a station stays a corner, under the station's mark, so the
- * line runs through the station's own point.
+ * Rounds every bend of a line the way the map does. The innermost line of a turn leaves the
+ * straight `cut` pixels before the corner and comes back onto the next straight as far after it,
+ * so a sharp turn is a tight curve and a gentle one a wide sweep: the radius is the cut over the
+ * tangent of half the turn. Every line further out turns about the same centre, wider by as much
+ * as it is further out, so a ribbon turns as concentric arcs. An arc never takes more than half of
+ * either segment beside it. A line that changes direction at a station does it under the station's
+ * disc, as the map's do, so the corner stays and the line runs through the station's own point.
  */
-export function roundLine(line: Shifted, radius: number): Drawn {
+export function roundLine(line: Shifted, cut: number): Drawn {
   const { points } = line;
   const stations = new Set(line.stationAt);
   const out: Point[] = [];
@@ -117,7 +125,7 @@ export function roundLine(line: Shifted, radius: number): Drawn {
     const u2 = times({ x: b.x - v.x, y: b.y - v.y }, 1 / l2);
     const turn = Math.atan2(Math.abs(cross(u1, u2)), dot(u1, u2));
     if (turn < 1e-3 || turn > Math.PI - 1e-3) return void out.push(v);
-    let r = radius - line.inside[j];
+    let r = cut / Math.tan(turn / 2) + line.half[j] - line.inside[j];
     if (stations.has(j) || r < 0.5) return void out.push(v);
     let t = r * Math.tan(turn / 2);
     const room = Math.min(l1, l2) / 2;

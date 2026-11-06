@@ -164,6 +164,8 @@ export interface Lanes {
    * vector across the road times the lane's place, 0 when the line has the road to itself.
    */
   shift: Point[];
+  /** width[k] is how many lines run side by side on segment k's stretch of road: 1 when it is alone. */
+  width: number[];
 }
 
 type Axis = 'h' | 'v' | 'd' | 'e';
@@ -258,11 +260,11 @@ function layLanes(world: World, today: string): Map<string, Lanes> {
       }
     }),
   );
-  const laneOf = (track: number, road: string, at: number): number => {
+  const laneOf = (track: number, road: string, at: number): { lane: number; of: number } => {
     const here = [...company.get(`${road}@${at}`)!];
-    if (here.length < 2) return 0;
+    if (here.length < 2) return { lane: 0, of: 1 };
     here.sort((a, b) => sides.get(`${a}:${road}`)! - sides.get(`${b}:${road}`)! || a - b);
-    return here.indexOf(track) - (here.length - 1) / 2;
+    return { lane: here.indexOf(track) - (here.length - 1) / 2, of: here.length };
   };
 
   return new Map(
@@ -270,6 +272,7 @@ function layLanes(world: World, today: string): Map<string, Lanes> {
       const { vertices, stationAt } = lines[track];
       const out: Point[] = [vertices[0]];
       const shift: Point[] = [];
+      const width: number[] = [];
       const moved = [0];
       for (let k = 0; k < vertices.length - 1; k++) {
         const a = vertices[k];
@@ -278,6 +281,7 @@ function layLanes(world: World, today: string): Map<string, Lanes> {
         if (!r) {
           out.push(b);
           shift.push({ x: 0, y: 0 });
+          width.push(1);
         } else {
           const n = across(r.axis);
           const along = (p: Point) => (r.axis === 'v' ? p.y : p.x);
@@ -290,13 +294,14 @@ function layLanes(world: World, today: string): Map<string, Lanes> {
             const s1 = ends[i];
             const f = (s1 - along(a)) / (along(b) - along(a));
             out.push(i === starts.length - 1 ? b : { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f });
-            const lane = laneOf(track, r.road, Math.min(s0, s1));
+            const { lane, of } = laneOf(track, r.road, Math.min(s0, s1));
             shift.push(lane === 0 ? { x: 0, y: 0 } : { x: n.x * lane, y: n.y * lane });
+            width.push(of);
           });
         }
         moved.push(out.length - 1);
       }
-      return [t.id, { route: { vertices: out, stationAt: stationAt.map((i) => moved[i]) }, shift }];
+      return [t.id, { route: { vertices: out, stationAt: stationAt.map((i) => moved[i]) }, shift, width }];
     }),
   );
 }

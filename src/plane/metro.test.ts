@@ -71,6 +71,10 @@ test('two lines on the same road run side by side, each on the side it comes fro
   expect(shared('b').y).toBe(0.5);
   // Off the shared road each line has its road to itself.
   expect(lanes.get('a')!.shift[0]).toEqual({ x: 0, y: 0 });
+  // The ribbon is two lines wide where they share it, one where each runs alone.
+  const a = lanes.get('a')!;
+  expect(a.width[a.route.stationAt[1]]).toBe(2);
+  expect(a.width[0]).toBe(1);
 });
 
 test('a line that shares only part of a road is cut where the other joins it', () => {

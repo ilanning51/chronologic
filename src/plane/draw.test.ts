@@ -24,8 +24,8 @@ test('a line that changes lane on a straight road steps across at 45 degrees, th
 const zero = { x: 0, y: 0 };
 const distanceTo = (c: { x: number; y: number }) => (p: { x: number; y: number }) => Math.hypot(p.x - c.x, p.y - c.y);
 
-test('a bend is a circular arc of the radius, touching both runs', () => {
-  // Right along y 0 to (100, 0), then down. The arc's centre is (68, 32) for a 32 px radius.
+test('a bend is a circular arc that leaves the straight the cut before the corner, touching both runs', () => {
+  // Right along y 0 to (100, 0), then down. A right angle cut 32 px back has its centre at (68, 32).
   const { points } = roundLine(shiftLine([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], [0, 2], [zero, zero]), 32);
   const arc = points.slice(1, -1);
   expect(arc[0]).toEqual({ x: 68, y: 0 });
@@ -34,18 +34,31 @@ test('a bend is a circular arc of the radius, touching both runs', () => {
   for (const r of arc.map(distanceTo({ x: 68, y: 32 }))) expect(r).toBeCloseTo(32);
 });
 
-test('two lanes turn about one centre, the inside one tighter by its lane', () => {
-  const road = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
-  const turnOf = (lane: number) => {
-    // Across y 0 is +y; across x 100, going down, is -x. Positive lanes are on the inside of this right turn.
-    const shifted = shiftLine(road, [0, 2], [{ x: 0, y: 6 * lane }, { x: -6 * lane, y: 0 }]);
-    return roundLine(shifted, 32).points.slice(1, -1);
-  };
-  for (const r of turnOf(1).map(distanceTo({ x: 68, y: 32 }))) expect(r).toBeCloseTo(26);
-  for (const r of turnOf(-1).map(distanceTo({ x: 68, y: 32 }))) expect(r).toBeCloseTo(38);
+test('a gentle turn sweeps wider than a sharp one: the radius is the cut over the tangent of half the turn', () => {
+  // Right along y 0 to (100, 0), then down and right at 45 degrees.
+  const { points } = roundLine(shiftLine([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 100 }], [0, 2], [zero, zero]), 9);
+  const arc = points.slice(1, -1);
+  expect(arc[0]).toEqual({ x: 91, y: 0 });
+  const r = 9 / Math.tan(Math.PI / 8);
+  for (const d of arc.map(distanceTo({ x: 91, y: r }))) expect(d).toBeCloseTo(r);
 });
 
-test('a bend made at a station stays a corner, so the line runs through the station', () => {
+test('a ribbon turns about one centre: its innermost line takes the cut, every line outside it a lane wider', () => {
+  const road = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
+  const turnOf = (lane: number) => {
+    // Across y 0 is +y; across x 100, going down, is -x. Positive lanes are on the inside of this
+    // right turn. Two lanes 12 px apart make a ribbon 6 px either side of the road.
+    const shifted = shiftLine(road, [0, 2], [{ x: 0, y: 6 * lane }, { x: -6 * lane, y: 0 }], [6, 6]);
+    return roundLine(shifted, 32).points.slice(1, -1);
+  };
+  // The inner lane's corner is (94, 6): it leaves the straight 32 px before it, at (62, 6).
+  const inner = turnOf(1);
+  expect(inner[0].x).toBeCloseTo(62);
+  for (const r of inner.map(distanceTo({ x: 62, y: 38 }))) expect(r).toBeCloseTo(32);
+  for (const r of turnOf(-1).map(distanceTo({ x: 62, y: 38 }))) expect(r).toBeCloseTo(44);
+});
+
+test('a bend made at a station stays a corner, under its disc, so the line runs through the station', () => {
   const vertices = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
   expect(roundLine(shiftLine(vertices, [0, 1, 2], [zero, zero]), 32).points).toEqual(vertices);
 });
