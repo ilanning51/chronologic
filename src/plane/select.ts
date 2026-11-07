@@ -41,9 +41,10 @@ export function pick(world: World, box: Rect, today: string, gridSeconds: number
   const projectsHidden = gridSeconds >= PROJECTS_HIDDEN_FROM;
   const ringsHidden = gridSeconds >= RINGS_HIDDEN_FROM;
   const drawn = (t: Track) => drawnOnPlane(t, today) && !(projectsHidden && isProject(t));
-  const onPlane = (s: Stop) =>
-    world.tracks.some((t) => t.stops.includes(s.id) && drawn(t)) && !(ringsHidden && !s.done && isRing(world, s.id));
-  const stops = world.stops.filter((s) => inside(s, box) && onPlane(s)).map((s) => s.id);
+  // A ring hides from the life line alone; a day line through the same stop still draws it.
+  const draws = (t: Track, s: Stop) =>
+    t.stops.includes(s.id) && drawn(t) && !(t.life && ringsHidden && !s.done && isRing(world, s.id));
+  const stops = world.stops.filter((s) => inside(s, box) && world.tracks.some((t) => draws(t, s))).map((s) => s.id);
   const origins = world.tracks.filter((t) => !t.life && inside(t.origin, box) && drawn(t)).map((t) => t.id);
   return stops.length === 0 && origins.length === 0 ? null : { stops, origins };
 }

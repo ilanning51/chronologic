@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { twoLines, withLife, withWeek } from '../test/fixtures';
+import { twoLines, withDay, withLife, withWeek } from '../test/fixtures';
 import { DAY, YEAR } from './grid';
 import { bounds, pick, prune, rectOf } from './select';
 
@@ -51,4 +51,12 @@ test('zoomed out, a box catches only what the map still draws', () => {
   // A done ring is a landmark, still drawn.
   w.stops.find((s) => s.id === 'wristband')!.done = true;
   expect(pick(w, all, '2026-11-01', YEAR)).toEqual({ stops: ['wristband', 'start', 'far'], origins: [] });
+});
+
+test("zoomed out, a box still catches today's day line, which the map still draws", () => {
+  const w = withDay('2026-11-01');
+  const all = { x: -10, y: -410, w: 3020, h: 1320 };
+  // Dentist is on t1, hidden from the 3-month unit, and on today's day line, drawn at any zoom.
+  expect(pick(w, all, '2026-11-01', YEAR)?.stops).toEqual(expect.arrayContaining(['dentist', 'shared', 'dayEnd']));
+  expect(pick(w, all, '2026-11-01', YEAR)?.stops).not.toContain('wristband');
 });
