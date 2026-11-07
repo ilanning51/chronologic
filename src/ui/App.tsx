@@ -506,7 +506,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     setMarqueeBox(null);
     if (!m) return;
     const cam = cameraRef.current;
-    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at)), dayOf(now())));
+    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at)), dayOf(now()), gridFor(cam.scale).seconds));
   };
 
   /** Moves the start of the line under the finger, grip and all, and reads back the first leg. */
