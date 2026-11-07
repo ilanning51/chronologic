@@ -300,15 +300,20 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     return ctx;
   };
 
-  /** Only the stop the train is heading for completes; the goal adds the chord and the buzz. */
-  const complete = (trackId: string, stopId: string) => {
+  /**
+   * Only the stop the train is heading for completes; the goal adds the chord and the buzz. A ring
+   * speaks for its project even where only the life line draws it, zoomed out, so it completes
+   * under that project's rule and never through the life line.
+   */
+  const complete = (tappedId: string, stopId: string) => {
     const state = store.getState();
-    const track = state.tracks.find((t) => t.id === trackId);
+    const tapped = state.tracks.find((t) => t.id === tappedId);
+    const track = tapped?.life && isRing(state, stopId) ? homeOf(state, stopId) : tapped;
     const stop = state.stops.find((s) => s.id === stopId);
     if (!track || !stop || stop.done) return;
     if (nextIndex(track, new Map(state.stops.map((s) => [s.id, s]))) !== track.stops.indexOf(stopId)) return;
     const goal = stopId === track.stops[track.stops.length - 1];
-    store.dispatch({ type: 'complete', trackId, now: now() });
+    store.dispatch({ type: 'complete', trackId: track.id, now: now() });
     const ctx = sound();
     if (ctx) {
       playTone(ctx, pitchFor(track.color));

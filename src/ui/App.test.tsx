@@ -2871,3 +2871,47 @@ test('from the 3-month unit up no project train is drawn, only the life train', 
   expect(document.querySelector('.legend')!.textContent).toBe('5 years');
   expect(document.querySelectorAll('[data-train]')).toHaveLength(1);
 });
+
+describe('zoomed out, a ring speaks for its project', () => {
+  /** Wheels out over the plane until the legend reads `label`. */
+  function zoomOutTo(label: string) {
+    for (let i = 0; i < 400 && document.querySelector('.legend')!.textContent !== label; i++) {
+      act(() => {
+        fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 100 });
+      });
+    }
+    expect(document.querySelector('.legend')!.textContent).toBe(label);
+  }
+
+  /** Start done and the life train heading for Wristband, t1's goal: the life line's next square is the ring. */
+  function lifeHeadingForRing() {
+    const world = withLife();
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.tracks.find((t) => t.life)!.train = { leg: 1, departedAt: 0 };
+    return world;
+  }
+
+  test("a tap on a ring its project is not yet heading for does nothing and plays nothing", () => {
+    const oscillators = fakeAudio();
+    const store = createStore(lifeHeadingForRing());
+    render(<App store={store} now={() => 100_000} />);
+    zoomOutTo('3 months');
+    const before = store.getState();
+    act(() => tapOn(screen.getByRole('button', { name: /^Wristband/ })));
+    expect(store.getState()).toBe(before);
+    expect(oscillators).not.toHaveBeenCalled();
+  });
+
+  test("a tap on a ring its project's train is heading for completes it for the project, with the goal's sound", () => {
+    const oscillators = fakeAudio();
+    const world = lifeHeadingForRing();
+    world.stops.find((s) => s.id === 'dentist')!.done = true;
+    world.tracks.find((t) => t.id === 't1')!.train = { leg: 1, departedAt: 0 };
+    const store = createStore(world);
+    render(<App store={store} now={() => 100_000} />);
+    zoomOutTo('3 months');
+    act(() => tapOn(screen.getByRole('button', { name: /^Wristband/ })));
+    expect(stopNamed(store, 'wristband').done).toBe(true);
+    expect(oscillators).toHaveBeenCalled();
+  });
+});
