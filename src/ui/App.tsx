@@ -300,15 +300,20 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     return ctx;
   };
 
-  /** Only the stop the train is heading for completes; the goal adds the chord and the buzz. */
-  const complete = (trackId: string, stopId: string) => {
+  /**
+   * Only the stop the train is heading for completes; the goal adds the chord and the buzz. A ring
+   * speaks for its project even where only the life line draws it, zoomed out, so it completes
+   * under that project's rule and never through the life line.
+   */
+  const complete = (tappedId: string, stopId: string) => {
     const state = store.getState();
-    const track = state.tracks.find((t) => t.id === trackId);
+    const tapped = state.tracks.find((t) => t.id === tappedId);
+    const track = tapped?.life && isRing(state, stopId) ? homeOf(state, stopId) : tapped;
     const stop = state.stops.find((s) => s.id === stopId);
     if (!track || !stop || stop.done) return;
     if (nextIndex(track, new Map(state.stops.map((s) => [s.id, s]))) !== track.stops.indexOf(stopId)) return;
     const goal = stopId === track.stops[track.stops.length - 1];
-    store.dispatch({ type: 'complete', trackId, now: now() });
+    store.dispatch({ type: 'complete', trackId: track.id, now: now() });
     const ctx = sound();
     if (ctx) {
       playTone(ctx, pitchFor(track.color));
@@ -506,7 +511,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     setMarqueeBox(null);
     if (!m) return;
     const cam = cameraRef.current;
-    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at)), dayOf(now())));
+    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at)), dayOf(now()), gridFor(cam.scale).seconds));
   };
 
   /** Moves the start of the line under the finger, grip and all, and reads back the first leg. */
@@ -552,14 +557,18 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     setLegTime({ x: at.x, y: at.y, seconds: legSeconds(route, track.stops.indexOf(stopId)) });
   };
 
+  /** From the 3-month unit up no project line is drawn, and what is not drawn takes nothing. */
+  const projectsHidden = () => gridFor(cameraRef.current.scale).seconds >= PROJECTS_HIDDEN_FROM;
+
   /**
    * The lines a shape put down at a world point would join, nearest first. A square is a marker
-   * and only the life line takes it; every other shape joins project lines and never the life line.
+   * and only the life line takes it; every other shape joins project lines, while they are drawn,
+   * and never the life line.
    */
   const snapsFor = (shape: CarriedShape, p: Point): ReturnType<typeof snapToAll> => {
     const state = store.getState();
     const radius = SNAP_PX / cameraRef.current.scale;
-    if (shape !== 'square') return snapToAll(state, p, now(), radius);
+    if (shape !== 'square') return projectsHidden() ? [] : snapToAll(state, p, now(), radius);
     const hit = snapToLife(state, p, now(), radius);
     return hit ? [hit] : [];
   };
@@ -620,12 +629,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     carrySplit(at);
   };
 
-  /** Carries the split step along its stop's lines: the ghost sits on the nearest in reach, or follows the pointer. */
+  /**
+   * Carries the split step along its stop's lines: the ghost sits on the nearest in reach, or
+   * follows the pointer. Its lines are all project lines, so while they are hidden none is in reach.
+   */
   const carrySplit = (at: Point) => {
     const d = splitDrag.current;
     if (!d) return;
     const cam = cameraRef.current;
-    d.hits = snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale).filter((h) => d.tracks.includes(h.trackId));
+    d.hits = projectsHidden()
+      ? []
+      : snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale).filter((h) => d.tracks.includes(h.trackId));
     const snap = d.hits[0];
     const shown = snap ? worldToScreen(cam, snap.at) : at;
     setGhost({ shape: d.shape, size: d.size, x: shown.x, y: shown.y, snapped: snap !== undefined });
@@ -698,7 +712,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       return;
     }
     // A square never joins: a goal drawn speaking for the day is still its line's goal.
-    if (d.goal || homeOf(state, d.id)) return;
+    if (d.goal || homeOf(state, d.id) || projectsHidden()) return;
     const hit = snapToAll(state, stop, now(), SNAP_PX / cam.scale, stop.id)[0];
     if (hit) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: stop.id, leg: hit.leg, x: hit.at.x, y: hit.at.y, now: now() });
   };
