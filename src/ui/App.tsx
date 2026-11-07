@@ -557,14 +557,18 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     setLegTime({ x: at.x, y: at.y, seconds: legSeconds(route, track.stops.indexOf(stopId)) });
   };
 
+  /** From the 3-month unit up no project line is drawn, and what is not drawn takes nothing. */
+  const projectsHidden = () => gridFor(cameraRef.current.scale).seconds >= PROJECTS_HIDDEN_FROM;
+
   /**
    * The lines a shape put down at a world point would join, nearest first. A square is a marker
-   * and only the life line takes it; every other shape joins project lines and never the life line.
+   * and only the life line takes it; every other shape joins project lines, while they are drawn,
+   * and never the life line.
    */
   const snapsFor = (shape: CarriedShape, p: Point): ReturnType<typeof snapToAll> => {
     const state = store.getState();
     const radius = SNAP_PX / cameraRef.current.scale;
-    if (shape !== 'square') return snapToAll(state, p, now(), radius);
+    if (shape !== 'square') return projectsHidden() ? [] : snapToAll(state, p, now(), radius);
     const hit = snapToLife(state, p, now(), radius);
     return hit ? [hit] : [];
   };
@@ -703,7 +707,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       return;
     }
     // A square never joins: a goal drawn speaking for the day is still its line's goal.
-    if (d.goal || homeOf(state, d.id)) return;
+    if (d.goal || homeOf(state, d.id) || projectsHidden()) return;
     const hit = snapToAll(state, stop, now(), SNAP_PX / cam.scale, stop.id)[0];
     if (hit) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: stop.id, leg: hit.leg, x: hit.at.x, y: hit.at.y, now: now() });
   };
