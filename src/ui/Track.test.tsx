@@ -1,8 +1,8 @@
 import { render } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { layoutTrack } from '../plane/layout';
-import { TRACK_WIDTH } from '../plane/world';
-import { withWeek } from '../test/fixtures';
+import { LIFE_WIDTH, TRACK_WIDTH } from '../plane/world';
+import { withLife, withWeek } from '../test/fixtures';
 import { Track } from './Track';
 
 test("tomorrow's day line is drawn muted and half as wide; today's is ink at full width", () => {
@@ -37,4 +37,24 @@ test('a line runs on a casing of paper a little wider than it, beneath it, so a 
   // First in the svg, so every stroke of the line lies on it.
   expect(casing.parentElement!.firstElementChild).toBe(casing);
   expect(casing.getAttribute('d')!.match(/M/g)).toHaveLength(view.behind.length + view.segments.length);
+});
+
+test('the life line is ink at one and a half lines, with no casing, no origin handle and an ink train; the road behind the train is muted', () => {
+  expect(LIFE_WIDTH).toBe(TRACK_WIDTH * 1.5);
+  const w = withLife();
+  const life = w.tracks.find((t) => t.life)!;
+  // The train has passed Start, so there is road behind it and road ahead.
+  w.stops.find((s) => s.id === 'start')!.done = true;
+  life.train = { leg: 1, departedAt: 0 };
+  const view = layoutTrack(life, w, { x: 100, y: 500, scale: 0.1 }, 1000, { w: 1000, h: 800 });
+  const { container } = render(<Track view={view} />);
+  expect(container.querySelector('[data-target="origin"]')).toBeNull();
+  expect(container.querySelector('path.casing')).toBeNull();
+  const ahead = [...container.querySelectorAll<SVGLineElement>('line:not(.behind)')];
+  const behind = [...container.querySelectorAll<SVGLineElement>('line.behind')];
+  expect(ahead.length).toBeGreaterThan(0);
+  expect(behind.length).toBeGreaterThan(0);
+  for (const l of ahead) expect([l.style.stroke, l.style.strokeWidth]).toEqual(['var(--ink)', String(LIFE_WIDTH)]);
+  for (const l of behind) expect([l.style.stroke, l.style.strokeWidth]).toEqual(['var(--muted)', String(LIFE_WIDTH)]);
+  expect((container.querySelector('[data-train]') as SVGElement).style.fill).toBe('var(--ink)');
 });

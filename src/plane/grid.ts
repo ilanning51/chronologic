@@ -9,6 +9,9 @@ export const MINUTE = 60;
 export const HOUR = 60 * MINUTE;
 export const DAY = 24 * HOUR;
 export const WEEK = 7 * DAY;
+/** A month and a year as the ladder and the leg chip count them: 30 days and 365 days. */
+export const MONTH = 30 * DAY;
+export const YEAR = 365 * DAY;
 
 /** The ladder, smallest first. Each is a round duration a person would estimate in. */
 export const UNITS: { seconds: number; label: string }[] = [
@@ -22,7 +25,10 @@ export const UNITS: { seconds: number; label: string }[] = [
   { seconds: 6 * HOUR, label: '6 hours' },
   { seconds: DAY, label: '1 day' },
   { seconds: WEEK, label: '1 week' },
-  { seconds: 30 * DAY, label: '30 days' },
+  { seconds: MONTH, label: '30 days' },
+  { seconds: 3 * MONTH, label: '3 months' },
+  { seconds: YEAR, label: '1 year' },
+  { seconds: 5 * YEAR, label: '5 years' },
 ];
 
 /** The narrowest a square gets before the grid steps up a unit. */
@@ -44,6 +50,8 @@ export function gridFor(scale: number): Grid {
 }
 
 const PARTS: { seconds: number; suffix: string }[] = [
+  { seconds: YEAR, suffix: 'y' },
+  { seconds: MONTH, suffix: 'mo' },
   { seconds: WEEK, suffix: 'w' },
   { seconds: DAY, suffix: 'd' },
   { seconds: HOUR, suffix: 'h' },

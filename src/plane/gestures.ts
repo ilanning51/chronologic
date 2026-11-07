@@ -1,7 +1,7 @@
 import { distance, type Point } from './geometry';
 
 /** The tray's tiles, each also a brush. */
-export type Tile = 'circle' | 'triangle' | 'line' | 'sun';
+export type Tile = 'circle' | 'triangle' | 'square' | 'line' | 'sun';
 
 /** What a pointer went down on. Read from the DOM by the plane, never by this module. */
 export type Target =

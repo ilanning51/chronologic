@@ -1,7 +1,7 @@
-import { expect, test } from 'vitest';
-import { running, twoLines } from '../test/fixtures';
+import { describe, expect, test } from 'vitest';
+import { running, twoLines, withLife } from '../test/fixtures';
 import type { Stop, World } from '../model/types';
-import { nearestStop, snapToAll, snapToTracks } from './snap';
+import { nearestStop, snapToAll, snapToLife, snapToTracks } from './snap';
 
 const NOW = 500_000; // 500 s into the 1000 s leg to Dentist
 
@@ -82,4 +82,40 @@ test('nearestStop finds the closest pending stop within radius', () => {
   // A done stop, or one out of reach, is nothing.
   expect(nearestStop(stops, { x: 3000, y: 0 }, 50)).toBeNull();
   expect(nearestStop(stops, { x: 1100, y: 0 }, 50)).toBeNull();
+});
+
+describe('the life line', () => {
+  /** withLife with every square done and the life train parked at Far, x = 5000, at y = -800. */
+  function parkedLife(): World {
+    const world = withLife();
+    world.stops = world.stops.map((s) => (['start', 'wristband', 'far'].includes(s.id) ? { ...s, done: true, doneAt: 1 } : s));
+    world.tracks = world.tracks.map((t) => (t.life ? { ...t, train: { leg: 3, departedAt: 0 } } : t));
+    return world;
+  }
+
+  test('offers a square a place anywhere right of the life train, at the life height, with the leg it sorts into', () => {
+    const world = withLife();
+    // The train has not left the origin at x = 0. Between Start (500) and Wristband (3000).
+    expect(snapToLife(world, { x: 2000, y: -790 }, 0, 50)).toEqual({ trackId: 'life', leg: 1, offset: 1500, at: { x: 2000, y: -800 } });
+    // Left of the first square, and past the last one.
+    expect(snapToLife(world, { x: 200, y: -800 }, 0, 50)).toEqual({ trackId: 'life', leg: 0, offset: 200, at: { x: 200, y: -800 } });
+    expect(snapToLife(world, { x: 6000, y: -800 }, 0, 50)).toEqual({ trackId: 'life', leg: 3, offset: 1000, at: { x: 6000, y: -800 } });
+  });
+
+  test('offers nothing at or left of the life train, away from the line, or on top of a square', () => {
+    expect(snapToLife(parkedLife(), { x: 4000, y: -800 }, 0, 50)).toBeNull();
+    expect(snapToLife(parkedLife(), { x: 6000, y: -800 }, 0, 50)).not.toBeNull();
+    expect(snapToLife(withLife(), { x: 2000, y: -700 }, 0, 50)).toBeNull();
+    expect(snapToLife(withLife(), { x: 3020, y: -800 }, 0, 50)).toBeNull();
+    // The square being carried is never in its own way.
+    expect(snapToLife(withLife(), { x: 3020, y: -800 }, 0, 50, 'wristband')).not.toBeNull();
+  });
+
+  test('a world without a life line offers nothing', () => {
+    expect(snapToLife(running(), { x: 2000, y: 0 }, 0, 50)).toBeNull();
+  });
+
+  test('snapToAll never offers the life line, whatever is dropped on it', () => {
+    expect(snapToAll(withLife(), { x: 2000, y: -800 }, 0, 50).map((h) => h.trackId)).not.toContain('life');
+  });
 });

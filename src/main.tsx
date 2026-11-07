@@ -5,7 +5,7 @@ import { createStore, persist } from './store/store';
 import { load } from './store/storage';
 import { App } from './ui/App';
 
-const store = createStore(load(localStorage));
+const store = createStore(load(localStorage, Date.now()));
 persist(store, localStorage);
 
 createRoot(document.getElementById('root')!).render(

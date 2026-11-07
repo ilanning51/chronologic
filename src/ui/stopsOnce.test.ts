@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import type { StopView, TrackView } from '../plane/layout';
 import { labelPlaces, stopsOnce } from './stopsOnce';
 
@@ -15,6 +15,7 @@ const stopAt = (lane: { x: number; y: number }, ring = true): StopView => ({
   goal: false,
   projectGoal: false,
   terminus: false,
+  landmark: false,
   ring,
   lane,
   crowd: 0,
@@ -52,4 +53,39 @@ test("a transfer's name is set clear of the whole capsule, not only the disc at 
   // The capsule's discs are one line wide, so its right edge is half a line, the capsule's margin and the gap past the point.
   expect(place.dx).toBeGreaterThan(6);
   expect(place.dy).toBeLessThan(0);
+});
+
+describe('which line a stop speaks for', () => {
+  const stopView = (id: string, next: boolean): StopView => ({ ...stopAt({ x: 0, y: 0 }, false), id, shape: 'square', title: id, label: false, next });
+  const view = (id: string, stops: StopView[]) => ({ id, color: 0, finished: false, day: false, tomorrow: false, sketch: false, stops }) as unknown as TrackView;
+
+  test("a ring speaks for its project even when it is the life line's next and the project has an earlier step", () => {
+    const project = view('t1', [stopView('step', true), stopView('ring', false)]);
+    const life = view('life', [stopView('ring', true)]);
+    const placed = stopsOnce([life, project], 'life');
+    const ring = placed.find((p) => p.stop.id === 'ring')!;
+    expect(ring.track).toBe('t1');
+    expect(ring.stop.next).toBe(false);
+  });
+
+  test('a bare marker speaks for the life line', () => {
+    const life = view('life', [stopView('marker', true)]);
+    const marker = stopsOnce([life], 'life').find((p) => p.stop.id === 'marker')!;
+    expect(marker.track).toBe('life');
+    expect(marker.stop.next).toBe(true);
+  });
+
+  test('an interchange of two projects still speaks for the first line it is next on', () => {
+    const a = view('a', [stopView('shared', false)]);
+    const b = view('b', [stopView('shared', true)]);
+    expect(stopsOnce([a, b], 'life').find((p) => p.stop.id === 'shared')!.track).toBe('b');
+  });
+});
+
+test('a done goal on the life line is its landmark, not a terminus; on a project line alone it stays a terminus', () => {
+  const done = (over: Partial<StopView>): StopView => ({ ...stopAt({ x: 100, y: 100 }, false), done: true, ...over });
+  const [both] = stopsOnce([viewOf('p', done({ terminus: true })), viewOf('life', done({ landmark: true }))], 'life');
+  expect(both.stop).toMatchObject({ landmark: true, terminus: false });
+  const [alone] = stopsOnce([viewOf('p', done({ terminus: true }))]);
+  expect(alone.stop).toMatchObject({ landmark: false, terminus: true });
 });

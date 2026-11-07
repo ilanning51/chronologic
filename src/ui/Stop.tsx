@@ -43,6 +43,7 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
  * step, a triangle for a sub-goal and a square for a goal. Once done it is a plain disc, and a label
  * sits beside it when there is room. A project's goal's name is set in bold capitals, and once done
  * it stays as a terminus, a large ink disc with its name, the way a system map keeps its termini. A
+ * done square on the life line stays too, as a landmark: a small ink square with its name. A
  * goal with a picture carries it as a mural above the disc, the thing the line is for. The disc's
  * centre sits on the stop's screen point. The next stop is raised above the rest, so where hit
  * targets crowd it is the one a tap finds. Where a train has long waited, a small crowd of muted
@@ -82,6 +83,7 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
         finished && 'finished',
         sketch && 'sketch',
         stop.terminus && 'terminus',
+        stop.landmark && 'landmark',
         link && 'linked',
       ]
         .filter(Boolean)

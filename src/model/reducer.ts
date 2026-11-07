@@ -10,6 +10,8 @@ import {
   defaultLength,
   freshDayBudget,
   isDayEnd,
+  isProject,
+  isShadow,
   offOtherDays,
   settleDay,
   startDay,
@@ -17,9 +19,22 @@ import {
 } from './day';
 import { dayOf } from './days';
 import { moveBlock, place, unplace, type PlaceAction } from './blocks';
+import {
+  holdLifePlace,
+  isRing,
+  keepLife,
+  lastDoneX,
+  lifeBackTo,
+  lifeOf,
+  lifeTrainX,
+  lifeWithout,
+  onLife,
+  settleLife,
+  sortedByX,
+} from './life';
 import { keepTrain } from './relocate';
 import { legSeconds, nextIndex, rebase, timeLeftAny, trackRoute, trainState } from './train';
-import type { BubbleTarget, Size, Stop, Track, World } from './types';
+import type { BubbleTarget, Shape, Size, Stop, Track, World } from './types';
 
 /** A new goal starts thirty days out along the x axis: one world unit is one second. */
 export const DEFAULT_GOAL_SECONDS = 2_592_000;
@@ -42,7 +57,7 @@ export interface GoalDragStart {
  */
 export type Action =
   | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; goal?: Point; now: number } // goal: a month out, unless drawn
-  | { type: 'addStop'; trackId: string; id: string; shape: 'circle' | 'triangle'; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
+  | { type: 'addStop'; trackId: string; id: string; shape: Shape; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
   | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
@@ -89,19 +104,25 @@ function withTrack(world: World, track: Track): Track[] {
  * Takes a stop off every track that lists it and out of the world, or, given `only`, off that one
  * track and nowhere else. On each track the legs either side of it merge, read from the derived
  * train: the dot just behind the train joins its leg to the train's, and the train has covered
- * it, so no train ever goes back. The day line keeps its budgets in step and moves its train by
- * index alone.
+ * it, so no train ever goes back. The day line and the life line keep their budgets in step and
+ * move their trains by index alone.
  */
 function withoutStop(world: World, id: string, now: number, only?: string): World {
   const byId = stopsById(world);
   const kept = new Map<string, { leg: number; seconds: number }>();
   const fresh: string[] = [];
+  let freshLife = false;
   const tracks = world.tracks.map((track) => {
     const index = track.stops.indexOf(id);
     if (index < 0 || (only !== undefined && track.id !== only)) return track;
     if (track.day) {
       const off = dayWithout(track, index);
       if (off.fresh) fresh.push(track.id);
+      return off.track;
+    }
+    if (track.life) {
+      const off = lifeWithout(track, index);
+      if (off.fresh) freshLife = true;
       return off.track;
     }
     const state = trainState(track, byId, now);
@@ -123,7 +144,8 @@ function withoutStop(world: World, id: string, now: number, only?: string): Worl
     }),
   };
   // Read against the rebased project trains: the day's budget is their time left from now.
-  return fresh.reduce((w, dayId) => freshDayBudget(w, dayId, now), merged);
+  const freshened = fresh.reduce((w, dayId) => freshDayBudget(w, dayId, now), merged);
+  return freshLife ? keepLife(world, freshened, now) : freshened;
 }
 
 /**
@@ -135,15 +157,15 @@ export function undoable(world: World, stopId: string, now: number): boolean {
   const byId = stopsById(world);
   if (!byId.get(stopId)?.done) return false;
   const found = tracksOf(world, stopId);
-  return found.length > 0 && found.every(({ track, index }) => track.day || index >= trainState(track, byId, now).leg - 1);
+  return found.length > 0 && found.every(({ track, index }) => isShadow(track) || index >= trainState(track, byId, now).leg - 1);
 }
 
-/** The actions that can change the day's next stop; each ends by settling the day. */
+/** The actions that can change the day's or the life line's next stop; each ends by settling both. */
 const SETTLES = new Set<Action['type']>(['newDay', 'addToDay', 'complete', 'undo', 'leave', 'delete', 'place', 'moveBlock', 'unplace']);
 
 export function reduce(world: World, action: Action): World {
   const next = apply(world, action);
-  return next !== world && SETTLES.has(action.type) && 'now' in action ? settleDay(next, action.now) : next;
+  return next !== world && SETTLES.has(action.type) && 'now' in action ? settleLife(settleDay(next, action.now), action.now) : next;
 }
 
 function apply(world: World, action: Action): World {
@@ -163,7 +185,7 @@ function apply(world: World, action: Action): World {
       };
       const track: Track = {
         id,
-        color: world.tracks.length % PALETTE.length,
+        color: world.tracks.filter(isProject).length % PALETTE.length,
         origin: { x: origin.x, y: origin.y },
         stops: [goalId],
         train: { leg: 0, departedAt: now },
@@ -176,6 +198,15 @@ function apply(world: World, action: Action): World {
       const { trackId, id, shape, size = 'medium', leg, x, y, now, keep } = action;
       const track = world.tracks.find((t) => t.id === trackId);
       if (!track || world.stops.some((s) => s.id === id)) return world;
+      // The life line takes squares only, right of its train, sorted in by x; no other line takes one.
+      if (track.life) {
+        if (shape !== 'square' || x <= lifeTrainX(world, track, now)) return world;
+        const marker: Stop = { id, title: '', shape, size, x, y: track.life.y, done: false };
+        const withMarker: World = { ...world, stops: [...world.stops, marker] };
+        const placed = sortedByX([...track.stops, id], stopsById(withMarker));
+        return keepLife(world, { ...withMarker, tracks: withTrack(world, { ...track, stops: placed }), lastTouched: trackId }, now);
+      }
+      if (shape === 'square') return world;
       // Against the derived train: a stop slipped in behind where it really is would shift its leg.
       const state = trainState(track, stopsById(world), now);
       if (state.parked || leg < state.leg || leg >= track.stops.length) return world;
@@ -194,6 +225,19 @@ function apply(world: World, action: Action): World {
       const found = tracksOf(world, id);
       const stop = world.stops.find((s) => s.id === id);
       if (found.length === 0 || !stop || stop.done) return world;
+      const life = lifeOf(world);
+      // A square on the life line, ring or marker, slides along it: height pinned, never at or left
+      // of the life train or left of the last done square, the life stops sorted by x again.
+      if (life?.stops.includes(id)) {
+        const doneX = lastDoneX(world, life);
+        if (x <= lifeTrainX(world, life, now) || (doneX !== null && x < doneX)) return world;
+        const slid: World = { ...world, stops: world.stops.map((s) => (s.id === id ? { ...s, x, y: life.life.y } : s)), lastTouched: life.id };
+        const sorted: World = { ...slid, tracks: withTrack(slid, { ...life, stops: sortedByX(life.stops, stopsById(slid)) }) };
+        const rerouted = found
+          .filter(({ track }) => !track.life)
+          .reduce((w, { track }) => keepTrain(world, w, track.id, now, keep?.[track.id]), sorted);
+        return keepLife(world, rerouted, now);
+      }
       // A goal moves by moveGoal, which scales its line with it.
       if (found.some(({ track, index }) => index === track.stops.length - 1)) return world;
       // One point: every line through it re-routes, and every train keeps its place.
@@ -211,7 +255,8 @@ function apply(world: World, action: Action): World {
       if (!track || track.train.leg >= track.stops.length) return world;
       const goalId = track.stops[track.stops.length - 1];
       const goal = world.stops.find((s) => s.id === goalId);
-      if (!goal || goal.done) return world;
+      // A goal on the life line moves along it by move, never by scaling its line.
+      if (!goal || goal.done || onLife(world, goalId)) return world;
       // With a snapshot every move scales the drag's starting points; without one, today's.
       const byId = stopsById(world);
       const train = trainState(track, byId, now);
@@ -248,7 +293,11 @@ function apply(world: World, action: Action): World {
     case 'moveGroup': {
       const { now, keep } = action;
       // Only what the world knows; a stop moves done or not, as the whole picture slides together.
-      const stops = Object.entries(action.stops).filter(([id]) => world.stops.some((s) => s.id === id));
+      // A square on the life line keeps the life line's height whatever the group gives it.
+      const lifeLine = lifeOf(world);
+      const stops = Object.entries(action.stops)
+        .filter(([id]) => world.stops.some((s) => s.id === id))
+        .map(([id, p]): [string, Point] => [id, lifeLine?.life && lifeLine.stops.includes(id) ? { x: p.x, y: lifeLine.life.y } : p]);
       const origins = Object.entries(action.origins).filter(([id]) => world.tracks.some((t) => t.id === id));
       if (stops.length === 0 && origins.length === 0) return world;
       const stopAt = new Map(stops);
@@ -260,7 +309,24 @@ function apply(world: World, action: Action): World {
         stops: world.stops.map((s) => (stopAt.has(s.id) ? { ...s, ...stopAt.get(s.id)! } : s)),
         lastTouched: touched[0]?.id ?? world.lastTouched,
       };
-      return touched.reduce((w, t) => keepTrain(world, w, t.id, now, keep?.[t.id]), after);
+      // A pending life square never ends at or left of the life train, nor left of the last done
+      // square: a group that would put one there stays where it was.
+      if (lifeLine?.life) {
+        const trainAt = lifeTrainX(world, lifeLine, now);
+        const doneAt = lastDoneX(after, lifeLine);
+        const pending = new Set(world.stops.filter((s) => !s.done).map((s) => s.id));
+        const blocked = lifeLine.stops.some((id) => {
+          const to = stopAt.get(id);
+          return to !== undefined && pending.has(id) && (to.x <= trainAt || (doneAt !== null && to.x < doneAt));
+        });
+        if (blocked) return world;
+      }
+      const rerouted = touched.reduce((w, t) => keepTrain(world, w, t.id, now, keep?.[t.id]), after);
+      // Squares carried along the life line keep their order by x, and the life train its rule.
+      const life = lifeOf(rerouted);
+      if (!life || !life.stops.some((id) => stopAt.has(id))) return rerouted;
+      const sorted: World = { ...rerouted, tracks: withTrack(rerouted, { ...life, stops: sortedByX(life.stops, stopsById(rerouted)) }) };
+      return keepLife(world, sorted, now);
     }
 
     case 'edit': {
@@ -300,20 +366,29 @@ function apply(world: World, action: Action): World {
       if (found.length === 0) return world;
       if (isDayEnd(world, id)) return clearDay(world, dayWith(world, id)!.id);
       // A goal's home is a project: a stop last on the day line is only the day's last errand.
-      const home = found.find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
+      const home = found.find(({ track, index }) => isProject(track) && index === track.stops.length - 1)?.track;
       if (home) {
+        const life = lifeOf(world);
         const rest: World = {
           ...world,
           tracks: world.tracks.filter((t) => t.id !== home.id),
           lastTouched: world.lastTouched === home.id ? null : world.lastTouched,
         };
         // Only projects keep a stop alive: the goal goes, and every stop no other project lists.
-        const gone = home.stops.filter((s) => s === id || !rest.tracks.some((t) => !t.day && t.stops.includes(s)));
-        return gone.reduce((w, s) => withoutStop(w, s, now), rest);
+        // A square on the life line stays there, as a marker.
+        const orphans = home.stops.filter((s) => s === id || !rest.tracks.some((t) => isProject(t) && t.stops.includes(s)));
+        const removed = orphans.filter((s) => !life?.stops.includes(s)).reduce((w, s) => withoutStop(w, s, now), rest);
+        // A day lists only what a project does, so it lets go of a square that is now a marker.
+        const markers = orphans.filter((s) => life?.stops.includes(s));
+        const clean = markers.reduce(
+          (w, s) => days(w).filter((d) => d.stops.includes(s)).reduce((v, d) => withoutStop(v, s, now, d.id), w),
+          removed,
+        );
+        return holdLifePlace(world, clean, now);
       }
       const byId = stopsById(world);
       // A parked day train blocks nothing: it shadows the projects, it does not hold their stops.
-      if (found.some(({ track }) => !track.day && trainState(track, byId, now).parked)) return world;
+      if (found.some(({ track }) => isProject(track) && trainState(track, byId, now).parked)) return world;
       return withoutStop(world, id, now);
     }
 
@@ -321,8 +396,21 @@ function apply(world: World, action: Action): World {
       const { trackId, stopId, leg, x, y, now } = action;
       const track = world.tracks.find((t) => t.id === trackId);
       const stop = world.stops.find((s) => s.id === stopId);
-      // Only projects take a join: the day is filled by the sun drag and the day's-end drag.
-      if (!track || track.day || !stop || stop.done || track.stops.includes(stopId)) return world;
+      if (!track || !stop || stop.done || track.stops.includes(stopId)) return world;
+      // The life line takes squares only, right of its train, sorted in by x at its own height.
+      if (track.life) {
+        if (stop.shape !== 'square' || x <= lifeTrainX(world, track, now)) return world;
+        const placedStop: World = { ...world, stops: world.stops.map((s) => (s.id === stopId ? { ...s, x, y: track.life!.y } : s)) };
+        const placed = sortedByX([...track.stops, stopId], stopsById(placedStop));
+        const joined: World = { ...placedStop, tracks: withTrack(world, { ...track, stops: placed }), lastTouched: trackId };
+        // The goal's project bends its last leg to follow; its train keeps its place.
+        const rerouted = tracksOf(joined, stopId)
+          .filter((t) => !t.track.life)
+          .reduce((w, { track: t }) => keepTrain(world, w, t.id, now), joined);
+        return keepLife(world, rerouted, now);
+      }
+      // Otherwise only projects take a join: the day is filled by the sun drag and the day's-end drag.
+      if (isShadow(track)) return world;
       // Ahead of the derived train and before the goal, so a square never lands last.
       const state = trainState(track, stopsById(world), now);
       if (leg < state.leg || leg > track.stops.length - 1) return world;
@@ -340,10 +428,10 @@ function apply(world: World, action: Action): World {
       const { trackId, stopId, now } = action;
       const track = world.tracks.find((t) => t.id === trackId);
       const index = track ? track.stops.indexOf(stopId) : -1;
-      // A track's last stop is its goal, a square's home: that one stays.
-      if (!track || index < 0 || index === track.stops.length - 1) return world;
+      // A project's last stop is its goal, a square's home: that one stays. The life line has no goal.
+      if (!track || index < 0 || (!track.life && index === track.stops.length - 1)) return world;
       // Only projects keep a stop alive, so leaving its last project is delete, day and all.
-      const kept = world.tracks.some((t) => t.id !== trackId && !t.day && t.stops.includes(stopId));
+      const kept = world.tracks.some((t) => t.id !== trackId && isProject(t) && t.stops.includes(stopId));
       if (!kept) return reduce(world, { type: 'delete', id: stopId, now });
       return { ...withoutStop(world, stopId, now, trackId), lastTouched: trackId };
     }
@@ -355,10 +443,12 @@ function apply(world: World, action: Action): World {
       const next = track && nextIndex(track, byId);
       if (!track || next == null) return world;
       const doneId = track.stops[next];
+      // A ring's button speaks for its project; only a bare marker completes through the life line.
+      if (track.life && isRing(world, doneId)) return world;
       // A line whose next stop this is departs too; where it lies further ahead, the train
       // passes through it later. The day train is left to settleDay, which writes its budget.
       const tracks = world.tracks.map((t) => {
-        if (t.day) return t;
+        if (isShadow(t)) return t;
         if (t.id === trackId) return { ...t, train: { leg: next + 1, departedAt: now } };
         const i = t.stops.indexOf(doneId);
         return i >= 0 && nextIndex(t, byId) === i ? { ...t, train: { leg: i + 1, departedAt: now } } : t;
@@ -386,15 +476,16 @@ function apply(world: World, action: Action): World {
       const undone: World = {
         tracks: world.tracks.map((t) => {
           const i = t.stops.indexOf(id);
-          if (t.day || i < 0 || i !== trainState(t, byId, now).leg - 1) return t;
+          if (isShadow(t) || i < 0 || i !== trainState(t, byId, now).leg - 1) return t;
           const length = legSeconds(trackRoute(t, after), i);
           return { ...t, train: rebase(i, length, length, now) };
         }),
         stops,
-        lastTouched: (tracksOf(world, id).find(({ track }) => !track.day) ?? tracksOf(world, id)[0]).track.id,
+        lastTouched: (tracksOf(world, id).find(({ track }) => isProject(track)) ?? tracksOf(world, id)[0]).track.id,
       };
-      // The day train waits there too, on budget 0, however far past it it was.
-      return dayBackTo(undone, id, now);
+      // The day train waits there too, on budget 0, however far past it it was; the life train
+      // heads for it again.
+      return lifeBackTo(dayBackTo(undone, id, now), id, now);
     }
 
     case 'cycleTarget': {
@@ -402,7 +493,8 @@ function apply(world: World, action: Action): World {
       if (!track) return world;
       return {
         ...world,
-        tracks: withTrack(world, { ...track, target: NEXT_TARGET[track.target] }),
+        // The life line has no sub-goals: it points at its next square or its last.
+        tracks: withTrack(world, { ...track, target: track.life ? (track.target === 'next' ? 'goal' : 'next') : NEXT_TARGET[track.target] }),
         lastTouched: track.id,
       };
     }
@@ -414,9 +506,10 @@ function apply(world: World, action: Action): World {
       const cleared = old ? clearDay(world, old.id) : world;
       if (cleared.tracks.some((t) => t.id === id) || cleared.stops.some((s) => s.id === endId)) return world;
       const byId = stopsById(cleared);
-      // Pending stops some project lists, each once, in the order drawn. The old end square is gone.
+      // Pending stops some project lists, each once, in the order drawn, and none the life line
+      // lists: a ring is a goal on the life line, not an errand. The old end square is gone.
       const picked = [...new Set(action.stops)].filter(
-        (s) => byId.get(s)?.done === false && cleared.tracks.some((t) => !t.day && t.stops.includes(s)),
+        (s) => byId.get(s)?.done === false && !onLife(cleared, s) && cleared.tracks.some((t) => isProject(t) && t.stops.includes(s)),
       );
       if (picked.length === 0) return world;
       // A stop sits on one day at most: drawn onto this one, it comes off any other.
@@ -442,7 +535,7 @@ function apply(world: World, action: Action): World {
       const day = world.tracks.find((t) => t.id === dayId);
       const stop = world.stops.find((s) => s.id === stopId);
       if (!day?.day || !stop || stop.done || day.stops.includes(stopId)) return world;
-      if (!world.tracks.some((t) => !t.day && t.stops.includes(stopId))) return world;
+      if (onLife(world, stopId) || !world.tracks.some((t) => isProject(t) && t.stops.includes(stopId))) return world;
       // A finished day has parked past its end square: nothing goes behind it.
       if (day.train.leg > day.stops.length - 1) return world;
       // A stop sits on one day at most: added to this one, it comes off any other.

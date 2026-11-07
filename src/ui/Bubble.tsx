@@ -28,6 +28,8 @@ interface BubbleProps {
   soonest?: boolean;
   /** The day line, whose colour is the ink. */
   day?: boolean;
+  /** The life line, whose colour is the ink. */
+  life?: boolean;
   /** A sketch, a line with only its goal: muted like the line, its train and its goal. */
   sketch?: boolean;
 }
@@ -41,12 +43,12 @@ const SHAPE_WORDS: Record<Shape, string> = { circle: 'step', triangle: 'sub-goal
  * goal with a picture has no pill: the bubble is the picture itself, centred in a square of the
  * line's colour, so the thing the line is for is a glance away from anywhere, framed in its line.
  */
-export function Bubble({ track, color, shape, title, image, x, y, side, soonest = false, day = false, sketch = false }: BubbleProps) {
-  const ink = day ? 'var(--ink)' : sketch ? 'var(--muted)' : colorVar(color);
+export function Bubble({ track, color, shape, title, image, x, y, side, soonest = false, day = false, life = false, sketch = false }: BubbleProps) {
+  const ink = day || life ? 'var(--ink)' : sketch ? 'var(--muted)' : colorVar(color);
   // Words set on that colour: white on the ink and the muted grey, else the line's own.
-  const on = day || sketch ? 'var(--on-plate)' : onColorVar(color);
+  const on = day || life || sketch ? 'var(--on-plate)' : onColorVar(color);
   // The line's colour where words sit on it, a shade darker for blue and brown.
-  const fill = day ? 'var(--ink)' : sketch ? 'var(--muted)' : fillVar(color);
+  const fill = day || life ? 'var(--ink)' : sketch ? 'var(--muted)' : fillVar(color);
   return (
     <button
       type="button"

@@ -23,7 +23,21 @@ test('every zoom in range draws a square of at least GRID_MIN_PX and the ladder 
     expect(UNITS.map((u) => u.seconds)).toContain(g.seconds);
   }
   expect(gridFor(MAX_SCALE)).toMatchObject({ seconds: 1, label: '1 second' });
-  expect(gridFor(MIN_SCALE)).toMatchObject({ seconds: 7 * 86400, label: '1 week' });
+  expect(gridFor(MIN_SCALE)).toMatchObject({ seconds: 5 * 365 * 86400, label: '5 years' });
+});
+
+test('the ladder climbs through 3 months and 1 year to 5 years as the camera zooms out', () => {
+  expect(gridFor(1e-5)).toMatchObject({ seconds: 30 * 86400, label: '30 days' });
+  expect(gridFor(2.5e-6)).toMatchObject({ seconds: 365 * 86400, label: '1 year' });
+  expect(gridFor(3e-6)).toMatchObject({ seconds: 90 * 86400, label: '3 months' });
+  expect(gridFor(6.4e-7)).toMatchObject({ seconds: 365 * 86400, label: '1 year' });
+  expect(gridFor(6.2e-7)).toMatchObject({ seconds: 5 * 365 * 86400, label: '5 years' });
+});
+
+test('on an 844 px landscape phone the widest zoom reads 5 years', () => {
+  // The camera's far end puts about fifty years across the screen.
+  expect(844 / MIN_SCALE).toBeGreaterThan(40 * 365 * 86400);
+  expect(gridFor(MIN_SCALE).label).toBe('5 years');
 });
 
 test('a leg reads as its two largest units, whole, and never as a bare zero', () => {
@@ -37,4 +51,11 @@ test('a leg reads as its two largest units, whole, and never as a bare zero', ()
   expect(formatSeconds(8100.7)).toBe('2 h 15 min');
   // Below the second unit nothing is shown rather than a zero.
   expect(formatSeconds(3600 + 20)).toBe('1 h');
+});
+
+test('long legs read in months and years', () => {
+  expect(formatSeconds(400 * 86400)).toBe('1 y 1 mo');
+  expect(formatSeconds(100 * 86400)).toBe('3 mo 1 w');
+  expect(formatSeconds(2 * 365 * 86400)).toBe('2 y');
+  expect(formatSeconds(29 * 86400)).toBe('4 w 1 d');
 });

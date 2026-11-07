@@ -10,7 +10,7 @@ import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
 import { LANE_PX, TRACK_WIDTH } from '../plane/world';
-import { running, twoLines, withDay, withWeek } from '../test/fixtures';
+import { running, twoLines, withDay, withLife, withWeek } from '../test/fixtures';
 import { App } from './App';
 
 window.innerWidth = 1000;
@@ -61,6 +61,23 @@ test('a done goal stays as a terminus: a large ink dot that keeps its name in in
   // The terminus rules come after the finished and done ones, so they win at equal weight.
   expect(uiCss.indexOf('.stop.terminus .shape.dot')).toBeGreaterThan(uiCss.indexOf('.stop.finished .shape.dot'));
   expect(uiCss.indexOf('.stop.terminus .label')).toBeGreaterThan(uiCss.indexOf('.stop.done .label'));
+});
+
+test('a done square on the life line is a landmark: a small ink square that keeps its name in ink, under its own rules', () => {
+  const world = withLife();
+  world.stops.find((s) => s.id === 'start')!.done = true;
+  render(<App store={createStore(world)} now={() => 500_000} />);
+  const square = screen.getByRole('button', { name: /^Start.*done/ });
+  expect(square).toHaveClass('landmark');
+  expect(square).not.toHaveClass('terminus');
+  const dot = /\.stop\.landmark \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(dot).toMatch(/width:\s*var\(--disc-small\)/);
+  expect(dot).toMatch(/border-radius:\s*0/);
+  expect(dot).toMatch(/background:\s*var\(--ink\)/);
+  expect(/\.stop\.landmark \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
+  // After the finished and done rules, so they win at equal weight.
+  expect(uiCss.indexOf('.stop.landmark .shape.dot')).toBeGreaterThan(uiCss.indexOf('.stop.finished .shape.dot'));
+  expect(uiCss.indexOf('.stop.landmark .label')).toBeGreaterThan(uiCss.indexOf('.stop.done .label'));
 });
 
 test("a goal's name is set in bold capitals on the plane and in its bubble", () => {
@@ -150,7 +167,7 @@ test("a sketch's bubble is muted, like its line", () => {
   world.tracks[0].stops = ['wristband'];
   world.stops = world.stops.filter((s) => s.id === 'wristband');
   // Far enough to be off screen even when the leg is fitted at the smallest zoom.
-  world.stops[0].x = 1e8;
+  world.stops[0].x = 1e11;
   render(<App store={createStore(world)} now={() => 500_000} />);
   const bubble = document.querySelector('[data-target="bubble"]') as HTMLElement;
   expect(bubble).toBeInTheDocument();
@@ -2153,7 +2170,7 @@ test('drawing with the line brush shows the routed time while the stroke is in f
     fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 150, clientY: 650 });
     fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 450, clientY: 700 });
   });
-  // A 45 degree run over the short side, then straight: 50·√2 + 250 screen px.
+  // A 45 degree run over the short side, then straight: 50Â·âˆš2 + 250 screen px.
   const seconds = (50 * Math.SQRT2 + 250) / scale;
   expect(document.querySelector('.leg-time')).toHaveTextContent(formatSeconds(seconds));
   expect(document.querySelector('.day-ghost')).not.toBeNull();
@@ -2457,4 +2474,400 @@ test('the plane draws no line for a day after tomorrow, nor its end square', () 
   expect(document.querySelector('[data-target="origin"][data-track="day"]')).toBeInTheDocument();
   expect(document.querySelector('[data-target="origin"][data-track="day2"]')).toBeNull();
   expect(document.querySelector('[data-id="dayEnd2"]')).toBeNull();
+});
+
+describe('the life line bubble', () => {
+  const LONG_AFTER = 1e13;
+
+  /**
+   * Start done, the life train on its leg into Far (x 5e9, off screen), and Wristband, t1's goal,
+   * a ring further right. The camera opens on t1, so Far is out of sight to the right.
+   */
+  function lifeOffScreen() {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.stops.find((s) => s.id === 'far')!.x = 5e9;
+    world.stops.find((s) => s.id === 'wristband')!.x = 1e10;
+    life.stops = ['start', 'far', 'wristband'];
+    life.train = { leg: 1, departedAt: 0 };
+    return world;
+  }
+  const lifeBubble = () => document.querySelector('[data-target="bubble"][data-track="life"]') as HTMLElement | null;
+
+  test('is in ink, names the next undone square, and is filled while the life train waits there', () => {
+    render(<App store={createStore(lifeOffScreen())} now={() => LONG_AFTER} />);
+    const bubble = lifeBubble()!;
+    expect(bubble).toHaveAccessibleName(/^Far, goal/);
+    expect(bubble.style.getPropertyValue('--track-color')).toBe('var(--ink)');
+    expect(bubble).toHaveClass('soonest');
+  });
+
+  test('is not filled while the life train is still rolling', () => {
+    render(<App store={createStore(lifeOffScreen())} now={() => 1000} />);
+    expect(lifeBubble()).not.toHaveClass('soonest');
+  });
+
+  test('a tap cycles its target between the next square and the last, never through a sub-goal', () => {
+    const store = createStore(lifeOffScreen());
+    render(<App store={store} now={() => LONG_AFTER} />);
+    const life = () => store.getState().tracks.find((t) => t.life)!;
+    expect(life().target).toBe('next');
+    act(() => tapOn(lifeBubble()!));
+    expect(life().target).toBe('goal');
+    expect(lifeBubble()).toHaveAccessibleName(/^Wristband, goal/);
+    act(() => tapOn(lifeBubble()!));
+    expect(life().target).toBe('next');
+  });
+
+  test('a picture bubble flies to its marker and lands no wider than the 1-year unit', () => {
+    reduceMotion();
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    world.tracks = world.tracks.filter((t) => t.id !== 't1');
+    life.stops = ['start', 'far'];
+    life.life = { y: -800, budgets: [0, 0] };
+    life.target = 'goal';
+    const far = world.stops.find((s) => s.id === 'far')!;
+    far.x = 3e9;
+    far.image = PICTURE;
+    render(<App store={createStore(world)} now={() => 100_000} />);
+    for (let i = 0; i < 40 && document.querySelector('.legend')!.textContent !== '5 years'; i++) {
+      act(() => {
+        fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 2500 });
+      });
+    }
+    expect(document.querySelector('.legend')!.textContent).toBe('5 years');
+    expect(lifeBubble()).toHaveClass('picture');
+    act(() => tapOn(lifeBubble()!));
+    expect(document.querySelector('.legend')!.textContent).toBe('1 year');
+    expect(screen.getByRole('button', { name: /^Far/ })).toBeInTheDocument();
+  });
+
+  test('from the 1-year unit up the bubble passes over the rings the level does not draw', () => {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    // Start done and the life train heading for Wristband, a ring: from the 1-year unit up it is
+    // not drawn, so the bubble points at Far, the next bare marker.
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.stops.find((s) => s.id === 'far')!.x = 3e9;
+    life.train = { leg: 1, departedAt: 0 };
+    render(<App store={createStore(world)} now={() => 100_000} />);
+    for (let i = 0; i < 400 && document.querySelector('.legend')!.textContent !== '1 year'; i++) {
+      act(() => {
+        fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 100 });
+      });
+    }
+    expect(document.querySelector('.legend')!.textContent).toBe('1 year');
+    expect(lifeBubble()).toHaveAccessibleName(/^Far, goal/);
+  });
+
+  test('tap-to-fit on a project line never zooms wider than the 30-day unit', () => {
+    reduceMotion();
+    const world = running();
+    world.stops[1].x = 1e9;
+    world.stops[1].image = PICTURE;
+    render(<App store={createStore(world)} now={() => 500_000} />);
+    act(() => tapOn(document.querySelector('[data-target="bubble"]')!));
+    expect(document.querySelector('.legend')!.textContent).toBe('30 days');
+  });
+});
+
+describe('life line gestures', () => {
+  const LIFE_NOW = 1000;
+  /** Screen pixels per world second at the opening: the leg to Dentist fits a third of the width. */
+  const SCALE = 1 / 3;
+
+  /** withLife with its squares brought in so they are all on screen at the opening. */
+  function lifeScene(): ReturnType<typeof withLife> {
+    const world = withLife();
+    const place = (id: string, x: number) => {
+      world.stops.find((s) => s.id === id)!.x = x;
+    };
+    place('start', 600);
+    place('wristband', 1100);
+    place('far', 1400);
+    return world;
+  }
+
+  /**
+   * lifeScene and a second line t2, below the first, whose goal Goal two is not on the life line:
+   * a step at (800, 300) and the goal at (900, 300). The camera still opens on t1, the project
+   * heading for the first ring.
+   */
+  function joinScene(): ReturnType<typeof withLife> {
+    const world = lifeScene();
+    world.tracks.push({ id: 't2', color: 1, origin: { x: 0, y: 300 }, stops: ['s2', 'g2'], train: { leg: 0, departedAt: 0 }, target: 'goal' });
+    world.stops.push(
+      { id: 's2', title: 'Step two', shape: 'circle', size: 'medium', x: 800, y: 300, done: false },
+      { id: 'g2', title: 'Goal two', shape: 'square', size: 'large', x: 900, y: 300, done: false },
+    );
+    return world;
+  }
+
+  const lifeOf = (store: ReturnType<typeof createStore>) => store.getState().tracks.find((t) => t.life)!;
+  const ghost = () => document.querySelector<HTMLElement>('.ghost');
+  /** The screen point on the life line at a world x, a few pixels off the line. */
+  const onLifeLine = (x: number) => ({ x: at(/^Start/).x + (x - 600) * SCALE, y: at(/^Start/).y + 6 });
+
+  /** Presses a tile and moves it to a screen point, leaving the finger down; the returned function lets go. */
+  function carry(name: string, to: { x: number; y: number }) {
+    const tile = screen.getByRole('button', { name });
+    fireEvent.pointerDown(tile, { pointerId: 1, clientX: 900, clientY: 740 });
+    fireEvent.pointerMove(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+    return () => fireEvent.pointerUp(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+  }
+
+  test('the Marker tile dropped on the life line right of the train adds a square there and opens its name field', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    let drop = () => {};
+    act(() => {
+      drop = carry('Marker', onLifeLine(1250));
+    });
+    // On the line the ghost is a square, filled.
+    expect(ghost()).toHaveClass('snapped');
+    expect(ghost()!.querySelector('.shape.square')).toBeInTheDocument();
+    act(() => drop());
+    expect(lifeOf(store).stops).toHaveLength(4);
+    // Between Wristband (1100) and Far (1400).
+    const added = stopNamed(store, lifeOf(store).stops[2]);
+    expect(added).toMatchObject({ shape: 'square', title: '', y: -800 });
+    expect(added.x).toBeCloseTo(1250, 0);
+    expect(screen.getByRole('textbox', { name: 'Stop title' })).toBeInTheDocument();
+  });
+
+  test('the Marker tile dropped past the last square still joins the life line', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    act(() => dragTile('Marker', onLifeLine(1500)));
+    expect(lifeOf(store).stops).toHaveLength(4);
+    expect(lifeOf(store).stops.slice(0, 3)).toEqual(['start', 'wristband', 'far']);
+    expect(stopNamed(store, lifeOf(store).stops[3]).x).toBeCloseTo(1500, 0);
+  });
+
+  test('the Marker tile on a project line or on paper adds nothing and its ghost is muted', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    const before = store.getState();
+    // On t1's first leg, ahead of its train.
+    const onProject = { x: at(/^Dentist/).x - 100, y: at(/^Dentist/).y + 6 };
+    for (const to of [onProject, { x: 300, y: 600 }]) {
+      let drop = () => {};
+      act(() => {
+        drop = carry('Marker', to);
+      });
+      expect(ghost()).not.toHaveClass('snapped');
+      expect(ghost()!.querySelector('.shape.square')).toBeInTheDocument();
+      act(() => drop());
+      expect(store.getState()).toBe(before);
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    }
+  });
+
+  test('a Step or a Sub-goal dropped on the life line adds nothing and its ghost is muted', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    const before = store.getState();
+    for (const tile of ['Step', 'Sub-goal']) {
+      let drop = () => {};
+      act(() => {
+        drop = carry(tile, onLifeLine(1250));
+      });
+      expect(ghost()).not.toHaveClass('snapped');
+      act(() => drop());
+      expect(store.getState()).toBe(before);
+    }
+  });
+
+  test("a goal released on the life line right of the train joins it as a ring, and the project's steps keep their places", () => {
+    const store = createStore(joinScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const before = store.getState();
+    const step = stopNamed(store, 's2');
+    const goal = at(/^Goal two/);
+    // Up to the life line, 30 px to the right: world x 990, between Start (600) and Wristband (1100).
+    act(() => dragStop(/^Goal two/, 30, at(/^Start/).y - goal.y));
+    expect(lifeOf(store).stops).toEqual(['start', 'g2', 'wristband', 'far']);
+    expect(stopNamed(store, 'g2')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'g2').x).toBeCloseTo(900 + 30 / SCALE, 6);
+    // Only the goal moved: the drag scaled the step while it was held, and the release put it back.
+    expect(stopNamed(store, 's2')).toEqual(step);
+    expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['s2', 'g2']);
+    // The whole drag and join is one step for undo.
+    act(() => store.undo());
+    expect(store.getState()).toEqual(before);
+  });
+
+  test('a goal released off the life line scales its line and joins nothing, as before', () => {
+    const store = createStore(joinScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    act(() => dragStop(/^Goal two/, 60, 40));
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
+    expect(stopNamed(store, 's2').x).not.toBe(800);
+  });
+
+  test("a ring dragged along the life line keeps its height, shows the life leg's time and moves nothing else", () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const dentist = stopNamed(store, 'dentist');
+    const el = screen.getByRole('button', { name: /^Wristband/ });
+    const from = { x: parseFloat(el.style.left) + 4, y: parseFloat(el.style.top) };
+    act(() => {
+      fireEvent.pointerDown(el, { pointerId: 1, clientX: from.x, clientY: from.y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 60 });
+    });
+    const wristband = stopNamed(store, 'wristband');
+    expect(wristband.y).toBe(-800);
+    expect(wristband.x).toBeCloseTo(1100 + 30 / SCALE, 6);
+    // The life leg into Wristband runs from Start at 600.
+    expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(wristband.x - 600));
+    act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 60 }));
+    expect(stopNamed(store, 'dentist')).toEqual(dentist);
+    expect(stopNamed(store, 'start').x).toBe(600);
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
+    expect(document.querySelector('.leg-time')).toBeNull();
+  });
+
+  test('a bare marker dragged along the life line keeps its height and changes its x, and may pass its neighbour', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    act(() => dragStop(/^Far/, -120, 50));
+    expect(stopNamed(store, 'far')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'far').x).toBeCloseTo(1400 - 120 / SCALE, 6);
+    expect(lifeOf(store).stops).toEqual(['start', 'far', 'wristband']);
+  });
+
+  test('a marker dragged left of the life train stops at the train and does not pass it', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const { x, y } = at(/^Far/);
+    const el = screen.getByRole('button', { name: /^Far/ });
+    act(() => {
+      fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: x - 150, clientY: y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: x - 600, clientY: y });
+      fireEvent.pointerUp(el, { pointerId: 1, clientX: x - 600, clientY: y });
+    });
+    // The second move would have put it at x = -400, behind the train at about x = 1.
+    expect(stopNamed(store, 'far').x).toBeCloseTo(1400 - 150 / SCALE, 6);
+  });
+
+  test('a marker released near a project line does not join it', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const to = { x: at(/^Dentist/).x - 100, y: at(/^Dentist/).y + 6 };
+    const from = at(/^Far/);
+    const el = screen.getByRole('button', { name: /^Far/ });
+    act(() => {
+      fireEvent.pointerDown(el, { pointerId: 1, clientX: from.x, clientY: from.y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: to.x, clientY: to.y });
+      fireEvent.pointerUp(el, { pointerId: 1, clientX: to.x, clientY: to.y });
+    });
+    expect(store.getState().tracks.find((t) => t.id === 't1')!.stops).toEqual(['dentist', 'wristband']);
+  });
+
+  test('the sun dragged through a ring or a marker does not pick either up', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    const before = store.getState();
+    const sun = screen.getByRole('button', { name: 'Today' });
+    const ring = at(/^Wristband/);
+    const marker = at(/^Far/);
+    act(() => {
+      fireEvent.pointerDown(sun, point(900, 740));
+      fireEvent.pointerMove(sun, point(ring.x, ring.y));
+      fireEvent.pointerMove(sun, point(marker.x, marker.y));
+      fireEvent.pointerUp(sun, point(marker.x, marker.y + 80));
+    });
+    expect(store.getState()).toBe(before);
+  });
+
+  test('a box over a marker and a project stop moves the marker along the life line and the stop both ways', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const dentist = at(/^Dentist/);
+    const marker = at(/^Far/);
+    act(() => drawBox(dentist.x - 30, marker.y - 30, marker.x + 30, dentist.y + 30));
+    expect(box()).not.toBeNull();
+    act(() => dragOn(box()!, dentist.x, dentist.y, 30, 60));
+    expect(stopNamed(store, 'far').x).toBeCloseTo(1400 + 30 / SCALE, 6);
+    expect(stopNamed(store, 'far').y).toBe(-800);
+    expect(stopNamed(store, 'dentist').x).toBeCloseTo(1000 + 30 / SCALE, 6);
+    expect(stopNamed(store, 'dentist').y).toBeCloseTo(60 / SCALE, 6);
+  });
+
+  test('a box over the life line start catches no start to carry', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const start = at(/^Start/);
+    // The life line's start is at world x 0, the left of Start by 600 s.
+    const origin = { x: start.x - 600 * SCALE, y: start.y };
+    act(() => drawBox(origin.x - 30, origin.y - 30, start.x + 30, origin.y + 30));
+    act(() => dragOn(box()!, start.x, start.y, 0, 60));
+    expect(lifeOf(store).origin).toEqual({ x: 0, y: -800 });
+    expect(stopNamed(store, 'start').y).toBe(-800);
+  });
+
+  test('a step split off a ring cannot be dropped on the life line', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const before = store.getState();
+    act(() => splitFrom(/^Wristband/, onLifeLine(1250)));
+    expect(store.getState()).toBe(before);
+  });
+
+  describe('the editor on a ring', () => {
+    /** lifeScene with Far before Wristband, so Wristband is the rightmost square. */
+    function ringLast() {
+      const world = lifeScene();
+      world.stops.find((s) => s.id === 'far')!.x = 1000;
+      world.stops.find((s) => s.id === 'wristband')!.x = 1400;
+      world.tracks.find((t) => t.life)!.stops = ['start', 'far', 'wristband'];
+      return world;
+    }
+
+    test('shows a Life chip in ink, the rightmost ring included, and tapping it takes the goal off the life line', () => {
+      vi.useFakeTimers();
+      const store = createStore(ringLast());
+      render(<App store={store} now={() => LIFE_NOW} />);
+      openEditorOn(/^Wristband/);
+      const chip = screen.getByRole('button', { name: 'Leave Life' });
+      expect(chip.style.getPropertyValue('--track-color')).toBe('var(--ink)');
+      // Its own line is not a chip: a goal cannot leave it.
+      expect(screen.getAllByRole('button').filter((b) => b.classList.contains('line-chip'))).toHaveLength(1);
+      act(() => chip.click());
+      expect(lifeOf(store).stops).toEqual(['start', 'far']);
+      expect(store.getState().tracks.find((t) => t.id === 't1')!.stops).toEqual(['dentist', 'wristband']);
+      expect(stopNamed(store, 'wristband')).toMatchObject({ x: 1400, y: -800 });
+    });
+
+    test('a ring in the middle of the life line shows it too, and a bare marker shows none', () => {
+      vi.useFakeTimers();
+      render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+      openEditorOn(/^Wristband/);
+      expect(screen.getByRole('button', { name: 'Leave Life' })).toBeInTheDocument();
+      cleanup();
+      render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+      openEditorOn(/^Far/);
+      expect(screen.queryByRole('button', { name: /^Leave/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    });
+  });
+});
+
+test('from the 3-month unit up no project train is drawn, only the life train', () => {
+  render(<App store={createStore(withLife())} now={() => WAITING} />);
+  for (let i = 0; i < 40 && document.querySelector('.legend')!.textContent !== '5 years'; i++) {
+    act(() => {
+      fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 2500 });
+    });
+  }
+  expect(document.querySelector('.legend')!.textContent).toBe('5 years');
+  expect(document.querySelectorAll('[data-train]')).toHaveLength(1);
 });

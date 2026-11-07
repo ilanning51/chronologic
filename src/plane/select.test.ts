@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { twoLines, withWeek } from '../test/fixtures';
+import { twoLines, withLife, withWeek } from '../test/fixtures';
 import { bounds, pick, prune, rectOf } from './select';
 
 test('rectOf takes any two corners', () => {
@@ -30,4 +30,10 @@ test('a box over the start or the end square of a day line not drawn on the plan
   w.tracks.find((t) => t.id === 'day2')!.day!.date = '2026-11-03';
   expect(pick(w, { x: 2990, y: 190, w: 20, h: 20 }, '2026-11-01')).toBeNull();
   expect(pick(w, { x: 2990, y: 890, w: 20, h: 20 }, '2026-11-01')).toBeNull();
+});
+
+test('a box over the life line carries its squares but never its start', () => {
+  const w = withLife();
+  expect(pick(w, { x: -10, y: -810, w: 620, h: 20 }, '2026-11-01')).toEqual({ stops: ['start'], origins: [] });
+  expect(pick(w, { x: -10, y: -810, w: 20, h: 20 }, '2026-11-01')).toBeNull();
 });

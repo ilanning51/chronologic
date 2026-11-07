@@ -9,6 +9,16 @@ export function defaultLength(stop: Pick<Stop, 'size'> | undefined): number {
   return DEFAULT_LENGTH[stop?.size ?? 'medium'];
 }
 
+/** A project line: neither a day line nor the life line. Only a project keeps a stop alive. */
+export function isProject(track: Track): boolean {
+  return !track.day && !track.life;
+}
+
+/** A day line or the life line: a track whose train shadows the projects instead of keeping time. */
+export function isShadow(track: Track): boolean {
+  return track.day !== undefined || track.life !== undefined;
+}
+
 /**
  * Whether the plane draws a line: every project, today's day line, and tomorrow's. A day further
  * ahead lives only in the week window until its day comes near.
@@ -53,7 +63,7 @@ function departDay(world: World, day: Track, leg: number, budgets: number[], now
 export function isDayEnd(world: World, stopId: string): boolean {
   const day = dayWith(world, stopId);
   if (!day || day.stops[day.stops.length - 1] !== stopId) return false;
-  return !world.tracks.some((t) => !t.day && t.stops.includes(stopId));
+  return !world.tracks.some((t) => isProject(t) && t.stops.includes(stopId));
 }
 
 /** The day track and its end square go; every stop it listed stays as it is, done or not. */

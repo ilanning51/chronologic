@@ -358,6 +358,18 @@
   color: var(--ink);
 }
 
+/* A done square on the life line stays as a landmark: a small ink square with its name in ink. */
+.stop.landmark .shape.dot {
+  width: var(--disc-small);
+  height: var(--disc-small);
+  border-radius: 0;
+  background: var(--ink);
+}
+
+.stop.landmark .label {
+  color: var(--ink);
+}
+
 /* Focus and press are the disc filling with the track color, never a ring. */
 button:focus-visible {
   outline: none;

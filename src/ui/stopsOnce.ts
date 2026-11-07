@@ -63,24 +63,29 @@ export interface PlacedStop {
 /**
  * Each stop once, however many lines list it, so an interchange is one button and one key.
  * It speaks for the first line it is next on, else the first that lists it, so a tap
- * completes it where it can be completed.
+ * completes it where it can be completed. The life line (`lifeId`) never speaks for a square a
+ * project lists: a ring's tap is its project's, and only a bare marker completes through the life line.
  */
-export function stopsOnce(views: TrackView[]): PlacedStop[] {
+export function stopsOnce(views: TrackView[], lifeId?: string): PlacedStop[] {
   const byId = new Map<string, { view: TrackView; stop: StopView }[]>();
   for (const view of views) {
     for (const stop of view.stops) byId.set(stop.id, [...(byId.get(stop.id) ?? []), { view, stop }]);
   }
   return [...byId.values()].map((listings) => {
-    const { view, stop } = listings.find((l) => l.stop.next) ?? listings[0];
+    const projects = listings.filter((l) => l.view.id !== lifeId);
+    const speaking = projects.length > 0 ? projects : listings;
+    const { view, stop } = speaking.find((l) => l.stop.next) ?? speaking[0];
     const link = stop.ring ? linkOf(stop, listings.map((l) => l.stop.lane)) : undefined;
     return {
       stop: {
         ...stop,
-        next: listings.some((l) => l.stop.next),
+        next: speaking.some((l) => l.stop.next),
         label: listings.some((l) => l.stop.label),
         // A goal is a goal whichever line its button speaks for.
         projectGoal: listings.some((l) => l.stop.projectGoal),
-        terminus: listings.some((l) => l.stop.terminus),
+        // A done goal that also stands on the life line is that line's landmark, not a terminus.
+        landmark: listings.some((l) => l.stop.landmark),
+        terminus: listings.some((l) => l.stop.terminus) && !listings.some((l) => l.stop.landmark),
         crowd: Math.max(...listings.map((l) => l.stop.crowd)),
       },
       track: view.id,

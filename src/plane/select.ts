@@ -30,13 +30,13 @@ function inside(p: Point, r: Rect): boolean {
 /**
  * Everything whose point is in the box, edges included: the box is geometry, so a stop hidden
  * by the level counts as much as a drawn one. A day line the plane does not draw, further ahead
- * than tomorrow, is not there to catch: neither its start nor a stop only it lists. Null when it
- * caught nothing.
+ * than tomorrow, is not there to catch: neither its start nor a stop only it lists. The life
+ * line's squares are caught, its start never: it is not drawn or moved. Null when it caught nothing.
  */
 export function pick(world: World, box: Rect, today: string): Selection | null {
   const onPlane = (id: string) => world.tracks.some((t) => t.stops.includes(id) && drawnOnPlane(t, today));
   const stops = world.stops.filter((s) => inside(s, box) && onPlane(s.id)).map((s) => s.id);
-  const origins = world.tracks.filter((t) => inside(t.origin, box) && drawnOnPlane(t, today)).map((t) => t.id);
+  const origins = world.tracks.filter((t) => !t.life && inside(t.origin, box) && drawnOnPlane(t, today)).map((t) => t.id);
   return stops.length === 0 && origins.length === 0 ? null : { stops, origins };
 }
 
