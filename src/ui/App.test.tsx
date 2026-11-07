@@ -2923,18 +2923,25 @@ describe('zoomed out, a hidden project line takes nothing', () => {
     return { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
   };
 
-  test('a Step carried over a years-long project line, undrawn at 3 months, does not snap to it and adds nothing', () => {
-    // t1 runs for years: Dentist 4e8 s out, its goal Wristband, a ring, 8e8 s out. Start, a marker
-    // 1e8 s out, sits 800 s above t1's first leg, under a pixel at this zoom.
+  /**
+   * t1 runs for over a year: Dentist 4e7 s out, its goal Wristband, a ring, 5e7 s out. Start, a
+   * marker 2e7 s out, sits 800 s above t1's first leg, under a pixel at the 3-month unit and
+   * further than the snap reaches (about 1e7 s there) from t1's start and stops.
+   */
+  function yearsLong() {
     const world = withLife();
     const place = (id: string, x: number) => {
       world.stops.find((s) => s.id === id)!.x = x;
     };
-    place('start', 1e8);
-    place('dentist', 4e8);
-    place('wristband', 8e8);
+    place('start', 2e7);
+    place('dentist', 4e7);
+    place('wristband', 5e7);
     place('far', 9e8);
-    const store = createStore(world);
+    return world;
+  }
+
+  test('a Step carried over a years-long project line, undrawn at 3 months, does not snap to it and adds nothing', () => {
+    const store = createStore(yearsLong());
     render(<App store={store} now={() => 1000} />);
     zoomOutTo('3 months');
     openTray();
@@ -2949,6 +2956,15 @@ describe('zoomed out, a hidden project line takes nothing', () => {
     act(() => {
       fireEvent.pointerUp(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
     });
+    expect(store.getState()).toBe(before);
+  });
+
+  test('a step split off a ring at 3 months lands on no project line, since none is drawn', () => {
+    const store = createStore(yearsLong());
+    render(<App store={store} now={() => 1000} />);
+    zoomOutTo('3 months');
+    const before = store.getState();
+    act(() => splitFrom(/^Wristband/, centreOf('start')));
     expect(store.getState()).toBe(before);
   });
 

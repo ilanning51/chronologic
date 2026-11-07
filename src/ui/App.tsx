@@ -629,12 +629,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     carrySplit(at);
   };
 
-  /** Carries the split step along its stop's lines: the ghost sits on the nearest in reach, or follows the pointer. */
+  /**
+   * Carries the split step along its stop's lines: the ghost sits on the nearest in reach, or
+   * follows the pointer. Its lines are all project lines, so while they are hidden none is in reach.
+   */
   const carrySplit = (at: Point) => {
     const d = splitDrag.current;
     if (!d) return;
     const cam = cameraRef.current;
-    d.hits = snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale).filter((h) => d.tracks.includes(h.trackId));
+    d.hits = projectsHidden()
+      ? []
+      : snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale).filter((h) => d.tracks.includes(h.trackId));
     const snap = d.hits[0];
     const shown = snap ? worldToScreen(cam, snap.at) : at;
     setGhost({ shape: d.shape, size: d.size, x: shown.x, y: shown.y, snapped: snap !== undefined });
