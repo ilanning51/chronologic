@@ -60,7 +60,7 @@ export type Action =
   | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; goal?: Point; now: number } // goal: a month out, unless drawn
   | { type: 'addStop'; trackId: string; id: string; shape: Shape; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
-  | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart }
+  | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart; stretch?: false } // stretch false: the stops ahead stay put
   | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
   | { type: 'moveGroup'; stops: Record<string, Point>; origins: Record<string, Point>; now: number; keep?: Record<string, number> } // by stop id and track id, to their new points
   | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size; image?: string | null } // image null takes the picture away
@@ -254,7 +254,7 @@ function apply(world: World, action: Action): World {
     }
 
     case 'moveGoal': {
-      const { trackId, x, y, now, keep, from } = action;
+      const { trackId, x, y, now, keep, from, stretch } = action;
       const track = world.tracks.find((t) => t.id === trackId);
       if (!track || track.train.leg >= track.stops.length) return world;
       const goalId = track.stops[track.stops.length - 1];
@@ -266,7 +266,8 @@ function apply(world: World, action: Action): World {
       const train = trainState(track, byId, now);
       const T = from?.train ?? train.at;
       const before = distance(T, from?.goal ?? goal);
-      const k = before === 0 ? 1 : distance(T, { x, y }) / before;
+      // Not stretching, the stops ahead go back to where they were picked up and only the goal moves.
+      const k = before === 0 || stretch === false ? 1 : distance(T, { x, y }) / before;
       // Pending stops ahead of the derived train: one passed through or done elsewhere stays put.
       const ahead = new Set(track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)?.done));
       const after: World = {

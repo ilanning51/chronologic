@@ -30,7 +30,7 @@ import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
 import { routeOf, trainOn } from '../plane/metro';
 import { openingCamera } from '../plane/opening';
-import { pathLength, routeThrough } from '../plane/routing';
+import { legEndAt, pathLength, routeThrough } from '../plane/routing';
 import { drawnBetween } from '../plane/slide';
 import { CLIP_MARGIN_PX } from '../plane/clip';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
@@ -72,6 +72,29 @@ export interface AppProps {
  */
 function homeOf(world: World, stopId: string) {
   return tracksOf(world, stopId).find(({ track, index }) => isProject(track) && index === track.stops.length - 1)?.track;
+}
+
+/** The leg an end of a line hangs off: the point at its other end, and how long it is. */
+interface EndLeg {
+  from: Point;
+  seconds: number;
+}
+
+/**
+ * The leg at one end of a project line, as it is now: into the goal from the stop before it (or
+ * from the start), or out of the start to the first stop. A line with no stops has no leg.
+ */
+function endLeg(world: World, track: World['tracks'][number], end: 'start' | 'goal'): EndLeg | undefined {
+  const n = track.stops.length;
+  if (!isProject(track) || n === 0) return undefined;
+  const byId = new Map(world.stops.map((s) => [s.id, s]));
+  const far = end === 'goal' ? (n === 1 ? track.origin : byId.get(track.stops[n - 2])!) : byId.get(track.stops[0])!;
+  return { from: { x: far.x, y: far.y }, seconds: legSeconds(trackRoute(track, byId), end === 'goal' ? n - 1 : 0) };
+}
+
+/** Where Shift puts an end the finger wants at `want`: at its height, its leg as long as before, on the finger's side. */
+function heldEnd(leg: EndLeg, want: Point): Point {
+  return legEndAt(leg.from, leg.seconds, want.y, want.x < leg.from.x ? -1 : 1);
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -179,7 +202,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   /**
    * The pending stop under a finger, how far its centre sits from where the finger landed, and
    * the drag's start: the seconds then of every train the drag re-routes, by track id, and, for
-   * the goal, the points it scales from.
+   * the goal, the points it scales from and the leg into it, which Shift keeps as long as it was.
    */
   const dragging = useRef<{
     id: string;
@@ -188,7 +211,11 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     grip: Point;
     keep: Record<string, number>;
     from?: GoalDragStart;
+    held?: EndLeg;
   } | null>(null);
+  /** Whether Shift is down, read from every key and pointer event, and where the last drag move was on screen. */
+  const shift = useRef(false);
+  const lastDragAt = useRef<Point | null>(null);
 
   /** Whether the tray of tiles is open. */
   const [trayOpen, setTrayOpen] = useState(false);
@@ -236,7 +263,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
    * The drag of a line's start: its track, the grip, the seconds its train had covered, and
    * whether the first leg's chip shows, as it does only while the train is still on that leg.
    */
-  const originDrag = useRef<{ track: string; grip: Point; keep?: number; chip: boolean } | null>(null);
+  const originDrag = useRef<{ track: string; grip: Point; keep?: number; chip: boolean; held?: EndLeg } | null>(null);
   /** The marquee being drawn: its corners in screen pixels, the ref for the drag, the state to draw. */
   const marquee = useRef<{ from: Point; to: Point } | null>(null);
   const [marqueeBox, setMarqueeBox] = useState<Rect | null>(null);
@@ -302,6 +329,33 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Shift is read on the way down, before the plane's own handlers, so the move it comes with
+  // already knows. Pressed or let go mid-drag, the end being dragged takes it at once.
+  const redrag = useRef(() => {});
+  redrag.current = () => {
+    const at = lastDragAt.current;
+    if (!at) return;
+    if (originDrag.current) dragOriginTo(at);
+    else if (dragging.current) dragTo(at);
+  };
+  useEffect(() => {
+    const read = (e: KeyboardEvent | PointerEvent) => {
+      if (shift.current === e.shiftKey) return;
+      shift.current = e.shiftKey;
+      if (e.type === 'keydown' || e.type === 'keyup') redrag.current();
+    };
+    const lose = () => {
+      shift.current = false;
+    };
+    const events = ['keydown', 'keyup', 'pointerdown', 'pointermove'] as const;
+    for (const type of events) window.addEventListener(type, read, true);
+    window.addEventListener('blur', lose);
+    return () => {
+      for (const type of events) window.removeEventListener(type, read, true);
+      window.removeEventListener('blur', lose);
+    };
   }, []);
 
   // The paper takes the hour's tint on open and once a minute after; on close it gives the
@@ -511,7 +565,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (life?.stops.includes(stop.id)) {
       const projects = tracksOf(state, stop.id).filter(({ track: t }) => isProject(t));
       const keep = Object.fromEntries(projects.map(({ track: t }) => [t.id, trainState(t, byId, now()).seconds]));
-      dragging.current = { id: stop.id, track: life.id, goal: false, grip, keep };
+      const home = homeOf(state, stop.id);
+      dragging.current = { id: stop.id, track: life.id, goal: false, grip, keep, held: home && endLeg(state, home, 'goal') };
       return;
     }
     dragging.current = projectDrag(state, stop.id, grip);
@@ -547,6 +602,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       grip,
       keep,
       from: goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
+      held: goal ? endLeg(state, track, 'goal') : undefined,
     };
   };
 
@@ -568,6 +624,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       grip: { x: track.origin.x - under.x, y: track.origin.y - under.y },
       keep: first ? train.seconds : undefined,
       chip: first,
+      held: endLeg(state, track, 'start'),
     };
   };
 
@@ -627,9 +684,11 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const dragOriginTo = (at: Point) => {
     const d = originDrag.current;
     if (!d) return;
+    lastDragAt.current = at;
     const under = screenToWorld(cameraRef.current, at);
-    const x = under.x + d.grip.x;
-    const y = under.y + d.grip.y;
+    const want = { x: under.x + d.grip.x, y: under.y + d.grip.y };
+    // With Shift the first leg keeps its length: the start goes to the finger's height and slides to fit.
+    const { x, y } = shift.current && d.held ? heldEnd(d.held, want) : want;
     store.dispatch({ type: 'moveOrigin', trackId: d.track, x, y, now: now(), keep: d.keep });
     if (!d.chip) return;
     const state = store.getState();
@@ -642,19 +701,41 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   /**
    * Puts the dragged stop where the finger is, plus the grip so the shape never jumps. Every move
-   * works from the drag's start, so where the finger wandered on the way never matters.
+   * works from the drag's start, so where the finger wandered on the way never matters. With Shift
+   * a goal keeps its time: see `heldGoalAt`.
    */
   const dragTo = (at: Point) => {
+    lastDragAt.current = at;
     pullOffLife(at);
     const d = dragging.current;
     if (!d) return;
     const under = screenToWorld(cameraRef.current, at);
-    const x = under.x + d.grip.x;
-    const y = under.y + d.grip.y;
-    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
+    const want = { x: under.x + d.grip.x, y: under.y + d.grip.y };
+    const held = shift.current && d.held ? heldGoalAt(d.held, want, d.id) : null;
+    const { x, y } = held ?? want;
+    if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from, stretch: held ? false : undefined });
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
     showLegInto(d.track, d.id);
     showPull(at);
+  };
+
+  /**
+   * Where a goal held with Shift goes: the leg into it keeps the length it had when it was picked
+   * up, so its project's time is the same, and the stops ahead stay where they were. It goes to the
+   * finger's height and slides along it to fit. Near the life line it goes to the life line's
+   * height instead, where it would join, so letting go there joins it with the same time. A ring on
+   * the life line keeps that height, so it holds still until it is pulled off.
+   */
+  const heldGoalAt = (leg: EndLeg, want: Point, id: string): Point => {
+    const state = store.getState();
+    const life = lifeOf(state);
+    if (!life) return heldEnd(leg, want);
+    if (life.stops.includes(id)) return heldEnd(leg, { x: want.x, y: life.life.y });
+    const radius = SNAP_PX / cameraRef.current.scale;
+    if (Math.abs(want.y - life.life.y) > radius) return heldEnd(leg, want);
+    const onLine = heldEnd(leg, { x: want.x, y: life.life.y });
+    const joins = onLine.y === life.life.y && snapToLife(state, onLine, now(), radius, id) !== null;
+    return joins ? onLine : heldEnd(leg, want);
   };
 
   /**
@@ -704,7 +785,9 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const cam = cameraRef.current;
     if (Math.abs(screenToWorld(cam, at).y + d.grip.y - life.life.y) <= PULL_OFF_PX / cam.scale) return;
     store.dispatch({ type: 'leave', trackId: life.id, stopId: d.id, now: now() });
-    dragging.current = projectDrag(store.getState(), d.id, d.grip);
+    const next = projectDrag(store.getState(), d.id, d.grip);
+    // The leg Shift keeps is the one the ring had when it was picked up.
+    dragging.current = next && { ...next, held: d.held ?? next.held };
   };
 
   /** Writes the planned time of the leg arriving at a stop beneath it, read back from the world. */
@@ -1114,6 +1197,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         }
         // Every move of a drag, and whatever its drop adds, is one step for undo.
         store.begin();
+        // Until this drag moves, a Shift press has nowhere to put what it holds.
+        lastDragAt.current = null;
         startDrag(g);
         return;
       case 'dragMove':

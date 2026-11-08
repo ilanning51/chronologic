@@ -137,3 +137,18 @@ export function nearestOnRoute(route: Route, p: Point): { leg: number; offset: n
   }
   return best!;
 }
+
+/**
+ * The end of a leg `length` long from `from` whose height is `y`, on the `side` of `from` given
+ * (1 right, -1 left). A leg is a 45 degree run over the shorter axis and a straight run for the
+ * rest, so its length is the longer axis plus (√2 − 1) times the shorter; this solves that for the
+ * horizontal run. A height further than `length` from `from` cannot be reached, and the end stops
+ * straight above or below `from`, as far as the length goes.
+ */
+export function legEndAt(from: Point, length: number, y: number, side: 1 | -1): Point {
+  const rise = Math.abs(y - from.y);
+  if (rise >= length) return { x: from.x, y: from.y + Math.sign(y - from.y) * length };
+  const slant = Math.SQRT2 - 1;
+  const run = length >= Math.SQRT2 * rise ? length - slant * rise : (length - rise) / slant;
+  return { x: from.x + side * run, y };
+}
