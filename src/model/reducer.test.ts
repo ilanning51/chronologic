@@ -192,6 +192,18 @@ describe('moveGoal', () => {
     expect(stateOf(beyond).seconds).toBeCloseTo(keep);
   });
 
+  test('not stretching, only the goal moves, and a stretched drag goes back to the starting points', () => {
+    const world = running();
+    const keep = stateOf(world).seconds;
+    const from = { train: { x: 500, y: 0 }, goal: { x: 3000, y: 1000 }, ahead: { a: { x: 1000, y: 0 }, b: { x: 1000, y: 1000 } } };
+    const stretched = reduce(world, { type: 'moveGoal', trackId, x: 5500, y: 2000, now, keep: { [trackId]: keep }, from });
+    const still = reduce(stretched, { type: 'moveGoal', trackId, x: 4000, y: -500, now, keep: { [trackId]: keep }, from, stretch: false });
+    expect(stopOf(still, 'g')).toMatchObject({ x: 4000, y: -500 });
+    expect(stopOf(still, 'a')).toMatchObject({ x: 1000, y: 0 });
+    expect(stopOf(still, 'b')).toMatchObject({ x: 1000, y: 1000 });
+    expect(stateOf(still).seconds).toBeCloseTo(keep);
+  });
+
   test('is ignored when the goal is done or the train is parked', () => {
     const w = running();
     w.stops[2] = stop('g', 'square', 3000, 1000, true);

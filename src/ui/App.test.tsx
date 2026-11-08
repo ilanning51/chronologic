@@ -4,7 +4,7 @@ import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { addDays, dayOf } from '../model/days';
-import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
+import { dayState, legSeconds, timeLeft, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
@@ -3387,5 +3387,151 @@ describe('zoomed out, a hidden project line takes nothing', () => {
     act(() => dragStop(/^Dentist/, 12, 0));
     expect(stopNamed(store, 'dentist').x).toBeGreaterThan(1000);
     expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['g2']);
+  });
+});
+
+describe('Shift held on an end of a line keeps its time', () => {
+  const LIFE_NOW = 1000;
+  /** Screen pixels per world second at the opening, as in the life line gestures. */
+  const SCALE = 1 / 3;
+  const SLANT = Math.SQRT2 - 1;
+  /** Goal two's square, not the edge bubble that names it too. */
+  const GOAL_TWO = /^Goal two, goal,/;
+
+  /**
+   * withLife with its squares brought in, and a second line t2 whose goal Goal two is not on the
+   * life line: a step at (800, -400) and the goal 900 s on at (1700, -400).
+   */
+  function scene(): World {
+    const world = withLife();
+    const place = (id: string, x: number) => {
+      world.stops.find((s) => s.id === id)!.x = x;
+    };
+    place('start', 600);
+    place('wristband', 1100);
+    place('far', 1400);
+    world.tracks.push({ id: 't2', color: 1, origin: { x: 0, y: -400 }, stops: ['s2', 'g2'], train: { leg: 0, departedAt: 0 }, target: 'goal' });
+    world.stops.push(
+      { id: 's2', title: 'Step two', shape: 'circle', size: 'medium', x: 800, y: -400, done: false },
+      { id: 'g2', title: 'Goal two', shape: 'square', size: 'large', x: 1700, y: -400, done: false },
+    );
+    return world;
+  }
+
+  type Store = ReturnType<typeof createStore>;
+  const track = (store: Store, id: string) => store.getState().tracks.find((t) => t.id === id)!;
+  const byId = (store: Store) => new Map(store.getState().stops.map((s) => [s.id, s]));
+  const legOf = (store: Store, trackId: string, leg: number) => legSeconds(trackRoute(track(store, trackId), byId(store)), leg);
+  const timeToGoal2 = (store: Store) => timeLeft(track(store, 't2'), 'g2', byId(store), LIFE_NOW);
+
+  /** Presses on a stop 4 px off its centre and moves by (dx, dy), Shift held or not; the returned function lets go. */
+  function hold(name: RegExp, dx: number, dy: number, shiftKey: boolean) {
+    const el = screen.getByRole('button', { name });
+    const x = parseFloat(el.style.left) + 4;
+    const y = parseFloat(el.style.top);
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y, shiftKey });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: x + dx, clientY: y + dy, shiftKey });
+    return () => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + dx, clientY: y + dy, shiftKey });
+  }
+
+  test("a goal goes to the finger's height and slides along it, so its leg and its time stay as they were", () => {
+    const store = createStore(scene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const time = timeToGoal2(store);
+    const step = stopNamed(store, 's2');
+    let release = () => {};
+    act(() => {
+      release = hold(GOAL_TWO, 60, 90, true);
+    });
+    const goal = stopNamed(store, 'g2');
+    expect(goal.y).toBeCloseTo(-400 + 90 / SCALE, 6);
+    expect(goal.x).toBeCloseTo(800 + 900 - SLANT * (90 / SCALE), 6);
+    expect(legOf(store, 't2', 1)).toBeCloseTo(900, 6);
+    expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(900));
+    // The step ahead of the train is not stretched.
+    expect(stopNamed(store, 's2')).toEqual(step);
+    act(() => release());
+    expect(timeToGoal2(store)).toBeCloseTo(time, 6);
+    expect(track(store, 'life').stops).toEqual(['start', 'wristband', 'far']);
+  });
+
+  test("let go near the life line, a goal joins it at the life line's height with the same time, in one undo step", () => {
+    const store = createStore(scene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const time = timeToGoal2(store);
+    const step = stopNamed(store, 's2');
+    const before = store.getState();
+    const lineY = at(/^Start/).y;
+    const goal = at(GOAL_TWO);
+    let release = () => {};
+    // 10 px short of the line is in snap reach, so it sits on the line, 400 s above where it was.
+    act(() => {
+      release = hold(GOAL_TWO, 0, lineY - goal.y + 10, true);
+    });
+    const x = 1700 - SLANT * 400;
+    expect(stopNamed(store, 'g2')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'g2').x).toBeCloseTo(x, 6);
+    // The landing preview is where it is.
+    const landing = document.querySelector<HTMLElement>('.ghost.snapped')!;
+    expect(parseFloat(landing.style.left)).toBeCloseTo(at(/^Start/).x + (x - 600) * SCALE, 6);
+    expect(parseFloat(landing.style.top)).toBeCloseTo(lineY, 6);
+    act(() => release());
+    expect(track(store, 'life').stops).toEqual(['start', 'wristband', 'far', 'g2']);
+    expect(stopNamed(store, 'g2').x).toBeCloseTo(x, 6);
+    expect(stopNamed(store, 's2')).toEqual(step);
+    expect(legOf(store, 't2', 1)).toBeCloseTo(900, 6);
+    expect(timeToGoal2(store)).toBeCloseTo(time, 6);
+    act(() => store.undo());
+    expect(store.getState()).toEqual(before);
+  });
+
+  test('Shift pressed mid-drag takes hold at once, and let go the drag stretches again', () => {
+    const store = createStore(scene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    let release = () => {};
+    act(() => {
+      release = hold(GOAL_TWO, 60, 90, false);
+    });
+    const free = stopNamed(store, 'g2');
+    expect(free.x).toBeCloseTo(1700 + 60 / SCALE, 6);
+    expect(stopNamed(store, 's2').x).not.toBe(800);
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Shift', shiftKey: true });
+    });
+    expect(stopNamed(store, 'g2').x).toBeCloseTo(1700 - SLANT * (90 / SCALE), 6);
+    expect(stopNamed(store, 's2')).toMatchObject({ x: 800, y: -400 });
+    act(() => {
+      fireEvent.keyUp(window, { key: 'Shift', shiftKey: false });
+    });
+    expect(stopNamed(store, 'g2')).toEqual(free);
+    act(() => release());
+  });
+
+  test('a ring on the life line held with Shift stays where its time puts it', () => {
+    const store = createStore(scene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    act(() => hold(/^Wristband/, 30, 15, true)());
+    expect(stopNamed(store, 'wristband')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'wristband').x).toBeCloseTo(1100, 6);
+  });
+
+  test('the start of a line keeps its first leg as long as it was', () => {
+    const store = createStore(running());
+    render(<App store={store} now={() => 500_000} />);
+    const length = legOf(store, 't1', 0);
+    const hit = document.querySelector<SVGRectElement>('[data-target="origin"]')!;
+    const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(hit.style.transform)!;
+    const x = parseFloat(m[1]) + 4;
+    const y = parseFloat(m[2]);
+    const scale = (left(/^Dentist/) - parseFloat(m[1])) / 1000;
+    act(() => {
+      fireEvent.pointerDown(hit, { pointerId: 1, clientX: x, clientY: y, shiftKey: true });
+      fireEvent.pointerMove(hit, { pointerId: 1, clientX: x - 50, clientY: y + 30, shiftKey: true });
+      fireEvent.pointerUp(hit, { pointerId: 1, clientX: x - 50, clientY: y + 30, shiftKey: true });
+    });
+    const origin = track(store, 't1').origin;
+    expect(origin.y).toBeCloseTo(30 / scale, 6);
+    expect(origin.x).toBeCloseTo(1000 - (length - SLANT * (30 / scale)), 6);
+    expect(legOf(store, 't1', 0)).toBeCloseTo(length, 6);
   });
 });
