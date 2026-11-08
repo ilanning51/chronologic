@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { addDays, dayOf } from '../model/days';
 import { colorVar } from '../model/palette';
-import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
+import { dayState, legSeconds, timeLeft, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
@@ -980,12 +980,108 @@ test('while a stop is dragged the leg arriving at it shows its time, and it goes
   const label = document.querySelector<HTMLElement>('.leg-time')!;
   expect(label).toBeInTheDocument();
   expect(label.textContent).toBe(formatSeconds(legInto(store, 'dentist')));
-  // It hangs beneath the stop, which has moved with the finger.
+  // It hangs above the stop, which has moved with the finger.
   const moved = screen.getByRole('button', { name: /^Dentist/ });
   expect(parseFloat(label.style.left)).toBeCloseTo(parseFloat(moved.style.left), 3);
-  expect(parseFloat(label.style.top)).toBeGreaterThan(parseFloat(moved.style.top));
+  expect(parseFloat(label.style.top)).toBeLessThan(parseFloat(moved.style.top));
   act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + 50, clientY: y + 30 }));
   expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+});
+
+test('while a stop is dragged, beneath it shows how long from now until its train gets there', () => {
+  const store = createStore(running());
+  const now = 300_000;
+  render(<App store={store} now={() => now} />);
+  expect(document.querySelector('.leg-time.until')).not.toBeInTheDocument();
+  const el = screen.getByRole('button', { name: /^Dentist/ });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  act(() => {
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: x + 50, clientY: y });
+  });
+  const state = store.getState();
+  const until = timeLeft(state.tracks[0], 'dentist', new Map(state.stops.map((s) => [s.id, s])), now);
+  const below = document.querySelector<HTMLElement>('.leg-time.until')!;
+  expect(below.textContent).toBe(formatSeconds(until));
+  // The leg from the line's start is the chip above, and the two are different times.
+  const above = document.querySelectorAll<HTMLElement>('.leg-time')[0];
+  expect(above.textContent).toBe(formatSeconds(legInto(store, 'dentist')));
+  expect(above.textContent).not.toBe(below.textContent);
+  const moved = screen.getByRole('button', { name: /^Dentist/ });
+  expect(parseFloat(below.style.top)).toBeGreaterThan(parseFloat(moved.style.top));
+  expect(parseFloat(below.style.left)).toBeCloseTo(parseFloat(moved.style.left), 3);
+  act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + 50, clientY: y }));
+  expect(document.querySelector('.leg-time')).not.toBeInTheDocument();
+});
+
+test('Tab hides the times of a drag and shows them again, even mid-drag', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const el = screen.getByRole('button', { name: /^Dentist/ });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  act(() => {
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: x + 50, clientY: y });
+  });
+  expect(document.querySelectorAll('.leg-time')).toHaveLength(2);
+  act(() => {
+    fireEvent.keyDown(window, { key: 'Tab' });
+  });
+  expect(document.querySelector('.leg-time')).toBeNull();
+  // Hidden, the drag still moves the stop.
+  act(() => fireEvent.pointerMove(el, { pointerId: 1, clientX: x + 80, clientY: y }));
+  expect(document.querySelector('.leg-time')).toBeNull();
+  expect(store.getState().stops.find((s) => s.id === 'dentist')!.x).toBeGreaterThan(1000);
+  act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + 80, clientY: y }));
+  // Off stays off for the next drag, until Tab again.
+  const again = screen.getByRole('button', { name: /^Dentist/ });
+  const ax = parseFloat(again.style.left) + 4;
+  act(() => {
+    fireEvent.pointerDown(again, { pointerId: 2, clientX: ax, clientY: y });
+    fireEvent.pointerMove(again, { pointerId: 2, clientX: ax + 30, clientY: y });
+  });
+  expect(document.querySelector('.leg-time')).toBeNull();
+  act(() => {
+    fireEvent.keyDown(window, { key: 'Tab' });
+  });
+  expect(document.querySelectorAll('.leg-time')).toHaveLength(2);
+  act(() => fireEvent.pointerUp(again, { pointerId: 2, clientX: ax + 30, clientY: y }));
+});
+
+test('Tab in a text field and Shift+Tab are left to focus, and keep the times', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  const shift = fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+  expect(shift).toBe(true);
+  const field = document.createElement('input');
+  document.body.appendChild(field);
+  expect(fireEvent.keyDown(field, { key: 'Tab' })).toBe(true);
+  field.remove();
+  const el = screen.getByRole('button', { name: /^Dentist/ });
+  const x = parseFloat(el.style.left) + 4;
+  const y = parseFloat(el.style.top);
+  act(() => {
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: x + 50, clientY: y });
+  });
+  expect(document.querySelectorAll('.leg-time')).toHaveLength(2);
+  act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + 50, clientY: y }));
+});
+
+test('a tile carried onto a line shows only the leg it would end, as it is no stop yet', () => {
+  const store = createStore(running());
+  render(<App store={store} now={() => WAITING} />);
+  openTray();
+  const tile = screen.getByRole('button', { name: 'Step' });
+  const target = midLeg();
+  act(() => {
+    fireEvent.pointerDown(tile, { pointerId: 1, clientX: 900, clientY: 740 });
+    fireEvent.pointerMove(tile, { pointerId: 1, clientX: target.x, clientY: target.y });
+  });
+  expect(document.querySelectorAll('.leg-time')).toHaveLength(1);
+  act(() => fireEvent.pointerUp(tile, { pointerId: 1, clientX: target.x, clientY: target.y }));
 });
 
 test('while the goal is dragged the label reads the leg into the goal', () => {
@@ -3248,7 +3344,7 @@ describe('zoomed out, a hidden project line takes nothing', () => {
     zoomOutTo('3 months');
     // Past the tap's slop, along the day line's height.
     act(() => dragStop(/^Dentist/, 12, 0));
-    expect(stopNamed(store, 'dentist').x).toBeGreaterThan(1000);
+    expect(store.getState().stops.find((s) => s.id === 'dentist')!.x).toBeGreaterThan(1000);
     expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['g2']);
   });
 });

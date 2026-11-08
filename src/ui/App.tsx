@@ -8,7 +8,7 @@ import { newId } from '../model/ids';
 import { isRing, lifeOf, lifeTrainX, onLife } from '../model/life';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
-import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
+import { legSeconds, nextIndex, stateOf, targetIndex, timeUntil, trackRoute, trainState } from '../model/train';
 import {
   type Camera,
   centerOn,
@@ -234,8 +234,13 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     origins: Record<string, Point>;
     keep: Record<string, number>;
   } | null>(null);
-  /** The leg being set by a drag: where its stop is on screen and its planned seconds. */
-  const [legTime, setLegTime] = useState<{ x: number; y: number; seconds: number } | null>(null);
+  /**
+   * The leg being set by a drag: where its stop is on screen, its planned seconds and, for a stop
+   * being dragged, the seconds from now until its train gets there.
+   */
+  const [legTime, setLegTime] = useState<{ x: number; y: number; seconds: number; until?: number } | null>(null);
+  /** Whether a drag shows its times; Tab turns them off and on. App state only: on at start. */
+  const [timesShown, setTimesShown] = useState(true);
   /** The stop or goal whose name field is open. */
   const [naming, setNaming] = useState<{ id: string; kind: 'stop' | 'goal'; trackId: string } | null>(null);
   const namingRef = useRef(naming);
@@ -250,8 +255,9 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   // Escape lets go of the box, as a tap on paper does. A field that took the key for itself,
   // to cancel a name or close the editor, keeps the box: one key does one thing.
   // Backspace or Delete takes every stop in the box off the plane, as one step undo puts back.
-  // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes (Cmd on a Mac). In a text field each of
-  // these keys is the field's own.
+  // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes (Cmd on a Mac). Tab hides or shows the
+  // times a drag reads out, for planning by the grid's distances alone; Shift+Tab still moves
+  // focus back. In a text field each of these keys is the field's own.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -272,6 +278,11 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
         e.preventDefault();
         history(key === 'y' || e.shiftKey ? 'redo' : 'undo');
+        return;
+      }
+      if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setTimesShown((shown) => !shown);
         return;
       }
       if ((e.key === 'Backspace' || e.key === 'Delete') && selectionRef.current && !weekOpenRef.current) {
@@ -687,7 +698,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     dragging.current = projectDrag(store.getState(), d.id, d.grip);
   };
 
-  /** Writes the planned time of the leg arriving at a stop beneath it, read back from the world. */
+  /**
+   * Writes the times of a dragged stop, read back from the world: above it the planned time of the
+   * leg arriving at it, beneath it how long from now until that line's train gets there.
+   */
   const showLegInto = (trackId: string, stopId: string) => {
     const state = store.getState();
     const track = state.tracks.find((t) => t.id === trackId);
@@ -695,7 +709,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (!track || !stop) return;
     const route = trackRoute(track, new Map(state.stops.map((s) => [s.id, s])));
     const at = worldToScreen(cameraRef.current, stop);
-    setLegTime({ x: at.x, y: at.y, seconds: legSeconds(route, track.stops.indexOf(stopId)) });
+    const seconds = legSeconds(route, track.stops.indexOf(stopId));
+    setLegTime({ x: at.x, y: at.y, seconds, until: timeUntil(state, track, stopId, now()) });
   };
 
   /** From the 3-month unit up no project line is drawn, and what is not drawn takes nothing. */
@@ -1431,7 +1446,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       {/* The legend is a solid plate and takes no input: drawn first, it lies under any bubble in its corner. */}
       <Legend camera={camera} />
       {bubbles}
-      {legTime && <LegTime {...legTime} />}
+      {legTime && timesShown && <LegTime {...legTime} />}
       {editor}
       <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={() => history('undo')} onRedo={() => history('redo')} />
       <Tray
