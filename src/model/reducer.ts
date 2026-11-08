@@ -1,4 +1,4 @@
-import { distance, type Point } from '../plane/geometry';
+import type { Point } from '../plane/geometry';
 import { PALETTE } from './palette';
 import {
   clearDay,
@@ -41,11 +41,21 @@ import type { BubbleTarget, Shape, Size, Stop, Track, World } from './types';
 export const DEFAULT_GOAL_SECONDS = 2_592_000;
 
 /**
- * Where a goal drag started: the train's point, the goal's point and every stop ahead of the
- * train. Each move of the drag scales these originals, so the result never depends on the path.
+ * Where a goal drag started: the train's point, the goal's point and every stop the drag carries
+ * (see `carried`). Each move of the drag offsets these originals, so the result never depends on
+ * the path, and the set it carries is fixed when the drag begins.
  */
+/**
+ * The stops a goal drag carries with it: the pending stops after the train's point, the goal
+ * left out. A rolling train's next stop goes with them; the stop a waiting train sits at stays.
+ */
+export function carried(track: Track, byId: Map<string, Stop>, now: number): string[] {
+  const train = trainState(track, byId, now);
+  if (train.parked) return [];
+  return track.stops.slice(train.waiting ? train.leg + 1 : train.leg, -1).filter((id) => !byId.get(id)?.done);
+}
+
 export interface GoalDragStart {
-  train: Point;
   goal: Point;
   ahead: Record<string, Point>;
 }
@@ -259,24 +269,24 @@ function apply(world: World, action: Action): World {
       if (!track || track.train.leg >= track.stops.length) return world;
       const goalId = track.stops[track.stops.length - 1];
       const goal = world.stops.find((s) => s.id === goalId);
-      // A goal on the life line moves along it by move, never by scaling its line.
+      // A goal on the life line moves along it by move, never by carrying its line.
       if (!goal || goal.done || onLife(world, goalId)) return world;
-      // With a snapshot every move scales the drag's starting points; without one, today's.
+      // Moving the goal moves when the line ends, not how long its steps take: every stop the drag
+      // carries moves by the goal's own offset, so only the leg the train is on changes. With a
+      // snapshot the offset is from the drag's start and the set is the one picked up then.
       const byId = stopsById(world);
-      const train = trainState(track, byId, now);
-      const T = from?.train ?? train.at;
-      const before = distance(T, from?.goal ?? goal);
-      // Not stretching, the stops ahead go back to where they were picked up and only the goal moves.
-      const k = before === 0 || stretch === false ? 1 : distance(T, { x, y }) / before;
-      // Pending stops ahead of the derived train: one passed through or done elsewhere stays put.
-      const ahead = new Set(track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)?.done));
+      const start = from?.goal ?? goal;
+      // Not stretching, the carried stops go back to where they were picked up and only the goal moves.
+      const dx = stretch === false ? 0 : x - start.x;
+      const dy = stretch === false ? 0 : y - start.y;
+      const ahead = new Set(from ? Object.keys(from.ahead).filter((id) => byId.get(id) && !byId.get(id)!.done) : carried(track, byId, now));
       const after: World = {
         ...world,
         stops: world.stops.map((s) => {
           if (s.id === goalId) return { ...s, x, y };
           if (!ahead.has(s.id)) return s;
           const o = from?.ahead[s.id] ?? s;
-          return { ...s, x: T.x + k * (o.x - T.x), y: T.y + k * (o.y - T.y) };
+          return { ...s, x: o.x + dx, y: o.y + dy };
         }),
         lastTouched: trackId,
       };

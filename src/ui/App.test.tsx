@@ -411,22 +411,23 @@ test('dragging a stop moves it in world seconds keeping the grip', () => {
   expect(dentist.y).toBeCloseTo(30 / scale, 6);
 });
 
-test('dragging the goal scales the stops ahead of the train', () => {
+test('dragging the goal carries the stops ahead of the train with it, so the steps keep their time', () => {
   const NOW = 500_000;
   const world = running();
   world.stops[1].x = 1300; // close enough that both stops are on screen mid-leg
   const store = createStore(world);
   render(<App store={store} now={() => NOW} />);
-  const before = new Map(store.getState().stops.map((s) => [s.id, s]));
-  const at = trainState(store.getState().tracks[0], before, NOW).at;
+  const legOut = () => {
+    const state = store.getState();
+    return legSeconds(trackRoute(state.tracks[0], new Map(state.stops.map((s) => [s.id, s]))), 1);
+  };
+  const before = legOut();
   const scale = scaleOnScreen(300);
   act(() => dragStop(/^Wristband/, 100, 0));
-  const dist = (id: string, byId: Map<string, { x: number; y: number }>) => byId.get(id)!.x - at.x;
-  const after = new Map(store.getState().stops.map((s) => [s.id, s]));
-  const goalFactor = dist('wristband', after) / dist('wristband', before);
-  expect(goalFactor).toBeCloseTo((1300 - at.x + 100 / scale) / (1300 - at.x), 6);
-  expect(goalFactor).toBeGreaterThan(1);
-  expect(dist('dentist', after) / dist('dentist', before)).toBeCloseTo(goalFactor, 6);
+  const moved = stopNamed(store, 'wristband').x - 1300;
+  expect(moved).toBeCloseTo(100 / scale, 6);
+  expect(stopNamed(store, 'dentist').x - 1000).toBeCloseTo(moved, 6);
+  expect(legOut()).toBeCloseTo(before, 6);
 });
 
 test('a dot does not move', () => {
@@ -730,20 +731,19 @@ test('dragging the next stop behind the train and back leaves the train where it
   expect(seconds()).toBeCloseTo(before, 6);
 });
 
-test('dragging the goal through the train and beyond never collapses the stops ahead', () => {
+test('dragging the goal through the train and beyond leaves the stops ahead where the drag puts them', () => {
   const NOW = 500_000;
   const world = running();
   world.stops[1].x = 1300;
   const store = createStore(world);
   render(<App store={store} now={() => NOW} />);
-  const at = trainState(world.tracks[0], new Map(world.stops.map((s) => [s.id, s])), NOW).at;
   const start = left(/^Wristband/) + 4;
   // Over the train exactly, then well past where the goal began.
   act(() => dragStopThrough(/^Wristband/, [trainX() + 4, start + 100]));
-  const goal = stopNamed(store, 'wristband');
-  const k = (goal.x - at.x) / (1300 - at.x);
-  expect(k).toBeGreaterThan(1);
-  expect(stopNamed(store, 'dentist').x - at.x).toBeCloseTo(k * (1000 - at.x), 6);
+  const moved = stopNamed(store, 'wristband').x - 1300;
+  expect(moved).toBeGreaterThan(0);
+  // Where the finger went on the way never matters: the stop ahead moved as far as the goal did.
+  expect(stopNamed(store, 'dentist').x - 1000).toBeCloseTo(moved, 6);
 });
 
 /** A secondary-button press on a stop, dragged to a screen point and let go. */
@@ -1562,7 +1562,7 @@ test('a goal drawn for the day and let go on another line is not joined', () => 
   expect(trackStops(store, 't1')).toEqual(['dentist', 'wristband']);
 });
 
-test('a goal drawn for the day drags as its line goal, scaling the stops ahead', () => {
+test('a goal drawn for the day drags as its line goal, carrying the stops ahead', () => {
   // t2 waits at Near; Goal 2 is the day's next stop, so its button speaks for the day.
   const world = underneath(600);
   world.tracks[1].stops = ['near', 'mid', 'goal2'];
@@ -1583,10 +1583,10 @@ test('a goal drawn for the day drags as its line goal, scaling the stops ahead',
   act(() => dragStop(/^Goal 2/, 100, 0));
   const goal = stopNamed(store, 'goal2');
   const mid = stopNamed(store, 'mid');
-  // Scaled from t2's train at Near (1000, 600): Mid keeps its share of the way to the goal.
-  const factor = (goal.x - 1000) / 2000;
-  expect(factor).toBeGreaterThan(1);
-  expect((mid.x - 1000) / 1000).toBeCloseTo(factor, 6);
+  // t2's train waits at Near, so Near stays; Mid moves as far as the goal does.
+  expect(goal.x).toBeGreaterThan(3000);
+  expect(mid.x - 2000).toBeCloseTo(goal.x - 3000, 6);
+  expect(stopNamed(store, 'near')).toMatchObject({ x: 1000, y: 600 });
   expect(goal.y).toBeCloseTo(600, 6);
   expect(mid.y).toBeCloseTo(600, 6);
 });
