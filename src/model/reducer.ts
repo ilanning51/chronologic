@@ -18,6 +18,7 @@ import {
   withStopBeforeEnd,
 } from './day';
 import { dayOf } from './days';
+import { setArrival, setLeg } from './arrive';
 import { moveBlock, place, unplace, type PlaceAction } from './blocks';
 import {
   holdLifePlace,
@@ -71,6 +72,8 @@ export type Action =
   | { type: 'addStop'; trackId: string; id: string; shape: Shape; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
   | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart; stretch?: false } // stretch false: the stops ahead stay put
+  | { type: 'setLeg'; stopId: string; seconds: number; now: number } // the leg into a stop, typed; what follows moves with it
+  | { type: 'setArrival'; stopId: string; seconds: number; now: number } // when a stop's train gets there, typed
   | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
   | { type: 'moveGroup'; stops: Record<string, Point>; origins: Record<string, Point>; now: number; keep?: Record<string, number> } // by stop id and track id, to their new points
   | { type: 'edit'; id: string; title?: string; shape?: 'circle' | 'triangle'; size?: Size; image?: string | null } // image null takes the picture away
@@ -295,6 +298,12 @@ function apply(world: World, action: Action): World {
       const touched = world.tracks.filter((t) => t.stops.some((id) => moved.has(id)));
       return touched.reduce((w, t) => keepTrain(world, w, t.id, now, keep?.[t.id]), after);
     }
+
+    case 'setLeg':
+      return setLeg(world, action.stopId, action.seconds, action.now) ?? world;
+
+    case 'setArrival':
+      return setArrival(world, action.stopId, action.seconds, action.now) ?? world;
 
     case 'moveOrigin': {
       const { trackId, x, y, now, keep } = action;

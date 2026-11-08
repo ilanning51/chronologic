@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { twoLines } from '../test/fixtures';
-import { arrivalOf, governingLine, reach, slideTo } from './arrive';
-import { trainState } from './train';
+import { twoLines, withLife } from '../test/fixtures';
+import { arrivalOf, governingLine, reach, setArrival, setLeg, slideTo, timesOf } from './arrive';
+import { legSeconds, timeLeft, trackRoute, trainState } from './train';
 import type { Shape, World } from './types';
 
 const S = 1000;
@@ -148,5 +148,116 @@ describe('slideTo', () => {
     w.stops[0].done = true;
     expect(slideTo(w, 'a', now + 1000 * S, now)).toBeNull();
     expect(slideTo(w, 'nope', now + 1000 * S, now)).toBeNull();
+  });
+});
+
+/** The seconds of leg i of line t1. */
+const legOf = (w: World, i: number, id = 't1') => legSeconds(trackRoute(w.tracks.find((t) => t.id === id)!, byId(w)), i);
+const leftTo = (w: World, stopId: string, at = now) => timeLeft(w.tracks[0], stopId, byId(w), at);
+
+describe('setLeg', () => {
+  test('sets one leg to exactly the time asked, and moves nothing before it', () => {
+    const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    const next = setLeg(w, 'gift', 1800, now)!;
+    expect(legOf(next, 1)).toBeCloseTo(1800, 0);
+    expect(stopOf(next, 'flowers')).toMatchObject({ x: 1000, y: 0 });
+    expect(trainState(next.tracks[0], byId(next), now).seconds).toBeCloseTo(500);
+  });
+
+  test('a longer leg carries every stop after it by the same offset, so their legs keep their time', () => {
+    const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    const next = setLeg(w, 'flowers', 2000, now)!;
+    expect(legOf(next, 0)).toBeCloseTo(2000, 0);
+    expect(legOf(next, 1)).toBeCloseTo(2000, 6);
+    expect(stopOf(next, 'gift').x - 3000).toBeCloseTo(stopOf(next, 'flowers').x - 1000, 6);
+    expect(trainState(next.tracks[0], byId(next), now)).toMatchObject({ leg: 0 });
+    expect(trainState(next.tracks[0], byId(next), now).seconds).toBeCloseTo(500);
+  });
+
+  test('a shorter leg puts the stop back along its own road', () => {
+    const w = line([['a', 1000, 0], ['g', 3000, 1000]]);
+    // a to g is a 45 degree run over 1000 then 1000 straight; 1000 s of it ends on the diagonal.
+    const next = setLeg(w, 'g', 1000, now)!;
+    expect(legOf(next, 1)).toBeCloseTo(1000, 0);
+    expect(stopOf(next, 'g').x).toBeCloseTo(1000 + 1000 / Math.SQRT2, 3);
+    expect(stopOf(next, 'g').y).toBeCloseTo(1000 / Math.SQRT2, 3);
+  });
+
+  test('a longer leg into a step runs on along its own road, never toward the next station', () => {
+    const w = line([['a', 1000, 0], ['b', 2000, 1000], ['g', 4000, 1000]]);
+    const before = legOf(w, 1);
+    const next = setLeg(w, 'b', before + 500, now)!;
+    expect(legOf(next, 1)).toBeCloseTo(before + 500, 0);
+    expect(legOf(next, 2)).toBeCloseTo(legOf(w, 2), 6);
+    // The leg into b is one diagonal, so b goes on down it rather than along toward g.
+    expect(stopOf(next, 'b').y).toBeGreaterThan(1000);
+  });
+
+  test('refuses nothing at all, a done stop, a ring, and every stop on a line whose goal is a ring', () => {
+    const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    expect(setLeg(w, 'gift', 0, now)).toBeNull();
+    const done = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    done.stops[0].done = true;
+    expect(setLeg(done, 'flowers', 900, now)).toBeNull();
+    const life = withLife();
+    expect(setLeg(life, 'wristband', 900, now)).toBeNull();
+    expect(setLeg(life, 'dentist', 900, now)).toBeNull();
+  });
+
+  test('a shared stop it carries re-routes the other line, whose train keeps its place', () => {
+    const w = twoLines();
+    const t2 = () => trainState(w.tracks[1], byId(w), now).seconds;
+    const s2 = t2();
+    const next = setLeg(w, 'dentist', 2000, now)!;
+    expect(stopOf(next, 'shared').x).toBeGreaterThan(1500);
+    expect(trainState(next.tracks[1], byId(next), now).seconds).toBeCloseTo(s2);
+  });
+});
+
+describe('setArrival', () => {
+  test('makes the stop arrive that long from now by changing only the leg the train is on', () => {
+    const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    const next = setArrival(w, 'gift', 259_200, now)!;
+    expect(leftTo(next, 'gift')).toBeCloseTo(259_200, 0);
+    expect(legOf(next, 1)).toBeCloseTo(2000, 6);
+    expect(leftTo(next, 'flowers')).toBeCloseTo(259_200 - 2000, 0);
+  });
+
+  test('earlier than the train can get there lands at the earliest it can', () => {
+    const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    const next = setArrival(w, 'gift', 100, now)!;
+    // The train has run 500 s; at the soonest Flowers is where it is now and Gift is 2000 s on.
+    expect(leftTo(next, 'gift')).toBeCloseTo(2000, 0);
+    expect(trainState(next.tracks[0], byId(next), now)).toMatchObject({ waiting: true });
+  });
+
+  test('with the train waiting at a stop, that stop stays and the leg after it changes', () => {
+    const late = 1100 * S; // the train reached Flowers at 1000 s
+    const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    expect(trainState(w.tracks[0], byId(w), late)).toMatchObject({ waiting: true, leg: 0 });
+    const next = setArrival(w, 'gift', 5000, late)!;
+    expect(stopOf(next, 'flowers')).toMatchObject({ x: 1000, y: 0 });
+    expect(legOf(next, 1)).toBeCloseTo(5000, 0);
+    expect(setArrival(w, 'flowers', 5000, late)).toBeNull();
+  });
+});
+
+describe('timesOf', () => {
+  test('reads the leg into a stop, what it comes after, and how long until its train gets there', () => {
+    const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    expect(timesOf(w, 'gift', now)).toMatchObject({ trackId: 't1', leg: 2000, after: 'flowers', editable: true });
+    expect(timesOf(w, 'gift', now)!.fromNow).toBeCloseTo(2500, 0);
+    expect(timesOf(w, 'flowers', now)).toMatchObject({ after: 'the start', editable: true });
+    w.stops[0].title = '';
+    expect(timesOf(w, 'gift', now)!.after).toBe('the last stop');
+  });
+
+  test('a stop the train waits at, a ring, and a done stop do not take typed times', () => {
+    const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);
+    expect(timesOf(w, 'flowers', 1100 * S)).toMatchObject({ editable: false, fromNow: 0 });
+    expect(timesOf(withLife(), 'wristband', now)).toMatchObject({ editable: false });
+    expect(timesOf(withLife(), 'dentist', now)).toMatchObject({ editable: false });
+    w.stops[1].done = true;
+    expect(timesOf(w, 'gift', now)).toBeNull();
   });
 });

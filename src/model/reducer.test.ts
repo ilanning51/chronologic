@@ -228,6 +228,27 @@ describe('moveGoal', () => {
   });
 });
 
+describe('setLeg and setArrival', () => {
+  test('a typed leg sets that leg and carries what follows; a typed arrival changes only the leg the train is on', () => {
+    const world = running();
+    const legOut = (w: World, i: number) => legSeconds(trackRoute(w.tracks[0], byId(w)), i);
+    const typed = reduce(world, { type: 'setLeg', stopId: 'g', seconds: 1800, now });
+    expect(legOut(typed, 2)).toBeCloseTo(1800, 0);
+    expect(stopOf(typed, 'b')).toMatchObject({ x: 1000, y: 1000 });
+    expect(typed.lastTouched).toBe(trackId);
+    const due = reduce(typed, { type: 'setArrival', stopId: 'g', seconds: 259_200, now });
+    expect(timeLeftAny(due, 'g', now)).toBeCloseTo(259_200, 0);
+    expect(legOut(due, 2)).toBeCloseTo(legOut(typed, 2), 6);
+    expect(legOut(due, 1)).toBeCloseTo(legOut(typed, 1), 6);
+  });
+
+  test('a time that cannot be set leaves the world as it was', () => {
+    const world = running();
+    expect(reduce(world, { type: 'setLeg', stopId: 'g', seconds: 0, now })).toBe(world);
+    expect(reduce(world, { type: 'setArrival', stopId: 'nope', seconds: 600, now })).toBe(world);
+  });
+});
+
 describe('edit', () => {
   test('a picture on a goal is a change, so the no-op rule never swallows it', () => {
     const w = running();
