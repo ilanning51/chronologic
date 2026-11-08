@@ -2712,7 +2712,7 @@ describe('life line gestures', () => {
     expect(stopNamed(store, 's2').x).not.toBe(800);
   });
 
-  test("a ring dragged along the life line keeps its height, shows the life leg's time and moves nothing else", () => {
+  test("a ring dragged along the life line, within a snap of it, keeps its height, shows the life leg's time and moves nothing else", () => {
     const store = createStore(lifeScene());
     render(<App store={store} now={() => LIFE_NOW} />);
     const dentist = stopNamed(store, 'dentist');
@@ -2720,18 +2720,55 @@ describe('life line gestures', () => {
     const from = { x: parseFloat(el.style.left) + 4, y: parseFloat(el.style.top) };
     act(() => {
       fireEvent.pointerDown(el, { pointerId: 1, clientX: from.x, clientY: from.y });
-      fireEvent.pointerMove(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 60 });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 15 });
     });
     const wristband = stopNamed(store, 'wristband');
     expect(wristband.y).toBe(-800);
     expect(wristband.x).toBeCloseTo(1100 + 30 / SCALE, 6);
     // The life leg into Wristband runs from Start at 600.
     expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(wristband.x - 600));
-    act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 60 }));
+    act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 15 }));
     expect(stopNamed(store, 'dentist')).toEqual(dentist);
     expect(stopNamed(store, 'start').x).toBe(600);
     expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
     expect(document.querySelector('.leg-time')).toBeNull();
+  });
+
+  test('a ring dragged off the life line leaves it and stays its project goal where it was let go, in one undo step', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const before = store.getState();
+    act(() => dragStop(/^Wristband/, 0, 120));
+    expect(lifeOf(store).stops).toEqual(['start', 'far']);
+    expect(store.getState().tracks.find((t) => t.id === 't1')!.stops.at(-1)).toBe('wristband');
+    expect(stopNamed(store, 'wristband').y).toBeCloseTo(-800 + 120 / SCALE, 6);
+    act(() => store.undo());
+    expect(store.getState()).toEqual(before);
+  });
+
+  test('a ring pulled off the life line and let go back on it joins it again at its new x', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const el = screen.getByRole('button', { name: /^Wristband/ });
+    const from = { x: parseFloat(el.style.left) + 4, y: parseFloat(el.style.top) };
+    act(() => {
+      fireEvent.pointerDown(el, { pointerId: 1, clientX: from.x, clientY: from.y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: from.x, clientY: from.y + 120 });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 6 });
+      fireEvent.pointerUp(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 6 });
+    });
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
+    expect(stopNamed(store, 'wristband')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'wristband').x).toBeCloseTo(1100 + 30 / SCALE, 6);
+  });
+
+  test('a ring on the life line looks like any goal: a disc with its square, not a transfer capsule', () => {
+    render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+    const ring = document.querySelector('[data-id="wristband"]')!;
+    expect(ring.querySelector('.shape')).toHaveClass('square');
+    expect(ring.querySelector('.shape')).not.toHaveClass('ring');
+    expect(ring.querySelector('.link')).toBeNull();
+    expect(ring).not.toHaveClass('linked');
   });
 
   test('a bare marker dragged along the life line keeps its height and changes its x, and may pass its neighbour', () => {

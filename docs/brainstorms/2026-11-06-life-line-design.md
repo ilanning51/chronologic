@@ -178,3 +178,10 @@ Planning found four places where the notes above disagree with each other or wit
 - The zoom range reaches 5e-7, because at the old floor the 5-year unit could not be reached on a landscape phone. Framing a project never zooms wider than the 30-day unit, or a leg of years would open on a view with nothing of it in sight. The by-line rule that hides project lines and rings lives in the layout, not in the per-shape levels.
 
 A done ring on the life line becomes a landmark, a small ink square with its name, and not a dot as the "Ian's decisions" list says of a ring further along that is completed early.
+
+## Changed after release (2026-11-07)
+
+Ian asked for two changes once he used the life line.
+
+- A ring comes off the life line by dragging it off, as his first decision above said, not only by the Life chip. Pulled further from the line than a snap reaches, it leaves, and the drag goes on as its project's goal drag; let go back on the line, it joins again. A bare marker stays on the line, as it has nowhere else to be.
+- A ring is drawn as any goal is, not as a transfer. The ring and solid square contrast above is dropped: only the project line running into a ring tells it from a marker.

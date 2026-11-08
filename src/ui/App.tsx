@@ -404,24 +404,34 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       return;
     }
     const byId = new Map(state.stops.map((s) => [s.id, s]));
+    const grip = { x: stop.x - under.x, y: stop.y - under.y };
     // A square on the life line, a ring or a bare marker with no home line, slides along it: its
     // leg chip is the life line's, and every project through it keeps its train where it was.
+    // A ring pulled off it becomes its project's goal drag again (see `dragTo`).
     const life = lifeOf(state);
     if (life?.stops.includes(stop.id)) {
       const projects = tracksOf(state, stop.id).filter(({ track: t }) => isProject(t));
       const keep = Object.fromEntries(projects.map(({ track: t }) => [t.id, trainState(t, byId, now()).seconds]));
-      dragging.current = { id: stop.id, track: life.id, goal: false, grip: { x: stop.x - under.x, y: stop.y - under.y }, keep };
+      dragging.current = { id: stop.id, track: life.id, goal: false, grip, keep };
       return;
     }
-    // A goal drags as its line's goal whichever line its button speaks for, the day's included.
-    // A plain stop's leg chip reads a project leg, where it is next or else the first: the day's
-    // legs are not time, so a stop speaking for the day must not read one.
+    dragging.current = projectDrag(state, stop.id, grip);
+  };
+
+  /**
+   * The drag of a stop on project lines. A goal drags as its line's goal whichever line its button
+   * speaks for, the day's included. A plain stop's leg chip reads a project leg, where it is next
+   * or else the first: the day's legs are not time, so a stop speaking for the day must not read one.
+   */
+  const projectDrag = (state: World, stopId: string, grip: Point): typeof dragging.current => {
+    const byId = new Map(state.stops.map((s) => [s.id, s]));
+    const stop = byId.get(stopId)!;
     const home = homeOf(state, stop.id);
     const goal = home !== undefined;
     const projects = tracksOf(state, stop.id).filter(({ track: t }) => isProject(t));
     const project = projects.find(({ track: t, index }) => nextIndex(t, byId) === index) ?? projects[0];
     const track = home ?? project?.track;
-    if (!track) return;
+    if (!track) return null;
     const train = trainState(track, byId, now());
     const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
     const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
@@ -431,11 +441,11 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       ? state.tracks.filter((t) => t.stops.some((id) => id === stop.id || pending.includes(id)))
       : tracksOf(state, stop.id).map((f) => f.track);
     const keep = Object.fromEntries(lines.map((t) => [t.id, trainState(t, byId, now()).seconds]));
-    dragging.current = {
+    return {
       id: stop.id,
       track: track.id,
       goal,
-      grip: { x: stop.x - under.x, y: stop.y - under.y },
+      grip,
       keep,
       from: goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
     };
@@ -536,6 +546,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
    * works from the drag's start, so where the finger wandered on the way never matters.
    */
   const dragTo = (at: Point) => {
+    pullOffLife(at);
     const d = dragging.current;
     if (!d) return;
     const under = screenToWorld(cameraRef.current, at);
@@ -544,6 +555,24 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
     showLegInto(d.track, d.id);
+  };
+
+  /**
+   * A ring sliding on the life line comes off it once the finger takes it further from the line
+   * than a snap reaches: the life line lets it go and the drag goes on as its project's goal drag,
+   * so a release back near the life line joins it again. A bare marker has nowhere else to be and
+   * stays on, and so does a ring while project lines are hidden, as it would vanish from the map.
+   * Leaving and the rest of the drag are one step for undo, as the whole gesture is.
+   */
+  const pullOffLife = (at: Point) => {
+    const d = dragging.current;
+    const state = store.getState();
+    const life = lifeOf(state);
+    if (!d || !life || d.track !== life.id || !homeOf(state, d.id) || projectsHidden()) return;
+    const cam = cameraRef.current;
+    if (Math.abs(screenToWorld(cam, at).y + d.grip.y - life.life.y) <= SNAP_PX / cam.scale) return;
+    store.dispatch({ type: 'leave', trackId: life.id, stopId: d.id, now: now() });
+    dragging.current = projectDrag(store.getState(), d.id, d.grip);
   };
 
   /** Writes the planned time of the leg arriving at a stop beneath it, read back from the world. */

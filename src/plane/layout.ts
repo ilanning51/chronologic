@@ -198,7 +198,8 @@ export function layoutTrack(
     projectGoal: index === goalIndex && isProject(track),
     terminus: index === goalIndex && isProject(track) && stop.done,
     landmark: track.life !== undefined && stop.done,
-    ring: !stop.done && linesAt(stop.id) >= 2,
+    // The life line is no line to change trains on: its square is its project's goal, drawn as one.
+    ring: !stop.done && tracksOf(world, stop.id).filter(({ track: t }) => !t.life && drawnOnPlane(t, today)).length >= 2,
     lane: laneAt(index + 1),
     crowd: index === state.leg ? crowd : 0,
   }));
