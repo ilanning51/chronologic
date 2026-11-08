@@ -11,6 +11,7 @@ import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
 import { LANE_PX, TRACK_WIDTH } from '../plane/world';
 import { running, twoLines, withDay, withLife, withWeek } from '../test/fixtures';
+import type { World } from '../model/types';
 import { App } from './App';
 
 window.innerWidth = 1000;
@@ -2870,4 +2871,135 @@ test('from the 3-month unit up no project train is drawn, only the life train', 
   }
   expect(document.querySelector('.legend')!.textContent).toBe('5 years');
   expect(document.querySelectorAll('[data-train]')).toHaveLength(1);
+});
+
+/** Wheels out over the plane until the legend reads `label`. */
+function zoomOutTo(label: string) {
+  for (let i = 0; i < 400 && document.querySelector('.legend')!.textContent !== label; i++) {
+    act(() => {
+      fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 100 });
+    });
+  }
+  expect(document.querySelector('.legend')!.textContent).toBe(label);
+}
+
+describe('zoomed out, a ring speaks for its project', () => {
+  /** Start done and the life train heading for Wristband, t1's goal: the life line's next square is the ring. */
+  function lifeHeadingForRing() {
+    const world = withLife();
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.tracks.find((t) => t.life)!.train = { leg: 1, departedAt: 0 };
+    return world;
+  }
+
+  test("a tap on a ring its project is not yet heading for does nothing and plays nothing", () => {
+    const oscillators = fakeAudio();
+    const store = createStore(lifeHeadingForRing());
+    render(<App store={store} now={() => 100_000} />);
+    zoomOutTo('3 months');
+    const before = store.getState();
+    act(() => tapOn(screen.getByRole('button', { name: /^Wristband/ })));
+    expect(store.getState()).toBe(before);
+    expect(oscillators).not.toHaveBeenCalled();
+  });
+
+  test("a tap on a ring its project's train is heading for completes it for the project, with the goal's sound", () => {
+    const oscillators = fakeAudio();
+    const world = lifeHeadingForRing();
+    world.stops.find((s) => s.id === 'dentist')!.done = true;
+    world.tracks.find((t) => t.id === 't1')!.train = { leg: 1, departedAt: 0 };
+    const store = createStore(world);
+    render(<App store={store} now={() => 100_000} />);
+    zoomOutTo('3 months');
+    act(() => tapOn(screen.getByRole('button', { name: /^Wristband/ })));
+    expect(stopNamed(store, 'wristband').done).toBe(true);
+    expect(oscillators).toHaveBeenCalled();
+  });
+});
+
+describe('zoomed out, a hidden project line takes nothing', () => {
+  const centreOf = (id: string) => {
+    const el = document.querySelector<HTMLElement>(`.stop[data-id="${id}"]`)!;
+    return { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+  };
+
+  /**
+   * t1 runs for over a year: Dentist 4e7 s out, its goal Wristband, a ring, 5e7 s out. Start, a
+   * marker 2e7 s out, sits 800 s above t1's first leg, under a pixel at the 3-month unit and
+   * further than the snap reaches (about 1e7 s there) from t1's start and stops.
+   */
+  function yearsLong() {
+    const world = withLife();
+    const place = (id: string, x: number) => {
+      world.stops.find((s) => s.id === id)!.x = x;
+    };
+    place('start', 2e7);
+    place('dentist', 4e7);
+    place('wristband', 5e7);
+    place('far', 9e8);
+    return world;
+  }
+
+  test('a Step carried over a years-long project line, undrawn at 3 months, does not snap to it and adds nothing', () => {
+    const store = createStore(yearsLong());
+    render(<App store={store} now={() => 1000} />);
+    zoomOutTo('3 months');
+    openTray();
+    const before = store.getState();
+    const to = centreOf('start');
+    const tile = screen.getByRole('button', { name: 'Step' });
+    act(() => {
+      fireEvent.pointerDown(tile, { pointerId: 1, clientX: 900, clientY: 740 });
+      fireEvent.pointerMove(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+    });
+    expect(document.querySelector('.ghost')).not.toHaveClass('snapped');
+    act(() => {
+      fireEvent.pointerUp(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+    });
+    expect(store.getState()).toBe(before);
+  });
+
+  test('a step split off a ring at 3 months lands on no project line, since none is drawn', () => {
+    const store = createStore(yearsLong());
+    render(<App store={store} now={() => 1000} />);
+    zoomOutTo('3 months');
+    const before = store.getState();
+    act(() => splitFrom(/^Wristband/, centreOf('start')));
+    expect(store.getState()).toBe(before);
+  });
+
+  test("a day's stop dragged at 3 months joins no years-long project line it is released on", () => {
+    const NOW = new Date(2026, 10, 1, 9).getTime();
+    // Today's day line runs through Dentist, which t1 lists too. t2 is a sketch, its one goal 4e8 s
+    // out, its first leg passing 2000 s under Dentist: under a pixel at this zoom, and not drawn.
+    const world: World = {
+      tracks: [
+        { id: 't1', color: 0, origin: { x: 0, y: 0 }, stops: ['dentist', 'wristband'], train: { leg: 0, departedAt: NOW }, target: 'goal' },
+        { id: 't2', color: 1, origin: { x: 0, y: 2000 }, stops: ['g2'], train: { leg: 0, departedAt: NOW }, target: 'goal' },
+        {
+          id: 'day',
+          color: 2,
+          origin: { x: 1000, y: -400 },
+          stops: ['dentist', 'dayEnd'],
+          train: { leg: 0, departedAt: NOW },
+          target: 'next',
+          day: { date: dayOf(NOW), budgets: [1000, 0], lengths: [3600, 1800] },
+        },
+      ],
+      stops: [
+        { id: 'dentist', title: 'Dentist', shape: 'circle', size: 'medium', x: 1000, y: 0, done: false },
+        { id: 'wristband', title: 'Wristband', shape: 'square', size: 'large', x: 3000, y: 0, done: false },
+        { id: 'g2', title: 'Goal two', shape: 'square', size: 'large', x: 4e8, y: 2000, done: false },
+        { id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false },
+      ],
+      lastTouched: null,
+    };
+    const store = createStore(world);
+    render(<App store={store} now={() => NOW} />);
+    zoomOutTo('3 months');
+    // Past the tap's slop, along the day line's height.
+    act(() => dragStop(/^Dentist/, 12, 0));
+    expect(stopNamed(store, 'dentist').x).toBeGreaterThan(1000);
+    expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['g2']);
+  });
 });
