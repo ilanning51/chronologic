@@ -183,5 +183,5 @@ A done ring on the life line becomes a landmark, a small ink square with its nam
 
 Ian asked for two changes once he used the life line.
 
-- A ring comes off the life line by dragging it off, as his first decision above said, not only by the Life chip. Pulled further from the line than a snap reaches, it leaves, and the drag goes on as its project's goal drag; let go back on the line, it joins again. A bare marker stays on the line, as it has nowhere else to be.
+- A ring comes off the life line by dragging it off, as his first decision above said, not only by the Life chip. Pulled three snaps from the line (72 px), well past the one snap that puts it on, it leaves, and the drag goes on as its project's goal drag; let go back on the line, it joins again. A bare marker stays on the line, as it has nowhere else to be.
 - A ring is drawn as any goal is, not as a transfer. The ring and solid square contrast above is dropped: only the project line running into a ring tells it from a marker.

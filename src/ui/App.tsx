@@ -122,6 +122,11 @@ function useFly(setCamera: (c: Camera) => void) {
 
 /** How often the open week window reads the clock when nothing else does. */
 const WEEK_TICK_MS = 30_000;
+/**
+ * How far, in screen pixels, a ring must be pulled from the life line before it comes off: three
+ * snaps, so a drag along the line that wanders never drops it, while a square still snaps on at one.
+ */
+const PULL_OFF_PX = 3 * SNAP_PX;
 
 /** The shapes a tile or a brush puts down: a marker is a square, which only the life line takes. */
 type CarriedShape = 'circle' | 'triangle' | 'square';
@@ -558,8 +563,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   };
 
   /**
-   * A ring sliding on the life line comes off it once the finger takes it further from the line
-   * than a snap reaches: the life line lets it go and the drag goes on as its project's goal drag,
+   * A ring sliding on the life line comes off it once the finger takes it `PULL_OFF_PX` from the
+   * line, well past where a snap reaches: the life line lets it go and the drag goes on as its project's goal drag,
    * so a release back near the life line joins it again. A bare marker has nowhere else to be and
    * stays on, and so does a ring while project lines are hidden, as it would vanish from the map.
    * Leaving and the rest of the drag are one step for undo, as the whole gesture is.
@@ -570,7 +575,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const life = lifeOf(state);
     if (!d || !life || d.track !== life.id || !homeOf(state, d.id) || projectsHidden()) return;
     const cam = cameraRef.current;
-    if (Math.abs(screenToWorld(cam, at).y + d.grip.y - life.life.y) <= SNAP_PX / cam.scale) return;
+    if (Math.abs(screenToWorld(cam, at).y + d.grip.y - life.life.y) <= PULL_OFF_PX / cam.scale) return;
     store.dispatch({ type: 'leave', trackId: life.id, stopId: d.id, now: now() });
     dragging.current = projectDrag(store.getState(), d.id, d.grip);
   };

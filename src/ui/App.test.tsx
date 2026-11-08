@@ -2746,6 +2746,16 @@ describe('life line gestures', () => {
     expect(store.getState()).toEqual(before);
   });
 
+  test('a ring pulled past a snap but short of three snaps from the life line stays on it', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    // 60 px: past the 24 px snap, short of the 72 px pull-off.
+    act(() => dragStop(/^Wristband/, 30, 60));
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
+    expect(stopNamed(store, 'wristband')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'wristband').x).toBeCloseTo(1100 + 30 / SCALE, 6);
+  });
+
   test('a ring pulled off the life line and let go back on it joins it again at its new x', () => {
     const store = createStore(lifeScene());
     render(<App store={store} now={() => LIFE_NOW} />);
