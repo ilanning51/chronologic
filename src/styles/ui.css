@@ -773,23 +773,6 @@ button:focus-visible {
   background: var(--ink);
 }
 
-/* Where a carried goal would land on the life line: the goal as it will be drawn there, a disc in
-   its project's colour with its white square. */
-.ghost.landing .shape {
-  background: var(--home-color, var(--ink));
-}
-
-.ghost.landing .shape.square::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 40%;
-  height: 40%;
-  transform: translate(-50%, -50%);
-  background: var(--paper);
-}
-
 /* The name field: a plate, set beside the shape it names. */
 .name-field {
   position: absolute;
