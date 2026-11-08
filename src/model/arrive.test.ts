@@ -214,6 +214,54 @@ describe('setLeg', () => {
   });
 });
 
+describe('stops that must stay', () => {
+  /** t1 runs 0 -> a -> d -> g with d done from another line, ahead of the train. */
+  const pastDone = () => {
+    const w = line([['a', 1000, 0], ['d', 2000, 500], ['g', 3000, 0]]);
+    stopOf(w, 'd').done = true;
+    return w;
+  };
+  /** t1 runs 0 -> a -> x -> g1; t2 runs from (2500, 400) -> x -> g2, and at 800 s its train waits at x. */
+  const sharedWait = () => {
+    const w = line([['a', 1000, 0], ['x', 3000, 0], ['g1', 5000, 0]]);
+    w.tracks.push({ id: 't2', color: 1, origin: { x: 2500, y: 400 }, stops: ['x', 'g2'], train: { leg: 0, departedAt: 0 }, target: 'goal' });
+    w.stops.push({ id: 'g2', title: 'g2', shape: 'square', size: 'medium', x: 5000, y: 400, done: false });
+    return w;
+  };
+  const late = 800 * S;
+
+  test('a typed time that would leave a done stop behind is refused, and the editor says so', () => {
+    const w = pastDone();
+    expect(setArrival(w, 'g', 86_400, now)).toBeNull();
+    expect(setLeg(w, 'a', 5000, now)).toBeNull();
+    expect(timesOf(w, 'g', now)).toMatchObject({ editable: false });
+    // After the done stop nothing must stay, so the last leg still takes a time.
+    expect(legOf(setLeg(w, 'g', 3000, now)!, 2)).toBeCloseTo(3000, 0);
+  });
+
+  test('a train rolling into a done stop leaves no from-now field that silently does nothing', () => {
+    const w = line([['d', 1000, 0], ['b', 2000, 0], ['g', 3000, 0]]);
+    stopOf(w, 'd').done = true;
+    expect(trainState(w.tracks[0], byId(w), now)).toMatchObject({ leg: 0, waiting: false });
+    expect(timesOf(w, 'b', now)).toMatchObject({ editable: false });
+    expect(setArrival(w, 'b', 86_400, now)).toBeNull();
+  });
+
+  test("a typed time never moves the stop another line's train waits at", () => {
+    const w = sharedWait();
+    expect(trainState(w.tracks[1], byId(w), late)).toMatchObject({ waiting: true, leg: 0 });
+    expect(setLeg(w, 'a', 2000, late)).toBeNull();
+    expect(setLeg(w, 'a', 500, late)).toBeNull();
+    expect(timesOf(w, 'g1', late)).toMatchObject({ editable: false });
+    // Earlier, with t2 still rolling toward x, the same edit carries x and t2 keeps its place.
+    const early = 300 * S;
+    const before = trainState(w.tracks[1], byId(w), early).seconds;
+    const next = setLeg(w, 'a', 2000, early)!;
+    expect(stopOf(next, 'x').x).toBeCloseTo(4000, 0);
+    expect(trainState(next.tracks[1], byId(next), early).seconds).toBeCloseTo(before);
+  });
+});
+
 describe('setArrival', () => {
   test('makes the stop arrive that long from now by changing only the leg the train is on', () => {
     const w = line([['flowers', 1000, 0], ['gift', 3000, 0]]);

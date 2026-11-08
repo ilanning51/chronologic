@@ -251,9 +251,23 @@ export function firstMovable(track: Track, byId: Map<string, Stop>, now: number)
   return state.waiting ? state.leg + 1 : state.leg;
 }
 
-/** Whether changing times from the k-th stop on would have to move a square on the life line. */
-function touchesLife(world: World, track: Track, k: number): boolean {
-  return track.stops.slice(k).some((id) => onLife(world, id));
+/**
+ * Whether changing times from the k-th stop of this line on would have to move a stop that must
+ * stay: a done one, a square on the life line, or one another project line's train has already
+ * reached or waits at. Those stops cannot move with the rest, and a carry that leaves one behind
+ * no longer gives the time that was typed.
+ */
+function frozen(world: World, track: Track, k: number, byId: Map<string, Stop>, now: number): boolean {
+  const ahead = track.stops.slice(k);
+  if (ahead.some((id) => byId.get(id)!.done || onLife(world, id))) return true;
+  return world.tracks.some((t) => {
+    if (t.id === track.id || !isProject(t)) return false;
+    const first = firstMovable(t, byId, now);
+    return ahead.some((id) => {
+      const j = t.stops.indexOf(id);
+      return j >= 0 && (first < 0 || j < first);
+    });
+  });
 }
 
 /**
@@ -261,21 +275,21 @@ function touchesLife(world: World, track: Track, k: number): boolean {
  * after it by the same offset, so no other leg of the line changes. Shorter, the stop goes back
  * along its own road; longer, it runs on along that road's last direction, as nothing after it
  * holds it now. Every line through a moved stop re-routes and keeps its train. Null when the
- * stop is done, behind the train or at it, or when the change would move a square on the life line.
+ * stop is behind the train or at it, or when the change would move a stop that must stay.
  */
 function carryLeg(world: World, track: Track, k: number, seconds: number, now: number): World | null {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const stop = byId.get(track.stops[k]);
-  if (!stop || stop.done || seconds <= 0) return null;
+  if (!stop || seconds <= 0) return null;
   const first = firstMovable(track, byId, now);
-  if (first < 0 || k < first || touchesLife(world, track, k)) return null;
+  if (first < 0 || k < first || frozen(world, track, k, byId, now)) return null;
   // Nothing after the stop holds it any more, so its leg runs on as a goal's would.
   const leg = { ...legOn(world, track, k, now), goal: true };
   leg.walk = routeThrough([leg.prev, stop]).vertices;
   const to = pointFor(leg, seconds);
   const dx = to.x - stop.x;
   const dy = to.y - stop.y;
-  const moved = new Set([stop.id, ...track.stops.slice(k + 1).filter((id) => !byId.get(id)!.done)]);
+  const moved = new Set(track.stops.slice(k));
   const after: World = {
     ...world,
     stops: world.stops.map((s) => (moved.has(s.id) ? { ...s, x: s.x + dx, y: s.y + dy } : s)),
@@ -320,7 +334,7 @@ export interface StopTimes {
   after: string;
   /** Seconds from now until the train gets there; 0 when it is there. */
   fromNow: number;
-  /** Whether the times can be typed: not at the train, and nothing on the life line would move. */
+  /** Whether the times can be typed: not at the train, and nothing that must stay would move. */
   editable: boolean;
 }
 
@@ -338,6 +352,6 @@ export function timesOf(world: World, stopId: string, now: number): StopTimes | 
     leg: legSeconds(trackRoute(track, byId), k),
     after: prev === null ? 'the start' : prev.title.trim() || 'the last stop',
     fromNow: timeLeft(track, stopId, byId, now),
-    editable: first >= 0 && k >= first && !touchesLife(world, track, first),
+    editable: first >= 0 && k >= first && !frozen(world, track, first, byId, now),
   };
 }

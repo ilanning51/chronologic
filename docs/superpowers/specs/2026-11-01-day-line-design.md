@@ -262,7 +262,7 @@ Every v2 gesture is unchanged. Added:
   `newDay`. Lifting with no stops collected draws nothing. Drawing a new day replaces the old.
 - **Add to the day.** Drag the day's-end square through a pending stop: it is appended
   (`addToDay`), the square returns to where it was. Dragging the square elsewhere moves it,
-  as a goal moves, except that it scales nothing: the day line's legs are not time.
+  as a goal moves, except that it carries nothing: the day line's legs are not time.
 - **Join a line.** Release a dragged stop within `SNAP_PX` of another line's path, ahead of
   its train and not within `SNAP_PX` of one of that line's stops: the stop is inserted into
   that line at that leg, at the snap point (`join { trackId, stopId, leg, x, y, now }`). The

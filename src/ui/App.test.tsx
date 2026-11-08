@@ -2909,7 +2909,7 @@ describe('life line gestures', () => {
     expect(lifeOf(store).stops).toEqual(['start', 'g2', 'wristband', 'far']);
     expect(stopNamed(store, 'g2')).toMatchObject({ y: -800 });
     expect(stopNamed(store, 'g2').x).toBeCloseTo(900 + 30 / SCALE, 6);
-    // Only the goal moved: the drag scaled the step while it was held, and the release put it back.
+    // Only the goal moved: the drag carried the step while it was held, and the release put it back.
     expect(stopNamed(store, 's2')).toEqual(step);
     expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['s2', 'g2']);
     // The whole drag and join is one step for undo.
@@ -2917,7 +2917,7 @@ describe('life line gestures', () => {
     expect(store.getState()).toEqual(before);
   });
 
-  test('a goal released off the life line scales its line and joins nothing, as before', () => {
+  test('a goal released off the life line carries its line and joins nothing, as before', () => {
     const store = createStore(joinScene());
     render(<App store={store} now={() => LIFE_NOW} />);
     act(() => dragStop(/^Goal two/, 60, 40));

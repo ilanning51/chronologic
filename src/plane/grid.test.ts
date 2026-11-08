@@ -81,7 +81,7 @@ test('what the chip writes, typed back, gives the same time', () => {
 });
 
 test('text that is not a duration, or no time at all, gives nothing', () => {
-  for (const text of ['', '   ', 'soon', '3 parsecs', '-2 h', '0', '0 min', 'h', '2 h h', '3 days ago']) {
+  for (const text of ['', '   ', 'soon', '3 parsecs', '-2 h', '0', '0 min', 'h', '2 h h', '3 days ago', '0.4 s', '0.004']) {
     expect(parseSeconds(text)).toBeNull();
   }
 });

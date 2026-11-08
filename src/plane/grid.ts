@@ -97,8 +97,8 @@ export function parseSeconds(text: string): number | null {
   const s = text.trim().toLowerCase();
   if (s === '') return null;
   if (/^\d+(\.\d+)?$/.test(s)) {
-    const minutes = Number(s) * MINUTE;
-    return minutes > 0 ? Math.round(minutes) : null;
+    const rounded = Math.round(Number(s) * MINUTE);
+    return rounded > 0 ? rounded : null;
   }
   const pair = /(\d+(?:\.\d+)?)\s*([a-z]+)\s*/g;
   let total = 0;
@@ -109,6 +109,6 @@ export function parseSeconds(text: string): number | null {
     total += Number(m[1]) * unit;
     at = pair.lastIndex;
   }
-  if (at !== s.length || total <= 0) return null;
-  return Math.round(total);
+  const rounded = Math.round(total);
+  return at === s.length && rounded > 0 ? rounded : null;
 }
