@@ -23,6 +23,8 @@ interface StopEditorProps {
   onUndo: () => void;
   onClose: () => void;
   onLeave: (trackId: string) => void;
+  /** Puts a project's goal on the life line where it stands; offered only where the life line takes it. */
+  onJoinLife?: () => void;
 }
 
 const SIZES: { size: Size; label: string }[] = [
@@ -71,6 +73,7 @@ export function StopEditor({
   onUndo,
   onClose,
   onLeave,
+  onJoinLife,
 }: StopEditorProps) {
   const [title, setTitle] = useState(stop.title);
   const input = useRef<HTMLInputElement>(null);
@@ -153,7 +156,7 @@ export function StopEditor({
           {label}
         </button>
       ))}
-      {lines.length > 0 && (
+      {(lines.length > 0 || onJoinLife) && (
         <div className="line-chips">
           {lines.map(({ trackId, color, name }) => (
             <button
@@ -166,6 +169,16 @@ export function StopEditor({
               onClick={() => onLeave(trackId)}
             />
           ))}
+          {onJoinLife && (
+            // Hollow where a line chip is filled: not on the life line yet. Once on, it is Leave Life.
+            <button
+              type="button"
+              className="line-chip join"
+              aria-label="Join Life"
+              style={{ '--track-color': 'var(--ink)' } as CSSProperties}
+              onClick={onJoinLife}
+            />
+          )}
         </div>
       )}
       {goal && (

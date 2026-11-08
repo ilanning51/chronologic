@@ -24,6 +24,8 @@ interface StopProps {
   link?: Link;
   /** Where its name is set: beneath it when nothing has placed it, and nowhere when it had no clear side. */
   place?: LabelPlace | null;
+  /** Screen pixels it leans toward the finger while held on the life line; it springs back when unset. */
+  lean?: number;
 }
 
 /** How a name is anchored on each side of its station: the anchor is its top left, top right, top middle or bottom middle. */
@@ -58,7 +60,7 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
  */
 /** The paper a transfer leaves around the discs inside it, top and bottom, outline included. */
 const LINK_PAD = (VIGNELLI.capsulePad + VIGNELLI.capsuleOutline) * TRACK_WIDTH;
-export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link, place }: StopProps) {
+export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link, place, lean }: StopProps) {
   // A transfer's discs are one line wide whatever the task's size, as the map's are, so on lanes
   // 1.1 lines apart they stand just clear of each other.
   const tall = DISC_PX[link ? 'small' : stop.size] + 2 * LINK_PAD;
@@ -67,9 +69,10 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
   const set: LabelPlace = place ?? { side: 'below', lines: [stop.title], dx: 0, dy: DISC_PX[stop.size] / 2 + LABEL_GAP_PX };
   const name = [
     stop.title || 'Unnamed',
-    SHAPE_WORDS[stop.shape],
+    stop.life === 'marker' ? 'marker' : SHAPE_WORDS[stop.shape],
     SIZE_WORDS[stop.size],
     stop.done ? 'done' : stop.next ? 'next' : null,
+    stop.life && 'on the life line',
   ]
     .filter(Boolean)
     .join(', ');
@@ -85,6 +88,7 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
         stop.terminus && 'terminus',
         stop.landmark && 'landmark',
         link && 'linked',
+        lean !== undefined && 'leaning',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -93,7 +97,14 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
       data-track={track}
       data-goal={stop.goal ? '' : undefined}
       aria-label={name}
-      style={{ left: stop.x, top: stop.y, ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
+      style={
+        {
+          left: stop.x,
+          top: stop.y,
+          ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color),
+          ...(lean !== undefined ? { ['--lean' as string]: `${lean}px` } : {}),
+        } as CSSProperties
+      }
     >
       {stop.image !== undefined && <img aria-hidden="true" alt="" className="mural" src={stop.image} draggable={false} />}
       <span aria-hidden="true" className="mark">

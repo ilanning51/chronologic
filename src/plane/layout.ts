@@ -37,6 +37,11 @@ export interface StopView {
   /** On two or more lines and not done: an interchange, drawn as a ring. */
   ring: boolean;
   /**
+   * On the life line: a goal some project works toward, or a marker nothing feeds. They are drawn
+   * alike, so this is how a screen reader tells them apart.
+   */
+  life?: 'goal' | 'marker';
+  /**
    * Where this line's lane crosses the stop, square across the road it shares there: the stop's
    * own point moved by the line's lane arriving, or leaving where that lane is wider. The stop's
    * own point when the line has the road alone.
@@ -169,6 +174,11 @@ export function layoutTrack(
     const own = worldToScreen(camera, route.vertices[v]);
     return { x: own.x + widest.x * LANE_PX, y: own.y + widest.y * LANE_PX };
   };
+  const lifeOfStop = (id: string): Pick<StopView, 'life'> => {
+    const on = tracksOf(world, id);
+    if (!on.some(({ track: t }) => t.life)) return {};
+    return { life: on.some(({ track: t }) => isProject(t)) ? 'goal' : 'marker' };
+  };
   const linesAt = (id: string) => tracksOf(world, id).filter(({ track: t }) => drawnOnPlane(t, today)).length;
   const placed = track.stops.flatMap((id, index) => {
     if (hidden) return [];
@@ -198,7 +208,9 @@ export function layoutTrack(
     projectGoal: index === goalIndex && isProject(track),
     terminus: index === goalIndex && isProject(track) && stop.done,
     landmark: track.life !== undefined && stop.done,
-    ring: !stop.done && linesAt(stop.id) >= 2,
+    ...lifeOfStop(stop.id),
+    // The life line is no line to change trains on: its square is its project's goal, drawn as one.
+    ring: !stop.done && tracksOf(world, stop.id).filter(({ track: t }) => !t.life && drawnOnPlane(t, today)).length >= 2,
     lane: laneAt(index + 1),
     crowd: index === state.leg ? crowd : 0,
   }));
