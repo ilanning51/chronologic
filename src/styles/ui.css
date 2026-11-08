@@ -1148,6 +1148,17 @@ button:focus-visible {
   z-index: 1;
 }
 
+/* While a block is held, the hours its end cannot reach: there its line ends. Hatched, so it
+   never reads as the Next stops column taking a block, nor as a block. */
+.week-reach {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: repeating-linear-gradient(135deg, var(--muted) 0 1px, transparent 1px 7px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 /* Over the Next stops column, a held block would come off its day. */
 .week-column.taking {
   background: var(--grid);

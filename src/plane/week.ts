@@ -1,4 +1,4 @@
-import { arrivalOf, endOf, governingLine } from '../model/arrive';
+import { arrivalOf, endOf, governingLine, type Reach } from '../model/arrive';
 import { dayFor, dayWith, isDayEnd, isProject } from '../model/day';
 import { addDays, dayOf, endOfDate, parseDate, startOfDate } from '../model/days';
 import { onLife } from '../model/life';
@@ -163,6 +163,25 @@ export function blocksOn(world: World, date: string, now: number): BlockView[] {
     });
   });
   return inLanes(blocks);
+}
+
+/** A stretch of a date's plane, in px from its top. */
+export interface Band {
+  top: number;
+  height: number;
+}
+
+/**
+ * The stretches of a date's plane a held block's end cannot reach: before its earliest arrival
+ * and after its latest. A goal, whose last leg can run on without end, has no latest.
+ */
+export function unreachable(date: string, reach: Reach): Band[] {
+  const bands: Band[] = [];
+  const first = yOf(date, reach.earliest);
+  if (first > 0) bands.push({ top: 0, height: first });
+  const last = reach.latest === null ? DAY_HEIGHT : yOf(date, reach.latest);
+  if (last < DAY_HEIGHT) bands.push({ top: last, height: DAY_HEIGHT - last });
+  return bands;
 }
 
 /**

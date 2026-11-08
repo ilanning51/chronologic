@@ -21,6 +21,7 @@ import {
   PX_PER_HOUR,
   snapAt,
   TIMES_AT_PX,
+  unreachable,
   weekDates,
   weekName,
   weeksBetween,
@@ -362,6 +363,9 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
   const live = grabbed?.grab.live ? grabbed : null;
   const aim = live?.aim ?? null;
   const ghostTop = live && aim && !aim.off && aim.date === selected ? yOf(selected, aim.end - aim.length * 1000) : null;
+  // While a block is held, the hours its end cannot reach are shaded: there its line ends.
+  const held = live && reach(world, live.grab.stopId, clockRef.current());
+  const shade = held ? unreachable(selected, held) : [];
 
   return (
     <section className="week" role="dialog" aria-label="Week">
@@ -423,6 +427,9 @@ export function WeekWindow({ store, now, clock: read }: WeekWindowProps) {
               </div>
             ))}
             <div className="week-blocks">
+              {shade.map((b) => (
+                <div key={b.top} className="week-reach" style={{ top: b.top, height: b.height }} aria-hidden="true" />
+              ))}
               {blocks.map((b) => (
                 <Block
                   key={b.stopId}

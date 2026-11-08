@@ -15,6 +15,7 @@ import {
   PX_PER_HOUR,
   snapAt,
   timeAt,
+  unreachable,
   weekDates,
   weekName,
   yOf,
@@ -170,6 +171,35 @@ describe('candidates', () => {
     const parked = structuredClone(w);
     parked.tracks[2].train.leg = 1;
     expect(candidates(parked, now).map((c) => c.stopId)).not.toContain('dream');
+  });
+});
+
+describe('the hours a held block cannot reach', () => {
+  const date = '2026-11-07';
+  const row = (h: number) => h * PX_PER_HOUR;
+
+  test('shades before its earliest and after its latest', () => {
+    expect(unreachable(date, { earliest: at(7, 9), latest: at(7, 17) })).toEqual([
+      { top: 0, height: row(9) },
+      { top: row(17), height: DAY_HEIGHT - row(17) },
+    ]);
+  });
+
+  test('a goal, which can run on without end, is shaded only before its earliest', () => {
+    expect(unreachable(date, { earliest: at(7, 9), latest: null })).toEqual([{ top: 0, height: row(9) }]);
+  });
+
+  test('a reach wider than the day shades nothing', () => {
+    expect(unreachable(date, { earliest: at(6, 20), latest: at(8, 3) })).toEqual([]);
+  });
+
+  test('a reach that misses the day shades all of it', () => {
+    expect(unreachable(date, { earliest: at(8, 3), latest: at(9, 3) })).toEqual([{ top: 0, height: DAY_HEIGHT }]);
+    expect(unreachable(date, { earliest: at(5, 3), latest: at(6, 20) })).toEqual([{ top: 0, height: DAY_HEIGHT }]);
+  });
+
+  test('an earliest of the next midnight shades the whole day, as no block may end there', () => {
+    expect(unreachable(date, { earliest: at(8, 0), latest: null })).toEqual([{ top: 0, height: DAY_HEIGHT }]);
   });
 });
 

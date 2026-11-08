@@ -31,6 +31,7 @@ import { layoutTrack } from '../plane/layout';
 import { routeOf, trainOn } from '../plane/metro';
 import { openingCamera } from '../plane/opening';
 import { pathLength, routeThrough } from '../plane/routing';
+import { drawnBetween } from '../plane/slide';
 import { CLIP_MARGIN_PX } from '../plane/clip';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
 import { nearestStop, snapToAll, snapToLife } from '../plane/snap';
@@ -87,6 +88,15 @@ const DAY_GAP_PX = 120;
 /** How long the camera takes to fly between two views. */
 const FLY_MS = 400;
 
+/** How long the map takes to slide into place when the week window closes. */
+const SLIDE_MS = 500;
+
+/** Fast at first, settling at the end: k from 0 to 1 eases out along a cubic. */
+const easeOut = (k: number) => 1 - (1 - k) ** 3;
+
+const reducedMotion = () =>
+  typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 /** How often the paper is asked what time it is. */
 const DAYLIGHT_MS = 60_000;
 
@@ -105,14 +115,14 @@ function useFly(setCamera: (c: Camera) => void) {
   return useCallback(
     (from: Camera, to: Camera) => {
       cancel();
-      if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (reducedMotion()) {
         setCamera(to);
         return;
       }
       const start = performance.now();
       const step = (t: number) => {
         const k = Math.min(1, (t - start) / FLY_MS);
-        setCamera(k >= 1 ? to : interpolate(from, to, 1 - (1 - k) ** 3));
+        setCamera(k >= 1 ? to : interpolate(from, to, easeOut(k)));
         frame.current = k >= 1 ? null : window.requestAnimationFrame(step);
       };
       frame.current = window.requestAnimationFrame(step);
@@ -153,7 +163,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const sliding = useRef(false);
   if (!sliding.current) cameraRef.current = camera;
   /** The camera the world layer on screen was laid out for. */
-  const drawn = useRef(camera);
+  const laidOutFor = useRef(camera);
   const worldEl = useRef<HTMLDivElement>(null);
   const stash = useRef<Camera | null>(null);
   const fly = useFly(setCamera);
@@ -186,6 +196,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const [weekOpen, setWeekOpen] = useState(false);
   const weekOpenRef = useRef(weekOpen);
   weekOpenRef.current = weekOpen;
+  /**
+   * The world as it stood when the week window opened. The plane draws it while the window is
+   * open, and slides from it to the live world, `slid` of the way, once the window closes.
+   */
+  const [heldFrom, setHeldFrom] = useState<World | null>(null);
+  const heldFromRef = useRef(heldFrom);
+  heldFromRef.current = heldFrom;
+  const [slid, setSlid] = useState(0);
+  const slideFrame = useRef<number | null>(null);
+  /** A drag that began while the map was held: the rest of it does nothing. */
+  const idleDrag = useRef(false);
   /** The tile whose brush is on, if any. App state only: never saved, off at start. */
   const [brush, setBrush] = useState<Tile | null>(null);
   const brushRef = useRef(brush);
@@ -320,14 +341,14 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const showSlide = useCallback(() => {
     const world = worldEl.current;
     if (!world) return;
-    const dx = cameraRef.current.x - drawn.current.x;
-    const dy = cameraRef.current.y - drawn.current.y;
+    const dx = cameraRef.current.x - laidOutFor.current.x;
+    const dy = cameraRef.current.y - laidOutFor.current.y;
     const moved = dx !== 0 || dy !== 0;
     world.style.transform = moved ? `translate3d(${dx}px, ${dy}px, 0)` : '';
     world.style.willChange = sliding.current ? 'transform' : '';
     const grid = world.querySelector<HTMLElement>('.grid');
     if (grid) {
-      const { px } = gridFor(drawn.current.scale);
+      const { px } = gridFor(laidOutFor.current.scale);
       grid.style.transform = moved ? `translate3d(${-dx}px, ${-dy}px, 0)` : '';
       grid.style.backgroundPosition = `${wrap(cameraRef.current.x, px)}px ${wrap(cameraRef.current.y, px)}px`;
     }
@@ -338,7 +359,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     sliding.current = true;
     const c = panBy(cameraRef.current, dx, dy);
     cameraRef.current = c;
-    if (Math.abs(c.x - drawn.current.x) > SLIDE_PX || Math.abs(c.y - drawn.current.y) > SLIDE_PX) setCamera(c);
+    if (Math.abs(c.x - laidOutFor.current.x) > SLIDE_PX || Math.abs(c.y - laidOutFor.current.y) > SLIDE_PX) setCamera(c);
     showSlide();
   };
 
@@ -355,7 +376,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   // After every redraw, the world layer is shifted by whatever the hand has moved since it was laid out.
   useLayoutEffect(() => {
-    drawn.current = camera;
+    laidOutFor.current = camera;
     showSlide();
   });
 
@@ -1084,11 +1105,19 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         return;
       }
       case 'dragStart':
+        // While the week window is open the plane is held, so a drag there only closes the window;
+        // while the map slides into place it does nothing. Either way the rest of it is let go.
+        if (weekOpenRef.current || heldFromRef.current) {
+          setWeekOpen(false);
+          idleDrag.current = true;
+          return;
+        }
         // Every move of a drag, and whatever its drop adds, is one step for undo.
         store.begin();
         startDrag(g);
         return;
       case 'dragMove':
+        if (idleDrag.current) return;
         if (lineDraw.current) drawLineTo(g.at);
         else if (marquee.current) drawMarquee(g.at);
         else if (groupDrag.current) dragGroupTo(g.at);
@@ -1100,6 +1129,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         else if (g.target.kind !== 'split') dragTo(g.at);
         return;
       case 'dragEnd':
+        if (idleDrag.current) {
+          idleDrag.current = false;
+          return;
+        }
         try {
           endDragGesture(g);
         } finally {
@@ -1257,11 +1290,59 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     })();
   // The stop being named is kept too, so a zoom with its field open leaves the field a place to be.
   const shown = naming ? new Set([...pinned.current, naming.id]) : pinned.current;
+  // The map holds still behind the open week window and slides into place once it closes. Only
+  // drawing reads this world: everything that acts reads the live one.
+  const drawn = heldFrom ? drawnBetween(heldFrom, world, weekOpen ? 0 : slid) : world;
+  const drawnById = drawn === world ? byId : new Map(drawn.stops.map((s) => [s.id, s]));
   // Days after tomorrow live only in the week window.
-  const views = world.tracks
+  const views = drawn.tracks
     .filter((t) => drawnOnPlane(t, dayOf(time)))
-    .map((t) => layoutTrack(t, world, camera, time, viewport, shown));
-  const rolling = views.some((v) => !v.train.parked);
+    .map((t) => layoutTrack(t, drawn, camera, time, viewport, shown));
+  // Whether a train runs is the live world's: a line still hidden by the slide may be rolling.
+  const rolling =
+    drawn === world
+      ? views.some((v) => !v.train.parked)
+      : world.tracks.some((t) => drawnOnPlane(t, dayOf(time)) && !stateOf(t, world, time).parked);
+
+  // Opening the week window holds the map as it stands. Closing it, by any path, slides each stop
+  // and line start the window moved from there to its place now, easing out; under reduced
+  // motion, or when nothing moved, the map is simply in place. A layout effect, so no frame
+  // shows the live world before the hold or the hold after it ends.
+  useLayoutEffect(() => {
+    if (slideFrame.current !== null) window.cancelAnimationFrame(slideFrame.current);
+    slideFrame.current = null;
+    if (weekOpen) {
+      setHeldFrom(store.getState());
+      setSlid(0);
+      return;
+    }
+    const from = heldFromRef.current;
+    if (!from) return;
+    const live = store.getState();
+    if (reducedMotion() || drawnBetween(from, live, 0) === live) {
+      setHeldFrom(null);
+      return;
+    }
+    let start: number | null = null;
+    const step = (t: number) => {
+      start ??= t;
+      const k = Math.min(1, (t - start) / SLIDE_MS);
+      if (k >= 1) {
+        slideFrame.current = null;
+        setHeldFrom(null);
+        return;
+      }
+      setSlid(easeOut(k));
+      slideFrame.current = window.requestAnimationFrame(step);
+    };
+    slideFrame.current = window.requestAnimationFrame(step);
+  }, [weekOpen, store]);
+  useEffect(
+    () => () => {
+      if (slideFrame.current !== null) window.cancelAnimationFrame(slideFrame.current);
+    },
+    [],
+  );
   // From the 3-month unit up a project is not drawn at all, its train included; only the life line remains.
   const farOut = gridFor(camera.scale).seconds >= PROJECTS_HIDDEN_FROM;
 
@@ -1397,7 +1478,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (!v.anyInView) return [];
     const track = world.tracks.find((t) => t.id === v.id);
     const i = track ? targetIndex(track, byId, hiddenOnLife(world, camera.scale)) : null;
-    const target = track && i !== null ? byId.get(track.stops[i]) : undefined;
+    const target = track && i !== null ? drawnById.get(track.stops[i]) : undefined;
     if (!track || !target) return [];
     // The life train waiting at the square its bubble points at fills the bubble, as the soonest line's is.
     const filled = track.life ? (() => {
