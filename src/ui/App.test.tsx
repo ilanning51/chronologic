@@ -9,7 +9,7 @@ import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
-import { LANE_PX, TRACK_WIDTH } from '../plane/world';
+import { LANE_PX, LIFE_WIDTH, TRACK_WIDTH } from '../plane/world';
 import { running, twoLines, withDay, withLife, withWeek } from '../test/fixtures';
 import type { World } from '../model/types';
 import { App } from './App';
@@ -2171,7 +2171,7 @@ test('drawing with the line brush shows the routed time while the stroke is in f
     fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 150, clientY: 650 });
     fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 450, clientY: 700 });
   });
-  // A 45 degree run over the short side, then straight: 50Â·âˆš2 + 250 screen px.
+  // A 45 degree run over the short side, then straight: 50Ã‚Â·Ã¢Ë†Å¡2 + 250 screen px.
   const seconds = (50 * Math.SQRT2 + 250) / scale;
   expect(document.querySelector('.leg-time')).toHaveTextContent(formatSeconds(seconds));
   expect(document.querySelector('.day-ghost')).not.toBeNull();
@@ -2619,54 +2619,12 @@ describe('life line gestures', () => {
     return () => fireEvent.pointerUp(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
   }
 
-  test('the Marker tile dropped on the life line right of the train adds a square there and opens its name field', () => {
+  test('the tray has no Marker tile: nothing goes on the life line alone', () => {
     const store = createStore(lifeScene());
     render(<App store={store} now={() => LIFE_NOW} />);
     openTray();
-    let drop = () => {};
-    act(() => {
-      drop = carry('Marker', onLifeLine(1250));
-    });
-    // On the line the ghost is a square, filled.
-    expect(ghost()).toHaveClass('snapped');
-    expect(ghost()!.querySelector('.shape.square')).toBeInTheDocument();
-    act(() => drop());
-    expect(lifeOf(store).stops).toHaveLength(4);
-    // Between Wristband (1100) and Far (1400).
-    const added = stopNamed(store, lifeOf(store).stops[2]);
-    expect(added).toMatchObject({ shape: 'square', title: '', y: -800 });
-    expect(added.x).toBeCloseTo(1250, 0);
-    expect(screen.getByRole('textbox', { name: 'Stop title' })).toBeInTheDocument();
-  });
-
-  test('the Marker tile dropped past the last square still joins the life line', () => {
-    const store = createStore(lifeScene());
-    render(<App store={store} now={() => LIFE_NOW} />);
-    openTray();
-    act(() => dragTile('Marker', onLifeLine(1500)));
-    expect(lifeOf(store).stops).toHaveLength(4);
-    expect(lifeOf(store).stops.slice(0, 3)).toEqual(['start', 'wristband', 'far']);
-    expect(stopNamed(store, lifeOf(store).stops[3]).x).toBeCloseTo(1500, 0);
-  });
-
-  test('the Marker tile on a project line or on paper adds nothing and its ghost is muted', () => {
-    const store = createStore(lifeScene());
-    render(<App store={store} now={() => LIFE_NOW} />);
-    openTray();
-    const before = store.getState();
-    // On t1's first leg, ahead of its train.
-    const onProject = { x: at(/^Dentist/).x - 100, y: at(/^Dentist/).y + 6 };
-    for (const to of [onProject, { x: 300, y: 600 }]) {
-      let drop = () => {};
-      act(() => {
-        drop = carry('Marker', to);
-      });
-      expect(ghost()).not.toHaveClass('snapped');
-      expect(ghost()!.querySelector('.shape.square')).toBeInTheDocument();
-      act(() => drop());
-      expect(store.getState()).toBe(before);
-      expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    }
+    expect(screen.queryByRole('button', { name: 'Marker' })).not.toBeInTheDocument();
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
   });
 
   test('a Step or a Sub-goal dropped on the life line adds nothing and its ghost is muted', () => {
@@ -2779,6 +2737,50 @@ describe('life line gestures', () => {
     expect(ring.querySelector('.shape')).not.toHaveClass('ring');
     expect(ring.querySelector('.link')).toBeNull();
     expect(ring).not.toHaveClass('linked');
+  });
+
+  test("the life train waiting at a project's goal is not drawn, so the goal reads as lying on the line; at a bare marker it is", () => {
+    const lifeTrain = () => [...document.querySelectorAll<SVGElement>('svg.track')].find((t) => !t.querySelector('path.casing'))!.querySelector<SVGElement>('[data-train]')!;
+    const atRing = lifeScene();
+    atRing.stops.find((s) => s.id === 'start')!.done = true;
+    atRing.tracks.find((t) => t.life)!.train = { leg: 1, departedAt: 0 };
+    const first = render(<App store={createStore(atRing)} now={() => LIFE_NOW} />);
+    expect(lifeTrain().style.visibility).toBe('hidden');
+    first.unmount();
+    render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+    expect(lifeTrain().style.visibility).toBe('');
+  });
+
+  test("a ring's disc is the colour of the project ending there, with its white square; the project line lies on the life line with no paper rim", () => {
+    const world = lifeScene();
+    // A green project, unlike the life line's own slot 0, which is blue; and the life line made first, as a real one is.
+    world.tracks.find((t) => t.id === 't1')!.color = 2;
+    world.tracks = [...world.tracks.filter((t) => t.life), ...world.tracks.filter((t) => !t.life)];
+    // A blue project passes through it on the way to its own goal, and is next there: the tap
+    // speaks for it, but the disc stays the colour of the line that ends there.
+    world.stops.push({ id: 'g9', title: 'Nine', shape: 'square', size: 'large', x: 1300, y: -400, done: false });
+    world.tracks.push({ id: 't9', color: 0, origin: { x: 900, y: -400 }, stops: ['wristband', 'g9'], train: { leg: 0, departedAt: 0 }, target: 'goal' });
+    render(<App store={createStore(world)} now={() => LIFE_NOW} />);
+    const ring = document.querySelector<HTMLElement>('.stop[data-id="wristband"]')!;
+    expect(ring).toHaveClass('on-life');
+    expect(ring.style.getPropertyValue('--home-color')).toBe('var(--track-green)');
+    // As a transfer too, the disc inside the paper capsule takes the colour, not the ink.
+    expect(/\.stop\.on-life \.shape\.ring::before,/.test(uiCss)).toBe(true);
+    expect(document.querySelector('.stop[data-id="start"]')).not.toHaveClass('on-life');
+    // Its colour at rest, pressed and focused, never the ink.
+    const rule = /\.stop\.on-life \.shape:not\(\.dot\),\s*\.stop\.on-life:focus-visible \.shape:not\(\.dot\),\s*\.stop\.on-life:active \.shape:not\(\.dot\)\s*\{([^}]*)\}/.exec(uiCss)?.[1];
+    expect(rule).toMatch(/background:\s*var\(--home-color\)/);
+    expect(uiCss).not.toMatch(/\.stop\.on-life[^{]*\{[^}]*background:\s*var\(--ink\)/);
+    // The square inside stays paper white.
+    expect(/\.stop \.disc\.square::after\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/background:\s*var\(--paper\)/);
+    // The project line is drawn after the life line, over it, and its casing leaves out the life line's band.
+    const tracks = [...document.querySelectorAll('svg.track')];
+    const lifeAt = tracks.findIndex((t) => !t.querySelector('path.casing'));
+    expect(lifeAt).toBe(0);
+    const casing = tracks[1].querySelector('path.casing')!;
+    const clip = tracks[1].querySelector(`clipPath#${casing.getAttribute('clip-path')!.slice(5, -1)}`)!;
+    const [above, below] = [...clip.querySelectorAll('rect')].map((r) => ({ y: Number(r.getAttribute('y')), h: Number(r.getAttribute('height')) }));
+    expect(below.y - (above.y + above.h)).toBeCloseTo(LIFE_WIDTH);
   });
 
   test('a bare marker dragged along the life line keeps its height and changes its x, and may pass its neighbour', () => {

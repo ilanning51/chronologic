@@ -20,7 +20,6 @@ import {
 import { dayOf } from './days';
 import { moveBlock, place, unplace, type PlaceAction } from './blocks';
 import {
-  holdLifePlace,
   isRing,
   keepLife,
   lastDoneX,
@@ -198,15 +197,9 @@ function apply(world: World, action: Action): World {
       const { trackId, id, shape, size = 'medium', leg, x, y, now, keep } = action;
       const track = world.tracks.find((t) => t.id === trackId);
       if (!track || world.stops.some((s) => s.id === id)) return world;
-      // The life line takes squares only, right of its train, sorted in by x; no other line takes one.
-      if (track.life) {
-        if (shape !== 'square' || x <= lifeTrainX(world, track, now)) return world;
-        const marker: Stop = { id, title: '', shape, size, x, y: track.life.y, done: false };
-        const withMarker: World = { ...world, stops: [...world.stops, marker] };
-        const placed = sortedByX([...track.stops, id], stopsById(withMarker));
-        return keepLife(world, { ...withMarker, tracks: withTrack(world, { ...track, stops: placed }), lastTouched: trackId }, now);
-      }
-      if (shape === 'square') return world;
+      // Nothing is added to the life line alone: a square on it is a project's goal, moved there.
+      // A square is no step on any other line either.
+      if (track.life || shape === 'square') return world;
       // Against the derived train: a stop slipped in behind where it really is would shift its leg.
       const state = trainState(track, stopsById(world), now);
       if (state.parked || leg < state.leg || leg >= track.stops.length) return world;
@@ -368,23 +361,20 @@ function apply(world: World, action: Action): World {
       // A goal's home is a project: a stop last on the day line is only the day's last errand.
       const home = found.find(({ track, index }) => isProject(track) && index === track.stops.length - 1)?.track;
       if (home) {
+        const others = world.tracks.filter((t) => t.id !== home.id);
+        // Only projects keep a stop alive: the goal goes, and every stop no other project lists,
+        // the life line's square with them, since nothing stands on the life line alone.
+        const orphans = home.stops.filter((s) => s === id || !others.some((t) => isProject(t) && t.stops.includes(s)));
+        // Off the life line first, while the project is still there, so the life train is placed
+        // from where it stood on that project's time.
         const life = lifeOf(world);
+        const offLife = orphans.filter((s) => life?.stops.includes(s)).reduce((w, s) => withoutStop(w, s, now, life!.id), world);
         const rest: World = {
-          ...world,
-          tracks: world.tracks.filter((t) => t.id !== home.id),
-          lastTouched: world.lastTouched === home.id ? null : world.lastTouched,
+          ...offLife,
+          tracks: offLife.tracks.filter((t) => t.id !== home.id),
+          lastTouched: offLife.lastTouched === home.id ? null : offLife.lastTouched,
         };
-        // Only projects keep a stop alive: the goal goes, and every stop no other project lists.
-        // A square on the life line stays there, as a marker.
-        const orphans = home.stops.filter((s) => s === id || !rest.tracks.some((t) => isProject(t) && t.stops.includes(s)));
-        const removed = orphans.filter((s) => !life?.stops.includes(s)).reduce((w, s) => withoutStop(w, s, now), rest);
-        // A day lists only what a project does, so it lets go of a square that is now a marker.
-        const markers = orphans.filter((s) => life?.stops.includes(s));
-        const clean = markers.reduce(
-          (w, s) => days(w).filter((d) => d.stops.includes(s)).reduce((v, d) => withoutStop(v, s, now, d.id), w),
-          removed,
-        );
-        return holdLifePlace(world, clean, now);
+        return orphans.reduce((w, s) => withoutStop(w, s, now), rest);
       }
       const byId = stopsById(world);
       // A parked day train blocks nothing: it shadows the projects, it does not hold their stops.

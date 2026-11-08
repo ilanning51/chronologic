@@ -170,19 +170,3 @@ export function lifeBackTo(world: World, stopId: string, now: number): World {
   budgets[index] = timeLeftAny(world, stopId, now);
   return departLife(world, life, index, budgets, now);
 }
-
-/**
- * A ring that lost its project is a bare marker, whose leg runs on real time instead of the
- * project's. When the life train was heading for it, it keeps the place it stood.
- */
-export function holdLifePlace(before: World, after: World, now: number): World {
-  const was = lifeOf(before);
-  const track = lifeOf(after);
-  if (!was || !track || was.train.leg >= was.stops.length) return after;
-  const target = was.stops[was.train.leg];
-  const leg = track.stops.indexOf(target);
-  if (leg < 0 || !isRing(before, target) || isRing(after, target)) return after;
-  const state = lifeState(was, before, now);
-  const length = legSeconds(lifeRoute(track, new Map(after.stops.map((s) => [s.id, s]))), leg);
-  return replaceLife(after, { ...track, train: rebase(leg, state.seconds, length, now) });
-}

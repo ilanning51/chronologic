@@ -15,7 +15,7 @@ Everything lives on one infinite plane. The look is borrowed from Mini Metro and
 - Tap the plus, bottom right, to open or close the tray.
 - Drag a step or a sub-goal out of the tray onto a line. It snaps to the line ahead of the train, and where you let go is where it splits the leg. Type a name and press Return.
 - Tap New line in the tray, type the goal's name and press Return. Then drag the square to where the goal really is.
-- The tray also has a Marker, a square for a broad goal that no line feeds yet, such as a city to live in. Drag it onto the life line, to the right of its train, and it lands where you let go, its distance from the train being how long you give yourself to get there. Anywhere else it does nothing. Type a name and press Return.
+- Nothing goes on the life line alone: every square on it is a project's goal, moved there. To put a broad goal on it, such as a city to live in, make it a new line and drag its goal onto the life line. Deleting the project takes its square off the life line too. A marker saved before this rule stays where it was.
 - Drag a stop anywhere to re-route the line through it. Only the two legs beside it change.
 - Drag a stop and let go on another line to add it to that line too. It stays on its own line as well. Passing over a line on the way does nothing; only letting go counts.
 - The life line is the one straight ink line, running across the whole paper at its own height, and it is always there. Only squares sit on it, so a step or a sub-goal dropped on it is refused and shown muted. Its train is the day line's kind: it reaches a goal when that goal's own train does, and rides real time only into a marker nothing feeds. The ink behind its train is muted.
