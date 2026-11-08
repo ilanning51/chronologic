@@ -5,6 +5,7 @@ import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayWith, drawnOnPlane, isDayEnd, isProject, isShadow } from '../model/day';
 import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
+import { timesOf } from '../model/arrive';
 import { isRing, lifeOf, lifeTrainX, onLife } from '../model/life';
 import { carried, tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
@@ -1492,6 +1493,13 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     editedStop && editedHome && !editedStop.done && lifeLine && !lifeLine.stops.includes(editedStop.id) && editedStop.x > lifeTrainX(world, lifeLine, time)
       ? () => store.dispatch({ type: 'join', trackId: lifeLine.id, stopId: editedStop.id, leg: 0, x: editedStop.x, y: lifeLine.life.y, now: now() })
       : undefined;
+  // A pending stop's times, read at this moment so a time just typed reads back as typed.
+  const editedTimes = editedStop && !editedStop.done && !editedDayEnd ? timesOf(world, editedStop.id, now()) : null;
+  const typeTime = (type: 'setLeg' | 'setArrival') => (seconds: number) => {
+    if (!editedStop) return;
+    endTitleStep();
+    store.dispatch({ type, stopId: editedStop.id, seconds, now: now() });
+  };
   const editor =
     editedStop && onTracks.length > 0 ? (
       <StopEditor
@@ -1503,6 +1511,9 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         holding={holding}
         lines={lines}
         onJoinLife={joinLife}
+        times={editedTimes ?? undefined}
+        onLeg={typeTime('setLeg')}
+        onArrival={typeTime('setArrival')}
         onEdit={(change) => {
           // Letters typed in one sitting are one step; a shape or size is a step of its own.
           if (change.title !== undefined && change.shape === undefined && change.size === undefined) {

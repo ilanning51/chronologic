@@ -565,6 +565,50 @@ button:focus-visible {
   width: 9rem;
 }
 
+/* The stop's two times: a plate of their own just above the editor, so the editor keeps its width.
+   The time is in the plate's weight; what it is measured from is in the regular one. */
+.editor-times {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.5rem);
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2rem);
+  height: var(--tap);
+  padding: 0 1rem;
+  border-radius: var(--plate-radius);
+  background: var(--plate);
+  color: var(--on-plate);
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  font-size: 0.9375rem;
+  white-space: nowrap;
+}
+
+.editor-time {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.editor-time-value {
+  font-weight: var(--plate-weight);
+}
+
+.hud-editor .editor-time input.editor-time-value {
+  width: auto;
+  margin: 0;
+  font-size: inherit;
+  font-weight: var(--plate-weight);
+}
+
+.editor-time-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .pill-text {
   height: var(--tap);
   padding: 0 0.875rem;

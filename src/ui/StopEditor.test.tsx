@@ -176,3 +176,71 @@ test('a marker, a square that is no goal, offers a size and Delete but no shape 
   expect(handlers.onDelete).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button', { name: 'Large' })).toBeInTheDocument();
 });
+
+/** The editor on a pending stop with its times, and its handlers. */
+function withTimes(times: { leg: number; after: string; fromNow: number; editable: boolean }) {
+  const handlers = { onEdit: vi.fn(), onDelete: vi.fn(), onUndo: vi.fn(), onClose: vi.fn(), onLeave: vi.fn(), onLeg: vi.fn(), onArrival: vi.fn() };
+  render(<StopEditor stop={{ ...stop, done: false }} goal={false} done={false} holding={false} lines={[]} times={times} {...handlers} />);
+  return handlers;
+}
+
+test('a pending stop shows the leg into it, what it comes after, and how long until its train gets there', () => {
+  withTimes({ leg: 1799.9996, after: 'Flowers', fromNow: 259_199.99, editable: true });
+  expect(screen.getByRole('textbox', { name: 'Time after Flowers' })).toHaveValue('30 min');
+  expect(screen.getByRole('textbox', { name: 'Time from now' })).toHaveValue('3 d');
+  expect(screen.getByText('after Flowers')).toBeInTheDocument();
+  expect(screen.getByText('from now')).toBeInTheDocument();
+});
+
+test('a typed leg goes up on Return as seconds, and the editor stays open', () => {
+  const { onLeg, onClose } = withTimes({ leg: 1800, after: 'Flowers', fromNow: 5000, editable: true });
+  const field = screen.getByRole('textbox', { name: 'Time after Flowers' });
+  fireEvent.focus(field);
+  fireEvent.change(field, { target: { value: '45 min' } });
+  fireEvent.keyDown(field, { key: 'Enter' });
+  expect(onLeg).toHaveBeenCalledWith(2700);
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test('a typed time from now goes up when the field is left', () => {
+  const { onArrival } = withTimes({ leg: 1800, after: 'Flowers', fromNow: 5000, editable: true });
+  const field = screen.getByRole('textbox', { name: 'Time from now' });
+  fireEvent.focus(field);
+  fireEvent.change(field, { target: { value: '3 days' } });
+  fireEvent.blur(field);
+  expect(onArrival).toHaveBeenCalledWith(259_200);
+});
+
+test('text that is not a duration puts back the time it had, and Escape puts it back without closing', () => {
+  const { onLeg, onClose } = withTimes({ leg: 1800, after: 'Flowers', fromNow: 5000, editable: true });
+  const field = screen.getByRole('textbox', { name: 'Time after Flowers' });
+  fireEvent.change(field, { target: { value: 'soon' } });
+  fireEvent.keyDown(field, { key: 'Enter' });
+  expect(field).toHaveValue('30 min');
+  fireEvent.change(field, { target: { value: '2 h' } });
+  fireEvent.keyDown(field, { key: 'Escape' });
+  expect(field).toHaveValue('30 min');
+  fireEvent.blur(field);
+  expect(onLeg).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test('passing through the fields without typing sends nothing', () => {
+  const { onLeg, onArrival } = withTimes({ leg: 1800.4, after: 'Flowers', fromNow: 5000, editable: true });
+  for (const name of ['Time after Flowers', 'Time from now']) {
+    const field = screen.getByRole('textbox', { name });
+    fireEvent.focus(field);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.blur(field);
+  }
+  expect(onLeg).not.toHaveBeenCalled();
+  expect(onArrival).not.toHaveBeenCalled();
+});
+
+test('times that cannot be typed are shown as words, and a stop the train is at reads now', () => {
+  withTimes({ leg: 1800, after: 'the start', fromNow: 0, editable: false });
+  expect(screen.queryByRole('textbox', { name: /^Time/ })).not.toBeInTheDocument();
+  expect(screen.getByText('30 min')).toBeInTheDocument();
+  expect(screen.getByText('after the start')).toBeInTheDocument();
+  expect(screen.getByText('now')).toBeInTheDocument();
+});

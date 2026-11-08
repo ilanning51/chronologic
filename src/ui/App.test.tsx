@@ -3535,3 +3535,77 @@ describe('Shift held on an end of a line keeps its time', () => {
     expect(legOf(store, 't1', 0)).toBeCloseTo(length, 6);
   });
 });
+
+describe('times in the stop editor', () => {
+  // The train waits at Dentist (it got there at 1000 s); Flowers then Wristband are ahead of it.
+  const NOW = WAITING;
+  const gift = (): World => {
+    const world = running();
+    world.tracks[0].stops = ['dentist', 'flowers', 'wristband'];
+    world.stops.push({ id: 'flowers', title: 'Flowers', shape: 'circle', size: 'medium', x: 2000, y: 0, done: false });
+    return world;
+  };
+  const legInto = (store: ReturnType<typeof createStore>, i: number) => {
+    const state = store.getState();
+    return legSeconds(trackRoute(state.tracks[0], new Map(state.stops.map((s) => [s.id, s]))), i);
+  };
+  const leftTo = (store: ReturnType<typeof createStore>, id: string) => {
+    const state = store.getState();
+    return timeLeft(state.tracks[0], id, new Map(state.stops.map((s) => [s.id, s])), NOW);
+  };
+  const type = (name: string, text: string) => {
+    const field = screen.getByRole('textbox', { name });
+    fireEvent.focus(field);
+    fireEvent.change(field, { target: { value: text } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+  };
+
+  test('a deadline typed after a last step keeps the step and reads back as typed', () => {
+    vi.useFakeTimers();
+    const store = createStore(gift());
+    render(<App store={store} now={() => NOW} />);
+    openEditorOn(/^Wristband, goal, /);
+    type('Time after Flowers', '30 min');
+    expect(legInto(store, 2)).toBeCloseTo(1800, 0);
+    type('Time from now', '3 days');
+    expect(leftTo(store, 'wristband')).toBeCloseTo(259_200, 0);
+    expect(legInto(store, 2)).toBeCloseTo(1800, 0);
+    expect(stopNamed(store, 'dentist')).toMatchObject({ x: 1000, y: 0 });
+    expect(screen.getByRole('textbox', { name: 'Time after Flowers' })).toHaveValue('30 min');
+    expect(screen.getByRole('textbox', { name: 'Time from now' })).toHaveValue('3 d');
+    // Each typed time is a step of its own.
+    act(() => store.undo());
+    expect(leftTo(store, 'wristband')).toBeCloseTo(1000 + 1800, 0);
+    expect(legInto(store, 2)).toBeCloseTo(1800, 0);
+  });
+
+  test('looking at the times and leaving changes nothing', () => {
+    vi.useFakeTimers();
+    const store = createStore(gift());
+    render(<App store={store} now={() => NOW} />);
+    openEditorOn(/^Wristband, goal, /);
+    const before = store.getState();
+    for (const name of ['Time after Flowers', 'Time from now']) {
+      const field = screen.getByRole('textbox', { name });
+      fireEvent.focus(field);
+      fireEvent.blur(field);
+    }
+    expect(store.getState()).toBe(before);
+  });
+
+  test('the stop the train waits at shows its times as words, and so does a ring', () => {
+    vi.useFakeTimers();
+    const store = createStore(gift());
+    render(<App store={store} now={() => NOW} />);
+    openEditorOn(/^Dentist, /);
+    expect(screen.getByText('after the start')).toBeInTheDocument();
+    expect(screen.getByText('now')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /^Time/ })).not.toBeInTheDocument();
+    cleanup();
+    const ring = createStore(withLife());
+    render(<App store={ring} now={() => NOW} />);
+    openEditorOn(/^Wristband, goal, /);
+    expect(screen.getByRole('group', { name: 'Times' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /^Time/ })).not.toBeInTheDocument();
+  });
+});
