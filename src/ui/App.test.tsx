@@ -2984,6 +2984,15 @@ describe('life line gestures', () => {
     });
   });
 
+  test('a screen reader tells a goal on the life line from a marker, and says both are on it', () => {
+    render(<App store={createStore(joinScene())} now={() => LIFE_NOW} />);
+    const nameOf = (id: string) => document.querySelector(`.stop[data-id="${id}"]`)!.getAttribute('aria-label');
+    expect(nameOf('wristband')).toMatch(/^Wristband, goal, large(, next)?, on the life line$/);
+    expect(nameOf('far')).toMatch(/^Far, marker, large(, next)?, on the life line$/);
+    // A goal off the life line says nothing of it.
+    expect(nameOf('g2')).toMatch(/^Goal two, goal, large(, next)?$/);
+  });
+
   describe('the editor on a goal off the life line', () => {
     test('shows a hollow Join Life chip that puts the goal on the life line where it stands, in one undo step', () => {
       vi.useFakeTimers();

@@ -69,9 +69,10 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
   const set: LabelPlace = place ?? { side: 'below', lines: [stop.title], dx: 0, dy: DISC_PX[stop.size] / 2 + LABEL_GAP_PX };
   const name = [
     stop.title || 'Unnamed',
-    SHAPE_WORDS[stop.shape],
+    stop.life === 'marker' ? 'marker' : SHAPE_WORDS[stop.shape],
     SIZE_WORDS[stop.size],
     stop.done ? 'done' : stop.next ? 'next' : null,
+    stop.life && 'on the life line',
   ]
     .filter(Boolean)
     .join(', ');
