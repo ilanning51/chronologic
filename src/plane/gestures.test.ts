@@ -42,6 +42,7 @@ test('a short press on paper is a tap, a longer move is a pan', () => {
   expect(gestures()).toEqual([
     { type: 'pan', dx: 20, dy: 0 },
     { type: 'pan', dx: 5, dy: 5 },
+    { type: 'panEnd' },
   ]);
 });
 
@@ -147,7 +148,21 @@ test('losing one of two fingers continues as a pan with no jump', () => {
   r.move({ id: 2, x: 210, y: 10, t: 40 });
   expect(gestures()).toEqual([{ type: 'pan', dx: 10, dy: 10 }]);
   r.up({ id: 2, x: 210, y: 10, t: 50 });
-  expect(types()).toEqual(['pan']);
+  expect(types()).toEqual(['pan', 'panEnd']);
+});
+
+test('a pan ends when the browser takes its finger, or a second finger makes it a pinch', () => {
+  const { r, emit, types } = rig();
+  r.down({ id: 1, x: 0, y: 0, t: 0 }, paper);
+  r.move({ id: 1, x: 30, y: 0, t: 10 });
+  r.cancel(1);
+  expect(types()).toEqual(['pan', 'panEnd']);
+
+  emit.mockClear();
+  r.down({ id: 1, x: 0, y: 0, t: 20 }, paper);
+  r.move({ id: 1, x: 30, y: 0, t: 30 });
+  r.down({ id: 2, x: 100, y: 0, t: 40 }, paper);
+  expect(types()).toEqual(['pan', 'panEnd']);
 });
 
 test('a second finger on a pending tap makes it a pinch, not a tap', () => {
@@ -156,7 +171,8 @@ test('a second finger on a pending tap makes it a pinch, not a tap', () => {
   r.down({ id: 2, x: 100, y: 0, t: 10 }, paper);
   r.up({ id: 2, x: 100, y: 0, t: 20 });
   r.up({ id: 1, x: 0, y: 0, t: 30 });
-  expect(types()).toEqual([]);
+  // The finger left over carries on as a pan, so its lift ends a pan; it is never a tap.
+  expect(types()).toEqual(['panEnd']);
 });
 
 test('a third pointer is ignored', () => {

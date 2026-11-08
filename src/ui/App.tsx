@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
@@ -31,6 +31,7 @@ import { layoutTrack } from '../plane/layout';
 import { routeOf, trainOn } from '../plane/metro';
 import { openingCamera } from '../plane/opening';
 import { pathLength, routeThrough } from '../plane/routing';
+import { CLIP_MARGIN_PX } from '../plane/clip';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
 import { nearestStop, snapToAll, snapToLife } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
@@ -40,7 +41,7 @@ import { type Store, useWorld } from '../store/store';
 import { Bubble } from './Bubble';
 import { DayGhost } from './DayGhost';
 import { Ghost } from './Ghost';
-import { Grid } from './Grid';
+import { Grid, wrap } from './Grid';
 import { History, HISTORY_CORNER_PX } from './History';
 import { Legend } from './Legend';
 import { LegTime } from './LegTime';
@@ -120,6 +121,12 @@ function useFly(setCamera: (c: Camera) => void) {
   );
 }
 
+/**
+ * How far a drag slides the drawn map before it is laid out again. The map is drawn CLIP_MARGIN_PX
+ * past every edge of the screen, so a slide this long never shows an edge the map was not drawn to.
+ */
+const SLIDE_PX = CLIP_MARGIN_PX * 0.75;
+
 /** How often the open week window reads the clock when nothing else does. */
 const WEEK_TICK_MS = 30_000;
 /**
@@ -137,8 +144,17 @@ type CarriedShape = 'circle' | 'triangle' | 'square';
 export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const world = useWorld(store);
   const [camera, setCamera] = useState(HOME);
+  /**
+   * The camera as the hand has it. While a drag slides the world it runs ahead of `camera`, the
+   * one the map was last laid out for, and the gap is drawn as one shift of the world layer.
+   */
   const cameraRef = useRef(camera);
-  cameraRef.current = camera;
+  /** Whether a drag is sliding the world: the map is not redrawn and the clock holds still. */
+  const sliding = useRef(false);
+  if (!sliding.current) cameraRef.current = camera;
+  /** The camera the world layer on screen was laid out for. */
+  const drawn = useRef(camera);
+  const worldEl = useRef<HTMLDivElement>(null);
   const stash = useRef<Camera | null>(null);
   const fly = useFly(setCamera);
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -296,12 +312,63 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
    */
   const pinned = useRef(new Set<string>());
 
-  /** The hand moving the camera ends any motion zoom: the next tap on a train follows it afresh. */
-  const onZoom = useCallback((p: Point, factor: number) => {
-    stash.current = null;
-    pinned.current = new Set();
-    setCamera((c) => zoomAt(c, p, factor));
+  /**
+   * Draws the gap between the hand's camera and the drawn one as a shift of the world layer, which
+   * the compositor moves without a redraw. The grid is shifted back under the screen and its lines
+   * moved instead, so it still covers the glass.
+   */
+  const showSlide = useCallback(() => {
+    const world = worldEl.current;
+    if (!world) return;
+    const dx = cameraRef.current.x - drawn.current.x;
+    const dy = cameraRef.current.y - drawn.current.y;
+    const moved = dx !== 0 || dy !== 0;
+    world.style.transform = moved ? `translate3d(${dx}px, ${dy}px, 0)` : '';
+    world.style.willChange = sliding.current ? 'transform' : '';
+    const grid = world.querySelector<HTMLElement>('.grid');
+    if (grid) {
+      const { px } = gridFor(drawn.current.scale);
+      grid.style.transform = moved ? `translate3d(${-dx}px, ${-dy}px, 0)` : '';
+      grid.style.backgroundPosition = `${wrap(cameraRef.current.x, px)}px ${wrap(cameraRef.current.y, px)}px`;
+    }
   }, []);
+
+  /** A drag slides the world as one picture, and redraws it only once the slide nears the edge of what is drawn. */
+  const slideBy = (dx: number, dy: number) => {
+    sliding.current = true;
+    const c = panBy(cameraRef.current, dx, dy);
+    cameraRef.current = c;
+    if (Math.abs(c.x - drawn.current.x) > SLIDE_PX || Math.abs(c.y - drawn.current.y) > SLIDE_PX) setCamera(c);
+    showSlide();
+  };
+
+  /** The drag is over: the map is redrawn where the hand left it, and the clock jumps to now. */
+  const endSlide = useCallback(() => {
+    if (!sliding.current) return;
+    sliding.current = false;
+    // Lets go of the layer's hint now, in case nothing moved since the last redraw and none follows.
+    showSlide();
+    setCamera(cameraRef.current);
+    store.dispatch({ type: 'tick', now: now() });
+    setTime(now());
+  }, [store, now, showSlide]);
+
+  // After every redraw, the world layer is shifted by whatever the hand has moved since it was laid out.
+  useLayoutEffect(() => {
+    drawn.current = camera;
+    showSlide();
+  });
+
+  /** The hand moving the camera ends any motion zoom: the next tap on a train follows it afresh. */
+  const onZoom = useCallback(
+    (p: Point, factor: number) => {
+      endSlide();
+      stash.current = null;
+      pinned.current = new Set();
+      setCamera((c) => zoomAt(c, p, factor));
+    },
+    [endSlide],
+  );
 
   /** The audio context is made on the first gesture that needs it, as browsers require. */
   const sound = (): AudioContext | null => {
@@ -951,10 +1018,14 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   const onGesture = (g: Gesture) => {
     endTitleStep();
+    // Anything but the drag itself first puts the map where the hand left it.
+    if (g.type !== 'pan') endSlide();
     switch (g.type) {
       case 'pan':
         stash.current = null;
-        setCamera((c) => panBy(c, g.dx, g.dy));
+        slideBy(g.dx, g.dy);
+        return;
+      case 'panEnd':
         return;
       case 'pinch':
         stash.current = null;
@@ -1198,6 +1269,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (!rolling) return;
     // Each tick also asks the world whether the day has turned over.
     const id = window.setInterval(() => {
+      // A drag holds the trains still; letting go brings them to now.
+      if (sliding.current) return;
       store.dispatch({ type: 'tick', now: now() });
       setTime(now());
     }, tickMsFor(camera.scale));
@@ -1207,7 +1280,9 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   // The open week window keeps its now line and its blocks current even when every train is parked.
   useEffect(() => {
     if (!weekOpen) return;
-    const id = window.setInterval(() => setTime(now()), WEEK_TICK_MS);
+    const id = window.setInterval(() => {
+      if (!sliding.current) setTime(now());
+    }, WEEK_TICK_MS);
     return () => window.clearInterval(id);
   }, [weekOpen, now]);
 
@@ -1380,7 +1455,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   // on them ever reaches the map.
   return (
     <>
-      <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
+      <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush} worldRef={worldEl}>
         <Grid camera={camera} />
         {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
         {views.filter((v) => !farOut || v.day || v.life).map((v) => (

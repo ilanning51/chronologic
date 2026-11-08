@@ -34,6 +34,8 @@ export interface Sample {
 
 export type Gesture =
   | { type: 'pan'; dx: number; dy: number }
+  /** The pan's finger came up, or the browser took it away: the drag is over. */
+  | { type: 'panEnd' }
   | { type: 'pinch'; center: Point; factor: number; dx: number; dy: number }
   | { type: 'tap'; target: Target; at: Point }
   | { type: 'longPress'; target: Target; at: Point }
@@ -177,6 +179,9 @@ export class Recognizer {
       case 'drag':
         this.emit({ type: 'dragEnd', target: t.target, at: p });
         return;
+      case 'pan':
+        this.emit({ type: 'panEnd' });
+        return;
       default:
         return;
     }
@@ -218,6 +223,7 @@ export class Recognizer {
       );
     }
     if (t.mode === 'hold') this.emit({ type: 'holdEnd', target: t.target, completed: false });
+    if (t.mode === 'pan') this.emit({ type: 'panEnd' });
   }
 
   /** One of two fingers is gone: the other carries on as a pan from where it is. */
