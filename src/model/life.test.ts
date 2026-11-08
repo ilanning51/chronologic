@@ -156,3 +156,37 @@ describe('a square added ahead of a moving train', () => {
     expect(lifeState(life(next), next, at).at.x).toBeCloseTo(trainX, 3);
   });
 });
+
+describe('the life train never goes back on its leg', () => {
+  /**
+   * withLife with Start done and the life train set off for Wristband (a ring) at `now`. Dentist is
+   * done too, so the project train runs through to Wristband rather than wait for a tap.
+   */
+  function headedForRing(): World {
+    return settleLife(withDone(withLife(), 'start', 'dentist'), now);
+  }
+
+  test("its project's line pulled longer: it keeps its place and slows to meet the project train at the ring", () => {
+    const later = now + 100_000;
+    const before = headedForRing();
+    const x = lifeState(life(before), before, later).at.x;
+    expect(x).toBeGreaterThan(500);
+    // Pulling the project's start back gives Wristband more project time left.
+    const after = reduce(before, { type: 'moveOrigin', trackId: 't1', x: -2000, y: 0, now: later });
+    expect(timeLeftAny(after, 'wristband', later)).toBeGreaterThan(timeLeftAny(before, 'wristband', later));
+    expect(lifeState(life(after), after, later).at.x).toBeCloseTo(x, 6);
+    // From there it runs on, and reaches the ring when the project train does.
+    const arrive = later + timeLeftAny(after, 'wristband', later) * 1000;
+    const halfway = lifeState(life(after), after, (later + arrive) / 2).at.x;
+    expect(halfway).toBeGreaterThan(x);
+    expect(halfway).toBeLessThan(3000);
+    expect(lifeState(life(after), after, arrive).at.x).toBeCloseTo(3000, 6);
+  });
+
+  test('a shorter project line still carries it forward at once', () => {
+    const later = now + 100_000;
+    const before = headedForRing();
+    const after = reduce(before, { type: 'moveOrigin', trackId: 't1', x: 800, y: 0, now: later });
+    expect(lifeState(life(after), after, later).at.x).toBeGreaterThan(lifeState(life(before), before, later).at.x);
+  });
+});
