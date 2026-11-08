@@ -117,7 +117,7 @@ test('the day line lays out its train by the shadow rule', () => {
 
   const v = layoutTrack(day, w, wide, 500 * s, viewport);
   const at = worldToScreen(wide, shadow.at);
-  expect(v.train).toEqual({ x: at.x, y: at.y, angle: shadow.angle, waiting: false, parked: false });
+  expect(v.train).toEqual({ x: at.x, y: at.y, angle: shadow.angle, waiting: false, parked: false, underGoal: false });
   expect(v.train.y).toBeCloseTo(worldToScreen(wide, { x: 0, y: -200 }).y);
   expect(v.finished).toBe(false);
 

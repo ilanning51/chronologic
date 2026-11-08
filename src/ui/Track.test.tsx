@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { layoutTrack } from '../plane/layout';
-import { LIFE_WIDTH, TRACK_WIDTH } from '../plane/world';
+import { LIFE_WIDTH, TRACK_WIDTH, TRAIN } from '../plane/world';
 import { withLife, withWeek } from '../test/fixtures';
 import { Track } from './Track';
 
@@ -56,5 +56,9 @@ test('the life line is ink at one and a half lines, with no casing, no origin ha
   expect(behind.length).toBeGreaterThan(0);
   for (const l of ahead) expect([l.style.stroke, l.style.strokeWidth]).toEqual(['var(--ink)', String(LIFE_WIDTH)]);
   for (const l of behind) expect([l.style.stroke, l.style.strokeWidth]).toEqual(['var(--muted)', String(LIFE_WIDTH)]);
-  expect((container.querySelector('[data-train]') as SVGElement).style.fill).toBe('var(--ink)');
+  const train = container.querySelector('[data-train]') as SVGElement;
+  expect(train.style.fill).toBe('var(--ink)');
+  // Twice a project train.
+  expect(Number(train.getAttribute('width'))).toBe(TRAIN.length * 2);
+  expect(Number(train.getAttribute('height'))).toBe(TRAIN.width * 2);
 });

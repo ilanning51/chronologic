@@ -22,6 +22,8 @@ interface StopProps {
   sketch?: boolean;
   /** An interchange whose lines pass it side by side: a transfer across their lanes. */
   link?: Link;
+  /** A project's square on the life line: the palette index of the project it ends, its disc's colour. */
+  lifeColor?: number;
   /** Where its name is set: beneath it when nothing has placed it, and nowhere when it had no clear side. */
   place?: LabelPlace | null;
 }
@@ -58,7 +60,7 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
  */
 /** The paper a transfer leaves around the discs inside it, top and bottom, outline included. */
 const LINK_PAD = (VIGNELLI.capsulePad + VIGNELLI.capsuleOutline) * TRACK_WIDTH;
-export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link, place }: StopProps) {
+export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link, lifeColor, place }: StopProps) {
   // A transfer's discs are one line wide whatever the task's size, as the map's are, so on lanes
   // 1.1 lines apart they stand just clear of each other.
   const tall = DISC_PX[link ? 'small' : stop.size] + 2 * LINK_PAD;
@@ -85,6 +87,7 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
         stop.terminus && 'terminus',
         stop.landmark && 'landmark',
         link && 'linked',
+        lifeColor !== undefined && 'on-life',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -93,7 +96,14 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
       data-track={track}
       data-goal={stop.goal ? '' : undefined}
       aria-label={name}
-      style={{ left: stop.x, top: stop.y, ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color) } as CSSProperties}
+      style={
+        {
+          left: stop.x,
+          top: stop.y,
+          ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color),
+          ...(lifeColor !== undefined ? { ['--home-color' as string]: colorVar(lifeColor) } : {}),
+        } as CSSProperties
+      }
     >
       {stop.image !== undefined && <img aria-hidden="true" alt="" className="mural" src={stop.image} draggable={false} />}
       <span aria-hidden="true" className="mark">

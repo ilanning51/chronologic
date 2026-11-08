@@ -384,6 +384,28 @@ button:focus-visible {
   background: var(--track-color);
 }
 
+/* A project's square on the life line is its project's disc, in the colour of the line that ends
+   there, the white square still in it, and stays that colour pressed, focused or dragged. */
+.stop.on-life .shape:not(.dot),
+.stop.on-life:focus-visible .shape:not(.dot),
+.stop.on-life:active .shape:not(.dot) {
+  background: var(--home-color);
+}
+
+/* Where it is also a transfer between projects, the capsule stays paper and the disc inside it,
+   and each lane's disc, takes the colour instead. */
+.stop.on-life .shape.ring:not(.dot) {
+  background: var(--paper);
+}
+
+.stop.on-life.linked .shape.ring:not(.dot),
+.stop.on-life .disc,
+.stop.on-life .shape.ring::before,
+.stop.on-life:focus-visible .shape.ring::before,
+.stop.on-life:active .shape.ring::before {
+  background: var(--home-color);
+}
+
 /* The HUD: the map's furniture, in screen space. */
 .hud {
   position: absolute;

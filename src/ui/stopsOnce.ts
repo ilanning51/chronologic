@@ -58,6 +58,12 @@ export interface PlacedStop {
   sketch: boolean;
   /** An interchange whose lines pass it side by side: the transfer joining their lanes. */
   link?: Link;
+  /**
+   * A project's square that also stands on the life line: the palette index of the project whose
+   * goal it is, the line that ends there, which its disc takes. Set from the world by the caller,
+   * since the views drawn need not include that project.
+   */
+  lifeColor?: number;
 }
 
 /**

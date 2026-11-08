@@ -1324,8 +1324,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   );
 
   // Each stop once, and its name set beside it on the side that covers least.
-  const placedStops = stopsOnce(views, lifeOf(world)?.id);
+  const lifeLine = lifeOf(world);
+  // A project's goal on the life line is drawn in that project's colour, read off the world, not
+  // off whichever lines happen to be drawn.
+  const placedStops = stopsOnce(views, lifeLine?.id).map((p) => {
+    const home = lifeLine?.stops.includes(p.stop.id) ? homeOf(world, p.stop.id) : undefined;
+    return home ? { ...p, lifeColor: home.color } : p;
+  });
   const places = labelPlaces(placedStops, views);
+
+  // The life line runs level, so on screen it is a band about one y; no casing is drawn across it.
+  const lifeY = views.find((v) => v.life)?.origin.y;
 
   // The week window and its button sit beside the plane, not in it, so neither a press nor a wheel
   // on them ever reaches the map.
@@ -1335,7 +1344,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         <Grid camera={camera} />
         {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
         {views.filter((v) => !farOut || v.day || v.life).map((v) => (
-          <Track key={v.id} view={v} />
+          <Track key={v.id} view={v} lifeY={lifeY} />
         ))}
         {placedStops.map((p) => (
           <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} />
