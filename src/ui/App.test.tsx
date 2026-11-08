@@ -841,6 +841,72 @@ test('after the hand pans, the next tap on the train follows it again instead of
   expect(Math.abs(trainX() - window.innerWidth / 2)).toBeLessThan(1);
 });
 
+describe('a drag slides the drawn map', () => {
+  const layer = () => document.querySelector('.world') as HTMLElement;
+  const grid = () => document.querySelector('.grid') as HTMLElement;
+  const press = (x: number, y: number) => fireEvent.pointerDown(paper(), { pointerId: 1, clientX: x, clientY: y });
+  const moveTo = (x: number, y: number) => fireEvent.pointerMove(paper(), { pointerId: 1, clientX: x, clientY: y });
+  const lift = (x: number, y: number) => fireEvent.pointerUp(paper(), { pointerId: 1, clientX: x, clientY: y });
+
+  test('a short drag shifts the world layer and lays nothing out; letting go lays the map out where the hand left it', () => {
+    render(<App store={createStore(running())} now={() => WAITING} />);
+    const before = left(/^Dentist/);
+    act(() => {
+      press(100, 100);
+      moveTo(160, 120);
+    });
+    expect(left(/^Dentist/)).toBe(before);
+    expect(layer().style.transform).toMatch(/^translate3d\(60px, 20px, 0(px)?\)$/);
+    act(() => lift(160, 120));
+    expect(left(/^Dentist/)).toBeCloseTo(before + 60, 3);
+    expect(layer().style.transform).toBe('');
+  });
+
+  test('the grid stays under the screen while its lines move with the map', () => {
+    render(<App store={createStore(running())} now={() => WAITING} />);
+    const at = grid().style.backgroundPosition;
+    act(() => {
+      press(100, 100);
+      moveTo(160, 120);
+    });
+    expect(grid().style.transform).toMatch(/^translate3d\(-60px, -20px, 0(px)?\)$/);
+    expect(grid().style.backgroundPosition).not.toBe(at);
+    act(() => lift(160, 120));
+    expect(grid().style.transform).toBe('');
+  });
+
+  test('a long drag lays the map out again before the slide passes what was drawn past the edge', () => {
+    render(<App store={createStore(running())} now={() => WAITING} />);
+    const before = left(/^Dentist/);
+    act(() => {
+      press(100, 100);
+      moveTo(200, 100);
+    });
+    expect(left(/^Dentist/)).toBe(before);
+    act(() => moveTo(320, 100));
+    expect(left(/^Dentist/)).toBeCloseTo(before + 220, 3);
+    expect(layer().style.transform).toBe('');
+    act(() => lift(320, 100));
+  });
+
+  test('the trains hold still while the map slides and jump to now when it is let go', () => {
+    vi.useFakeTimers();
+    let t = 980_000;
+    render(<App store={createStore(running())} now={() => t} />);
+    const before = trainX();
+    act(() => {
+      press(100, 100);
+      moveTo(120, 100);
+    });
+    t += 60_000;
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(trainX()).toBe(before);
+    act(() => lift(120, 100));
+    // Laid out again without the clock catching up, the train would sit exactly 20 px on.
+    expect(trainX() - (before + 20)).toBeGreaterThan(0.1);
+  });
+});
+
 test('after the wheel zooms, the next tap on the train follows it again instead of flying back', () => {
   reduceMotion();
   render(<App store={createStore(running())} now={() => 980_000} />);
