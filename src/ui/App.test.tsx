@@ -2756,6 +2756,82 @@ describe('life line gestures', () => {
     expect(stopNamed(store, 'wristband').x).toBeCloseTo(1100 + 30 / SCALE, 6);
   });
 
+  /** Presses a stop and moves the finger by (dx, dy), leaving it down; the returned function lets go there. */
+  function hold(name: RegExp, dx: number, dy: number) {
+    const el = screen.getByRole('button', { name });
+    const x = parseFloat(el.style.left) + 4;
+    const y = parseFloat(el.style.top);
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+    return () => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+  }
+  const leanOf = (id: string) => document.querySelector<HTMLElement>(`.stop[data-id="${id}"]`)!.style.getPropertyValue('--lean');
+
+  test('a ring held on the life line leans toward the finger by a quarter of the pull, and springs back when let go', () => {
+    render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+    let release = () => {};
+    act(() => {
+      release = hold(/^Wristband/, 0, 40);
+    });
+    expect(leanOf('wristband')).toBe('10px');
+    expect(document.querySelector('.stop[data-id="wristband"]')).toHaveClass('leaning');
+    act(() => release());
+    expect(leanOf('wristband')).toBe('');
+    expect(document.querySelector('.stop[data-id="wristband"]')).not.toHaveClass('leaning');
+  });
+
+  test('a marker pulled far from the life line leans no further than a ring could, and stays on', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    let release = () => {};
+    act(() => {
+      release = hold(/^Far/, 0, 200);
+    });
+    // A quarter of the 72 px pull-off, the most a ring leans before it comes off.
+    expect(leanOf('far')).toBe('18px');
+    act(() => release());
+    expect(lifeOf(store).stops).toContain('far');
+    expect(leanOf('far')).toBe('');
+  });
+
+  test('a ring pulled off the life line stops leaning and follows the finger', () => {
+    render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+    act(() => {
+      hold(/^Wristband/, 0, 120);
+    });
+    expect(leanOf('wristband')).toBe('');
+  });
+
+  test('a goal carried in snap reach of the life line shows where it would land, and only there', () => {
+    render(<App store={createStore(joinScene())} now={() => LIFE_NOW} />);
+    const lineY = at(/^Start/).y;
+    const goal = at(/^Goal two/);
+    let release = () => {};
+    // To 10 px below the line, 30 px right: world x 990, between Start and Wristband.
+    act(() => {
+      release = hold(/^Goal two/, 30, lineY - goal.y + 10);
+    });
+    const landing = document.querySelector<HTMLElement>('.ghost.snapped')!;
+    expect(landing).not.toBeNull();
+    expect(parseFloat(landing.style.top)).toBeCloseTo(lineY, 6);
+    expect(parseFloat(landing.style.left)).toBeCloseTo(goal.x + 30, 6);
+    act(() => release());
+    expect(document.querySelector('.ghost')).toBeNull();
+  });
+
+  test('a goal carried out of snap reach of the life line shows no landing', () => {
+    render(<App store={createStore(joinScene())} now={() => LIFE_NOW} />);
+    act(() => {
+      hold(/^Goal two/, 60, 40);
+    });
+    expect(document.querySelector('.ghost')).toBeNull();
+  });
+
+  test('a stop leans by translate, which springs back only once let go', () => {
+    expect(cssRule('.stop')).toMatch(/translate:\s*0 var\(--lean, 0px\)/);
+    expect(cssRule('.stop:not(.leaning)')).toMatch(/transition:\s*translate 150ms ease-out/);
+  });
+
   test('a ring pulled off the life line and let go back on it joins it again at its new x', () => {
     const store = createStore(lifeScene());
     render(<App store={store} now={() => LIFE_NOW} />);

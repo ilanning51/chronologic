@@ -98,6 +98,12 @@
   font: inherit;
   color: var(--ink);
   cursor: pointer;
+  /* Held on the life line, a square leans toward the finger; let go, it springs back. */
+  translate: 0 var(--lean, 0px);
+}
+
+.stop:not(.leaning) {
+  transition: translate 150ms ease-out;
 }
 
 /* The 44 px rule: every stop has a centered 44 px hit target, however small its shape. It paints nothing. */

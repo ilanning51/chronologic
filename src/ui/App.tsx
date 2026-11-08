@@ -127,6 +127,8 @@ const WEEK_TICK_MS = 30_000;
  * snaps, so a drag along the line that wanders never drops it, while a square still snaps on at one.
  */
 const PULL_OFF_PX = 3 * SNAP_PX;
+/** How much of the pull a square held on the life line shows, leaning toward the finger. */
+const LEAN = 0.25;
 
 /** The shapes a tile or a brush puts down: a marker is a square, which only the life line takes. */
 type CarriedShape = 'circle' | 'triangle' | 'square';
@@ -176,6 +178,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const lineDraw = useRef<{ from: Point } | null>(null);
   /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
   const [ghost, setGhost] = useState<{ shape: CarriedShape; size?: Size; x: number; y: number; snapped: boolean } | null>(null);
+  /** The square held on the life line and how far, in screen pixels, it leans toward the finger. */
+  const [lean, setLean] = useState<{ id: string; dy: number } | null>(null);
+  /** Where a goal carried in snap reach of the life line would land on it if let go now. */
+  const [landing, setLanding] = useState<{ x: number; y: number; size: Size } | null>(null);
   /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
   const dragTile = useRef<{ shape: CarriedShape; hits: ReturnType<typeof snapToAll> } | null>(null);
   /**
@@ -560,6 +566,39 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
     showLegInto(d.track, d.id);
+    showPull(at);
+  };
+
+  /**
+   * What letting go or pulling further would do, shown before it happens. A square held on the
+   * life line leans toward the finger by a quarter of the pull, so the hold shows and a ring's
+   * release at `PULL_OFF_PX` is no surprise; a marker leans as far and springs back, held on. A goal
+   * carried in snap reach of the life line shows, solid on the line, where it would land.
+   */
+  const showPull = (at: Point) => {
+    const d = dragging.current;
+    const state = store.getState();
+    const life = lifeOf(state);
+    const stop = d && state.stops.find((s) => s.id === d.id);
+    const cam = cameraRef.current;
+    if (d && life && stop && d.track === life.id) {
+      const most = PULL_OFF_PX * LEAN;
+      const pull = (screenToWorld(cam, at).y + d.grip.y - life.life.y) * cam.scale * LEAN;
+      setLean({ id: d.id, dy: Math.max(-most, Math.min(most, pull)) });
+      setLanding(null);
+      return;
+    }
+    setLean(null);
+    // The same test the release makes for a goal, so the preview never promises what it will not do.
+    const hit = d?.goal && d.from && stop ? snapToLife(state, stop, now(), SNAP_PX / cam.scale, stop.id) : null;
+    const p = hit && worldToScreen(cam, hit.at);
+    setLanding(p && stop ? { x: p.x, y: p.y, size: stop.size } : null);
+  };
+
+  /** Takes back the lean and the landing preview: the square springs back to its place. */
+  const clearPull = () => {
+    setLean(null);
+    setLanding(null);
   };
 
   /**
@@ -723,6 +762,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     drawing.current = null;
     setDayGhost(null);
     setLegTime(null);
+    clearPull();
   };
 
   /**
@@ -1047,6 +1087,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (dragging.current) joinOnRelease(dragging.current);
     dragging.current = null;
     setLegTime(null);
+    clearPull();
   };
 
   /**
@@ -1338,9 +1379,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
           <Track key={v.id} view={v} />
         ))}
         {placedStops.map((p) => (
-          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} />
+          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} lean={lean?.id === p.stop.id ? lean.dy : undefined} />
         ))}
         {ghost && <Ghost {...ghost} />}
+        {landing && <Ghost shape="square" size={landing.size} x={landing.x} y={landing.y} snapped />}
         {dayGhost && <DayGhost points={dayGhost} />}
       </Plane>
       {weekOpen && <WeekWindow store={store} now={time} clock={now} />}
