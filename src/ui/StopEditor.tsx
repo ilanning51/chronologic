@@ -1,5 +1,6 @@
 import { type ChangeEvent, type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { colorVar } from '../model/palette';
+import { formatSeconds, parseSeconds } from '../plane/grid';
 import type { Size, Stop } from '../model/types';
 
 interface StopEditorProps {
@@ -25,6 +26,15 @@ interface StopEditorProps {
   onLeave: (trackId: string) => void;
   /** Puts a project's goal on the life line where it stands; offered only where the life line takes it. */
   onJoinLife?: () => void;
+  /**
+   * A pending stop's times on the line whose train reaches it first: the leg into it, what that
+   * leg comes after, and how long until the train gets there. `editable` when they can be typed.
+   */
+  times?: { leg: number; after: string; fromNow: number; editable: boolean };
+  /** A leg typed into the leg field, in seconds. */
+  onLeg?: (seconds: number) => void;
+  /** A time typed into the from-now field, in seconds. */
+  onArrival?: (seconds: number) => void;
 }
 
 const SIZES: { size: Size; label: string }[] = [
@@ -52,11 +62,87 @@ function HoldToDelete({ holding, what }: { holding: boolean; what: 'line' | 'day
   );
 }
 
+/** A time as the editor shows it: rounded, since the map gives back a hair under what was typed. */
+function shown(seconds: number): string {
+  return formatSeconds(Math.round(seconds));
+}
+
+/**
+ * One typed time. While focused it keeps its own draft, so the clock's redraws never overwrite
+ * what is being typed. Return or leaving the field commits only text that changed: a duration
+ * goes up, anything else puts back what was shown. Return keeps the editor open; Escape puts the
+ * field back and nothing else.
+ */
+function TimeField({ value, label, name, onCommit }: { value: string; label: string; name: string; onCommit?: (seconds: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  if (!onCommit) {
+    return (
+      <span className="editor-time">
+        <span className="editor-time-value">{value}</span> <span className="editor-time-label">{label}</span>
+      </span>
+    );
+  }
+  const commit = () => {
+    if (draft === null) return;
+    const seconds = draft === value ? null : parseSeconds(draft);
+    setDraft(null);
+    if (seconds !== null) onCommit(seconds);
+  };
+  return (
+    <label className="editor-time">
+      <input
+        type="text"
+        className="editor-time-value"
+        aria-label={name}
+        value={draft ?? value}
+        size={Math.max(4, (draft ?? value).length)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setDraft(null);
+          }
+        }}
+        autoComplete="off"
+        enterKeyHint="done"
+      />{' '}
+      <span className="editor-time-label">{label}</span>
+    </label>
+  );
+}
+
+/** The stop's two times, on a plate of their own above the editor so the editor never grows wider. */
+function Times({ times, onLeg, onArrival }: Pick<StopEditorProps, 'times' | 'onLeg' | 'onArrival'>) {
+  if (!times) return null;
+  const at = times.fromNow <= 0;
+  return (
+    <div className="editor-times" role="group" aria-label="Times">
+      <TimeField
+        value={shown(times.leg)}
+        label={`after ${times.after}`}
+        name={`Time after ${times.after}`}
+        onCommit={times.editable ? onLeg : undefined}
+      />
+      <TimeField
+        value={at ? 'now' : shown(times.fromNow)}
+        label={at ? '' : 'from now'}
+        name="Time from now"
+        onCommit={times.editable && !at ? onArrival : undefined}
+      />
+    </div>
+  );
+}
+
 /**
  * Opens on a long press, as an ink pill in the HUD. On a done dot it offers "Not done" and,
  * on the goal, a hold-to-delete that removes the line. A pending stop gets its title field,
- * its shape (not a square's: the goal, or a marker on the life line) and size, a chip per line it can leave, and Delete: at once for a
- * stop, held for the goal. The goal also takes a picture of what it is for, chosen from the
+ * its two times (the leg into it and how long until its train gets there, typed into where they
+ * can be), its shape (not a square's: the goal, or a marker on the life line) and size, a chip per
+ * line it can leave, and Delete: at once for a stop, held for the goal. The goal also takes a picture of what it is for, chosen from the
  * device, and lets it go again. The day's-end square has nothing to name or shape: only the hold,
  * which deletes the day, and "Not done" once it is done.
  */
@@ -74,6 +160,9 @@ export function StopEditor({
   onClose,
   onLeave,
   onJoinLife,
+  times,
+  onLeg,
+  onArrival,
 }: StopEditorProps) {
   const [title, setTitle] = useState(stop.title);
   const input = useRef<HTMLInputElement>(null);
@@ -130,6 +219,7 @@ export function StopEditor({
         autoComplete="off"
         enterKeyHint="done"
       />
+      <Times times={times} onLeg={onLeg} onArrival={onArrival} />
       {!goal &&
         stop.shape !== 'square' &&
         (['circle', 'triangle'] as const).map((shape) => (

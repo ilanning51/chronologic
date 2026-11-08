@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { MAX_SCALE, MIN_SCALE } from './camera';
-import { formatSeconds, GRID_MIN_PX, gridFor, UNITS } from './grid';
+import { formatSeconds, GRID_MIN_PX, gridFor, parseSeconds, UNITS } from './grid';
 
 test('the grid picks the smallest unit that draws at least GRID_MIN_PX wide', () => {
   // At 0.01 px per second a minute is 0.6 px and an hour is 36 px: the hour is the first that fits.
@@ -58,4 +58,30 @@ test('long legs read in months and years', () => {
   expect(formatSeconds(100 * 86400)).toBe('3 mo 1 w');
   expect(formatSeconds(2 * 365 * 86400)).toBe('2 y');
   expect(formatSeconds(29 * 86400)).toBe('4 w 1 d');
+});
+
+test('a typed duration reads the way a person writes it, a bare number in minutes', () => {
+  for (const text of ['30 min', '30m', '30 minutes', '30', ' 30  mins ']) expect(parseSeconds(text)).toBe(1800);
+  for (const text of ['3 days', '3d', '3 d', '3 Days']) expect(parseSeconds(text)).toBe(259_200);
+  expect(parseSeconds('2 h 15 min')).toBe(8100);
+  expect(parseSeconds('2h15m')).toBe(8100);
+  expect(parseSeconds('1d 4h')).toBe(100_800);
+  expect(parseSeconds('1.5 h')).toBe(5400);
+  expect(parseSeconds('90m')).toBe(5400);
+  expect(parseSeconds('1 w')).toBe(604_800);
+  expect(parseSeconds('1 mo')).toBe(2_592_000);
+  expect(parseSeconds('1 y')).toBe(31_536_000);
+  expect(parseSeconds('45 s')).toBe(45);
+});
+
+test('what the chip writes, typed back, gives the same time', () => {
+  for (const seconds of [1, 45 * 60, 8100, 3 * 86400 + 4 * 3600, 17 * 86400]) {
+    expect(parseSeconds(formatSeconds(seconds))).toBe(seconds);
+  }
+});
+
+test('text that is not a duration, or no time at all, gives nothing', () => {
+  for (const text of ['', '   ', 'soon', '3 parsecs', '-2 h', '0', '0 min', 'h', '2 h h', '3 days ago', '0.4 s', '0.004']) {
+    expect(parseSeconds(text)).toBeNull();
+  }
 });

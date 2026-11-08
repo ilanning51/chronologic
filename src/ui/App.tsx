@@ -5,8 +5,9 @@ import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayWith, drawnOnPlane, isDayEnd, isProject, isShadow } from '../model/day';
 import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
+import { timesOf } from '../model/arrive';
 import { isRing, lifeOf, lifeTrainX, onLife } from '../model/life';
-import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
+import { carried, tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
 import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
 import {
@@ -202,7 +203,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   /**
    * The pending stop under a finger, how far its centre sits from where the finger landed, and
    * the drag's start: the seconds then of every train the drag re-routes, by track id, and, for
-   * the goal, the points it scales from and the leg into it, which Shift keeps as long as it was.
+   * the goal, the points its carry is offset from and the leg into it, which Shift keeps as long as it was.
    */
   const dragging = useRef<{
     id: string;
@@ -586,8 +587,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const project = projects.find(({ track: t, index }) => nextIndex(t, byId) === index) ?? projects[0];
     const track = home ?? project?.track;
     if (!track) return null;
-    const train = trainState(track, byId, now());
-    const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
+    // The stops the drag carries are picked once, here, so the drag never depends on the path.
+    const pending = carried(track, byId, now());
     const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
     // A shared stop re-routes every line through it; each keeps its own train. A goal drag also
     // moves every pending stop ahead of its train.
@@ -601,7 +602,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       goal,
       grip,
       keep,
-      from: goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
+      from: goal ? { goal: { x: stop.x, y: stop.y }, ahead } : undefined,
       held: goal ? endLeg(state, track, 'goal') : undefined,
     };
   };
@@ -939,8 +940,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   /**
    * Letting go of a stop near another line's path joins it there, at the snap point; the line it
    * came from keeps it. Only the release joins, so dragging through a line never does. A goal
-   * drag scales its line instead, and joins no project line; released on the life line it joins
-   * that, and the stops it scaled on the way go back, so only the goal has moved. A square on the
+   * drag carries its line's pending stops instead, and joins no project line; released on the life
+   * line it joins that, and the stops it carried on the way go back, so only the goal has moved. A square on the
    * life line only slides along it.
    */
   const joinOnRelease = (d: NonNullable<typeof dragging.current>) => {
@@ -1492,6 +1493,13 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     editedStop && editedHome && !editedStop.done && lifeLine && !lifeLine.stops.includes(editedStop.id) && editedStop.x > lifeTrainX(world, lifeLine, time)
       ? () => store.dispatch({ type: 'join', trackId: lifeLine.id, stopId: editedStop.id, leg: 0, x: editedStop.x, y: lifeLine.life.y, now: now() })
       : undefined;
+  // A pending stop's times, read at this moment so a time just typed reads back as typed.
+  const editedTimes = editedStop && !editedStop.done && !editedDayEnd ? timesOf(world, editedStop.id, now()) : null;
+  const typeTime = (type: 'setLeg' | 'setArrival') => (seconds: number) => {
+    if (!editedStop) return;
+    endTitleStep();
+    store.dispatch({ type, stopId: editedStop.id, seconds, now: now() });
+  };
   const editor =
     editedStop && onTracks.length > 0 ? (
       <StopEditor
@@ -1503,6 +1511,9 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         holding={holding}
         lines={lines}
         onJoinLife={joinLife}
+        times={editedTimes ?? undefined}
+        onLeg={typeTime('setLeg')}
+        onArrival={typeTime('setArrival')}
         onEdit={(change) => {
           // Letters typed in one sitting are one step; a shape or size is a step of its own.
           if (change.title !== undefined && change.shape === undefined && change.size === undefined) {

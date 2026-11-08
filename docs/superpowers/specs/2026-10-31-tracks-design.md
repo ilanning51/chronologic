@@ -93,7 +93,10 @@ path, so it splits the leg it lands in and the total is unchanged. Dragging that
 path afterwards bends the route through it, and the two legs beside it get longer or shorter by
 exactly the bend. So the total changes only when you move something, never because a step was
 discovered. Crowding is the signal that the estimate was short, and the remedy is to drag the
-goal, which scales everything ahead of the train.
+goal, which carries every pending stop ahead of the train with it, so only the leg the train is
+on changes. (Until November 2026 the drag scaled those stops instead, which changed every leg's
+time at once; a 30-minute last step could not survive a drag.) A leg's time can also be typed
+in the editor.
 
 **The train's planned position is an invariant under editing.** Any edit to a track (drag a
 stop, drag the goal, add, delete, not done) keeps the train's planned-time offset along the
@@ -209,9 +212,10 @@ reopening.
   pointer.
 - One finger on a stop drags it anywhere on the plane. The track re-routes through it, the two
   legs beside it change length, and nothing else moves.
-- One finger on the goal drags it anywhere, and every stop ahead of the train moves with it in
-  proportion, scaled about the train's position, so the whole remaining track stretches or
-  squeezes and keeps its shape. Track behind the train never moves.
+- One finger on the goal drags it anywhere, and every pending stop ahead of the train moves
+  with it by the same offset, so every leg ahead keeps its time and only the leg the train is
+  on stretches or squeezes. The set of carried stops is fixed when the drag starts. Track behind
+  the train never moves.
 - A tap on the next stop completes it (on arrival or early). A tap on any other pending stop
   does nothing.
 - A long press on a stop or the goal opens the editor. A drag of more than ten pixels is a move,

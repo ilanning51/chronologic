@@ -60,7 +60,8 @@ In addition:
   is red, nothing counts days, nothing is drawn with an exclamation.
 - No gesture added between seeing a stop and completing it. A tap on the next stop completes
   it, on any line, including an interchange, including the day line.
-- No numbers anywhere beyond the grid legend and the leg chip.
+- No numbers anywhere beyond the grid legend, the leg chip and the two times in the stop
+  editor (the leg into the stop and the time from now), which are there to be read and typed.
 
 ## Constraints
 
@@ -110,7 +111,8 @@ touches "the stop's track" touches every track that lists the stop:
   either ahead of the train or the dot just behind it. It clears `done` and puts each of those
   trains back to waiting at the stop (`rebase(i, length, length, now)`), as v2 does for one
   track. The day track is settled afterwards (see "Settling the day").
-- `moveGoal` scales every pending stop ahead of the train as in v2, shared stops included: a
+- `moveGoal` carries every pending stop ahead of the train by the goal's offset (it scaled them
+  until November 2026), shared stops included: a
   shared stop is one point, so every other track through it re-routes and `keepTrain` runs for
   each, with the drag's `keep` recorded per track. A step shared with another project moves
   when that project's goal is dragged; that is visible and reversible, and pinning it would
@@ -260,7 +262,7 @@ Every v2 gesture is unchanged. Added:
   `newDay`. Lifting with no stops collected draws nothing. Drawing a new day replaces the old.
 - **Add to the day.** Drag the day's-end square through a pending stop: it is appended
   (`addToDay`), the square returns to where it was. Dragging the square elsewhere moves it,
-  as a goal moves, except that it scales nothing: the day line's legs are not time.
+  as a goal moves, except that it carries nothing: the day line's legs are not time.
 - **Join a line.** Release a dragged stop within `SNAP_PX` of another line's path, ahead of
   its train and not within `SNAP_PX` of one of that line's stops: the stop is inserted into
   that line at that leg, at the snap point (`join { trackId, stopId, leg, x, y, now }`). The
@@ -350,7 +352,7 @@ Settled after the builder check, 2026-11-01:
 13. Time left is time (inverse of the motion profile), not distance covered.
 14. The day train is settled eagerly in the reducer; it never lags and never derives.
 15. The day track never keeps a stop alive, and nothing snaps to it but the sun and the day's end.
-16. A goal drag scales shared stops too, and every line through them keeps its train.
+16. A goal drag carries shared stops too, and every line through them keeps its train.
 17. An edit on a waiting line restarts its wait, so its crowd clears.
 
 Settled during the build, 2026-11-01:

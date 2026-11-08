@@ -150,52 +150,68 @@ describe('move', () => {
 });
 
 describe('moveGoal', () => {
-  test('scales every pending stop ahead of the train about the train', () => {
+  /** The seconds of one leg of the first track. */
+  const leg = (world: World, i: number) => legSeconds(trackRoute(world.tracks[0], byId(world)), i);
+
+  test('carries every pending stop ahead of the train by the same offset as the goal, so only the leg the train is on changes', () => {
     const world = running();
-    // T = (500, 0); G = (3000, 1000). Sending G to T + 2 (G - T) makes k = 2.
+    // T = (500, 0); G goes from (3000, 1000) to (5500, 2000), an offset of (2500, 1000).
     const next = reduce(world, { type: 'moveGoal', trackId, x: 5500, y: 2000, now });
     expect(stopOf(next, 'g')).toMatchObject({ x: 5500, y: 2000 });
-    expect(stopOf(next, 'b').x).toBeCloseTo(1500);
-    expect(stopOf(next, 'b').y).toBeCloseTo(2000);
-    expect(stopOf(next, 'a').x).toBeCloseTo(1500);
-    expect(stopOf(next, 'a').y).toBeCloseTo(0);
+    expect(stopOf(next, 'a')).toMatchObject({ x: 3500, y: 1000 });
+    expect(stopOf(next, 'b')).toMatchObject({ x: 3500, y: 2000 });
+    expect(leg(next, 1)).toBeCloseTo(leg(world, 1), 6);
+    expect(leg(next, 2)).toBeCloseTo(leg(world, 2), 6);
+    expect(leg(next, 0)).toBeGreaterThan(leg(world, 0));
+    expect(stateOf(next)).toMatchObject({ leg: 0 });
     expect(stateOf(next).seconds).toBeCloseTo(500);
     expect(next.lastTouched).toBe(trackId);
   });
 
-  test('leaves stops behind the train alone, and uses k = 1 when the goal is under the train', () => {
+  test('leaves stops behind the train alone, and the stop a waiting train sits at stays where it is', () => {
     const w = running();
     w.stops[0] = stop('a', 'circle', 1000, 0, true);
     w.tracks[0].train = { leg: 1, departedAt: now - 10_000_000 }; // waiting at b
+    expect(stateOf(w)).toMatchObject({ leg: 1, waiting: true });
     const next = reduce(w, { type: 'moveGoal', trackId, x: 2000, y: 3000, now });
     expect(stopOf(next, 'a')).toMatchObject({ x: 1000, y: 0 });
     expect(stopOf(next, 'b')).toMatchObject({ x: 1000, y: 1000 });
-    const under = running();
-    under.stops[2] = stop('g', 'square', 500, 0);
-    const same = reduce(under, { type: 'moveGoal', trackId, x: 700, y: 0, now });
-    expect(stopOf(same, 'a')).toMatchObject({ x: 1000, y: 0 });
-    expect(stopOf(same, 'g')).toMatchObject({ x: 700, y: 0 });
+    expect(stopOf(next, 'g')).toMatchObject({ x: 2000, y: 3000 });
+    expect(stateOf(next)).toMatchObject({ leg: 1, waiting: true });
   });
 
-  test('with the drag start snapshot, each move scales the original stops, so passing over the train collapses nothing', () => {
+  test('with the drag start snapshot, each move carries the original stops, so the path the finger took never matters', () => {
     const world = running();
     const keep = stateOf(world).seconds;
-    const from = { train: { x: 500, y: 0 }, goal: { x: 3000, y: 1000 }, ahead: { a: { x: 1000, y: 0 }, b: { x: 1000, y: 1000 } } };
-    // Exactly over the train, k = 0 for this move only.
+    const from = { goal: { x: 3000, y: 1000 }, ahead: { a: { x: 1000, y: 0 }, b: { x: 1000, y: 1000 } } };
     const over = reduce(world, { type: 'moveGoal', trackId, x: 500, y: 0, now, keep: { [trackId]: keep }, from });
-    expect(stopOf(over, 'b')).toMatchObject({ x: 500, y: 0 });
+    expect(stopOf(over, 'a')).toMatchObject({ x: -1500, y: -1000 });
+    expect(stopOf(over, 'b')).toMatchObject({ x: -1500, y: 0 });
     const beyond = reduce(over, { type: 'moveGoal', trackId, x: 5500, y: 2000, now, keep: { [trackId]: keep }, from });
-    expect(stopOf(beyond, 'a').x).toBeCloseTo(1500);
-    expect(stopOf(beyond, 'a').y).toBeCloseTo(0);
-    expect(stopOf(beyond, 'b').x).toBeCloseTo(1500);
-    expect(stopOf(beyond, 'b').y).toBeCloseTo(2000);
+    expect(stopOf(beyond, 'a')).toMatchObject({ x: 3500, y: 1000 });
+    expect(stopOf(beyond, 'b')).toMatchObject({ x: 3500, y: 2000 });
     expect(stateOf(beyond).seconds).toBeCloseTo(keep);
+  });
+
+  test('a carry that pulls the next stop in under the train, then back, puts every stop back where it started', () => {
+    const world = running();
+    const keep = stateOf(world).seconds; // 500 s along the 1000 s leg to a
+    const from = { goal: { x: 3000, y: 1000 }, ahead: { a: { x: 1000, y: 0 }, b: { x: 1000, y: 1000 } } };
+    // a goes to (300, 0): its leg is 300 s, shorter than the 500 s the train has run, so the train waits there.
+    const pulled = reduce(world, { type: 'moveGoal', trackId, x: 2300, y: 1000, now, keep: { [trackId]: keep }, from });
+    expect(stopOf(pulled, 'a')).toMatchObject({ x: 300, y: 0 });
+    expect(stateOf(pulled)).toMatchObject({ waiting: true });
+    const back = reduce(pulled, { type: 'moveGoal', trackId, x: 3000, y: 1000, now, keep: { [trackId]: keep }, from });
+    expect(stopOf(back, 'a')).toMatchObject({ x: 1000, y: 0 });
+    expect(stopOf(back, 'b')).toMatchObject({ x: 1000, y: 1000 });
+    expect(stateOf(back).seconds).toBeCloseTo(keep);
+    expect(back.tracks[0].train).toEqual(world.tracks[0].train);
   });
 
   test('not stretching, only the goal moves, and a stretched drag goes back to the starting points', () => {
     const world = running();
     const keep = stateOf(world).seconds;
-    const from = { train: { x: 500, y: 0 }, goal: { x: 3000, y: 1000 }, ahead: { a: { x: 1000, y: 0 }, b: { x: 1000, y: 1000 } } };
+    const from = { goal: { x: 3000, y: 1000 }, ahead: { a: { x: 1000, y: 0 }, b: { x: 1000, y: 1000 } } };
     const stretched = reduce(world, { type: 'moveGoal', trackId, x: 5500, y: 2000, now, keep: { [trackId]: keep }, from });
     const still = reduce(stretched, { type: 'moveGoal', trackId, x: 4000, y: -500, now, keep: { [trackId]: keep }, from, stretch: false });
     expect(stopOf(still, 'g')).toMatchObject({ x: 4000, y: -500 });
@@ -209,6 +225,27 @@ describe('moveGoal', () => {
     w.stops[2] = stop('g', 'square', 3000, 1000, true);
     w.tracks[0].train = { leg: 3, departedAt: now };
     expect(reduce(w, { type: 'moveGoal', trackId, x: 1, y: 1, now })).toBe(w);
+  });
+});
+
+describe('setLeg and setArrival', () => {
+  test('a typed leg sets that leg and carries what follows; a typed arrival changes only the leg the train is on', () => {
+    const world = running();
+    const legOut = (w: World, i: number) => legSeconds(trackRoute(w.tracks[0], byId(w)), i);
+    const typed = reduce(world, { type: 'setLeg', stopId: 'g', seconds: 1800, now });
+    expect(legOut(typed, 2)).toBeCloseTo(1800, 0);
+    expect(stopOf(typed, 'b')).toMatchObject({ x: 1000, y: 1000 });
+    expect(typed.lastTouched).toBe(trackId);
+    const due = reduce(typed, { type: 'setArrival', stopId: 'g', seconds: 259_200, now });
+    expect(timeLeftAny(due, 'g', now)).toBeCloseTo(259_200, 0);
+    expect(legOut(due, 2)).toBeCloseTo(legOut(typed, 2), 6);
+    expect(legOut(due, 1)).toBeCloseTo(legOut(typed, 1), 6);
+  });
+
+  test('a time that cannot be set leaves the world as it was', () => {
+    const world = running();
+    expect(reduce(world, { type: 'setLeg', stopId: 'g', seconds: 0, now })).toBe(world);
+    expect(reduce(world, { type: 'setArrival', stopId: 'nope', seconds: 600, now })).toBe(world);
   });
 });
 
@@ -518,14 +555,13 @@ describe('shared stops', () => {
     expect(stopOf(next, 'dentist')).toMatchObject({ x: 1000, y: 0 });
   });
 
-  test('dragging a goal scales a shared stop and keeps the other line its train', () => {
+  test('dragging a goal carries a shared stop and keeps the other line its train', () => {
     const w = twoLines();
-    const T = at(w, 't1').at;
     const s2 = at(w, 't2').seconds;
     const keep = { t1: at(w, 't1').seconds, t2: s2 };
-    const next = reduce(w, { type: 'moveGoal', trackId: 't1', x: T.x + 2 * (3000 - T.x), y: 0, now, keep });
-    expect(stopOf(next, 'shared').x).toBeCloseTo(T.x + 2 * (1500 - T.x));
-    expect(stopOf(next, 'shared').y).toBeCloseTo(1200);
+    const next = reduce(w, { type: 'moveGoal', trackId: 't1', x: 4500, y: 0, now, keep });
+    // The goal moved 1500 to the right, and the shared stop ahead of t1's train with it.
+    expect(stopOf(next, 'shared')).toMatchObject({ x: 3000, y: 600 });
     expect(at(next, 't2').seconds).toBeCloseTo(s2);
     expect(at(next, 't1').seconds).toBeCloseTo(keep.t1);
   });
