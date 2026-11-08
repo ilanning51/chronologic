@@ -97,6 +97,29 @@ export function timeLeftAny(world: World, stopId: string, now: number): number {
 }
 
 /**
+ * Seconds from now until this track's train reaches the stop, 0 for a stop it is at or past. A
+ * project train keeps its own clock. The life train reaches a ring when the ring's project train
+ * does, and rides real time into a bare marker. The day train has no clock of its own and only
+ * shadows the projects, so its answer is theirs.
+ */
+export function timeUntil(world: World, track: Track, stopId: string, now: number): number {
+  const byId = new Map(world.stops.map((s) => [s.id, s]));
+  if (isProject(track)) return timeLeft(track, stopId, byId, now);
+  if (!track.life) return timeLeftAny(world, stopId, now);
+  const k = track.stops.indexOf(stopId);
+  const state = lifeState(track, world, now);
+  if (state.parked || k < state.leg || byId.get(stopId)?.done) return 0;
+  const route = lifeRoute(track, byId);
+  let left = 0;
+  for (let i = state.leg; i <= k; i++) {
+    const id = track.stops[i];
+    if (isRing(world, id)) left = Math.max(left, timeLeftAny(world, id, now));
+    else left += (i === state.leg ? 1 - invertProgress(state.fraction) : 1) * legSeconds(route, i);
+  }
+  return left;
+}
+
+/**
  * Where the day train is: the share of its leg's budget the project time has run down, linear
  * in time so it is a literal shadow, never the accelerate-cruise-brake profile. Pulling the
  * project leg longer slides it back, shorter jumps it ahead. It never derives a pass-through over

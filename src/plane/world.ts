@@ -21,7 +21,12 @@ export const LANE_PX = TRACK_WIDTH * VIGNELLI.lanePitch;
  */
 export const BEND_CUT_PX = TRACK_WIDTH * VIGNELLI.bendCut;
 /** A train, in proportion to its line: two and a half lines long, a line and two thirds wide. */
-export const TRAIN = { length: TRACK_WIDTH * 2.5, width: (TRACK_WIDTH * 5) / 3, radius: TRACK_WIDTH / 2 };
+export const TRAIN = trainFor(TRACK_WIDTH);
+/** The life train, twice a project train, so it reads as the one train that matters most. */
+export const LIFE_TRAIN = trainFor(TRACK_WIDTH * 2);
+function trainFor(line: number) {
+  return { length: line * 2.5, width: (line * 5) / 3, radius: line / 2 };
+}
 /** The least hit target for anything pressable, matching --tap in the tokens. */
 export const TAP_PX = 44;
 /** A finished stop, drawn as a dot whatever its shape. */

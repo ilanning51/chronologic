@@ -142,14 +142,17 @@ describe('lifeWithout', () => {
   });
 });
 
-describe('a square added ahead of a moving train', () => {
+describe("a project's goal joining ahead of a moving train", () => {
   test('becomes the square the train heads for, and the train is no further along than it', () => {
     // Start done; the train is mid-leg toward Far (x 5000), set off at 0, and 1000 s have passed.
     const world = withDone(withLife(), 'start', 'wristband');
     world.tracks = world.tracks.map((t) => (t.life ? { ...t, train: { leg: 2, departedAt: 0 } } : t));
+    // A second project, its goal A well below the life line.
+    world.stops.push({ id: 'a', title: 'A', shape: 'square', size: 'large', x: 3000, y: 2000, done: false });
+    world.tracks.push({ id: 't2', color: 1, origin: { x: 0, y: 2000 }, stops: ['a'], train: { leg: 0, departedAt: 0 }, target: 'goal' });
     const at = 1_000_000;
     const trainX = lifeState(life(world), world, at).at.x;
-    const next = reduce(world, { type: 'addStop', trackId: 'life', id: 'a', shape: 'square', leg: 2, x: trainX + 300, y: 0, now: at });
+    const next = reduce(world, { type: 'join', trackId: 'life', stopId: 'a', leg: 2, x: trainX + 300, y: 0, now: at });
     expect(life(next).stops).toEqual(['start', 'wristband', 'a', 'far']);
     expect(life(next).train.leg).toBe(2);
     expect(lifeState(life(next), next, at).at.x).toBeLessThanOrEqual(trainX + 300);

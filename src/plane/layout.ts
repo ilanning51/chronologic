@@ -57,6 +57,8 @@ export interface TrainView {
   angle: number;
   waiting: boolean;
   parked: boolean;
+  /** The life train waiting at a project's goal on the life line: not drawn, so the goal reads as its project's. */
+  underGoal: boolean;
 }
 
 export interface TrackView {
@@ -217,7 +219,15 @@ export function layoutTrack(
 
   const drawn = leg ? pointAlong(line.points, leg.from, leg.to, share) : { at: line.points[last], angle: state.angle };
   const trainAt = drawn.at;
-  const train: TrainView = { x: trainAt.x, y: trainAt.y, angle: drawn.angle, waiting: state.waiting, parked: state.parked };
+  // The life train waiting at a project's goal, while that goal is drawn, stands beneath it unseen:
+  // the goal is its project's, drawn as it would be lying on the line.
+  const waitsAt = state.waiting && !state.parked ? track.stops[state.leg] : undefined;
+  const underGoal =
+    track.life !== undefined &&
+    waitsAt !== undefined &&
+    gridSeconds < RINGS_HIDDEN_FROM &&
+    tracksOf(world, waitsAt).some(({ track: t }) => isProject(t));
+  const train: TrainView = { x: trainAt.x, y: trainAt.y, angle: drawn.angle, waiting: state.waiting, parked: state.parked, underGoal };
 
   return {
     id: track.id,

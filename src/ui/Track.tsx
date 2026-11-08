@@ -2,14 +2,19 @@ import { colorVar } from '../model/palette';
 import type { TrackView } from '../plane/layout';
 import type { Point } from '../plane/geometry';
 import { VIGNELLI } from '../plane/vignelli';
-import { LIFE_WIDTH, TAP_PX, TRACK_WIDTH, TRAIN } from '../plane/world';
+import { LIFE_TRAIN, LIFE_WIDTH, TAP_PX, TRACK_WIDTH, TRAIN } from '../plane/world';
 
 /** Segments as one path, each its own move and line. */
 const pathOf = (segments: [Point, Point][]) => segments.map(([a, b]) => `M${a.x} ${a.y}L${b.x} ${b.y}`).join('');
 
 interface TrackProps {
   view: TrackView;
+  /** The life line's screen y, where a project line's casing is left out. */
+  lifeY?: number;
 }
+
+/** Far enough past any screen to stand for "the rest of the plane". */
+const FAR = 1e6;
 
 /**
  * One track as thick opaque lines and its train. The svg is a single pixel at the origin
@@ -30,7 +35,7 @@ interface TrackProps {
  * crosses one drawn before it, it parts that one with white, and lines side by side on a road are
  * kept apart by a hairline of paper.
  */
-export function Track({ view }: TrackProps) {
+export function Track({ view, lifeY }: TrackProps) {
   // A sketch is a thought, not yet a plan, and tomorrow is not yet today: muted and thin, train and all.
   const faint = view.sketch || view.tomorrow;
   const color = view.finished || faint ? 'var(--muted)' : view.day || view.life ? 'var(--ink)' : colorVar(view.color);
@@ -38,9 +43,13 @@ export function Track({ view }: TrackProps) {
   const casing = width + 2 * VIGNELLI.casing * TRACK_WIDTH;
   const all = [...view.behind, ...view.segments];
   const { train } = view;
+  const car = view.life ? LIFE_TRAIN : TRAIN;
   const rolling = !train.waiting && !train.parked;
   const target = rolling ? { 'data-target': 'train', 'data-track': view.id } : {};
   const place = `translate(${train.x}px, ${train.y}px) rotate(${train.angle}deg)`;
+  // Where a line meets or crosses the life line it lies straight on the ink, with no paper rim.
+  const clipId = `life-band-${view.id}`;
+  const clipped = lifeY !== undefined && !view.life;
   return (
     <svg className="track" aria-hidden="true" width={1} height={1}>
       {all.length > 0 && !view.life && (
@@ -48,8 +57,15 @@ export function Track({ view }: TrackProps) {
           className="casing"
           d={pathOf(all)}
           fill="none"
+          clipPath={clipped ? `url(#${clipId})` : undefined}
           style={{ stroke: 'var(--paper)', strokeWidth: casing, strokeLinecap: 'round', strokeLinejoin: 'round' }}
         />
+      )}
+      {clipped && (
+        <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+          <rect x={-FAR} y={-FAR} width={2 * FAR} height={FAR + lifeY - LIFE_WIDTH / 2} />
+          <rect x={-FAR} y={lifeY + LIFE_WIDTH / 2} width={2 * FAR} height={FAR} />
+        </clipPath>
       )}
       {view.behind.map(([a, b], i) => (
         <line
@@ -104,12 +120,12 @@ export function Track({ view }: TrackProps) {
         className="train"
         data-train=""
         {...target}
-        x={-TRAIN.length / 2}
-        y={-TRAIN.width / 2}
-        width={TRAIN.length}
-        height={TRAIN.width}
-        rx={TRAIN.radius}
-        style={{ fill: color, transform: place }}
+        x={-car.length / 2}
+        y={-car.width / 2}
+        width={car.length}
+        height={car.width}
+        rx={car.radius}
+        style={{ fill: color, transform: place, ...(train.underGoal ? { visibility: 'hidden' as const } : {}) }}
       />
     </svg>
   );

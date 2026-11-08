@@ -436,9 +436,6 @@ describe('the life line in storage', () => {
     accepted(reduce(withLife(), { type: 'delete', id: 'start', now }));
     accepted(reduce(withLife(), { type: 'move', id: 'far', x: 200, y: 0, now }));
     accepted(reduce(withLife(), { type: 'move', id: 'wristband', x: 4000, y: 0, now }));
-    const added = reduce(withLife(), { type: 'addStop', trackId: 'life', id: 'm', shape: 'square', leg: 3, x: 9000, y: 0, now });
-    expect(lifeIn(added).stops).toContain('m');
-    accepted(added);
     const done = reduce(withLife(), { type: 'complete', trackId: 'life', now });
     expect(done.stops.find((s) => s.id === 'start')!.done).toBe(true);
     accepted(done);

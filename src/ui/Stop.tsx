@@ -22,6 +22,8 @@ interface StopProps {
   sketch?: boolean;
   /** An interchange whose lines pass it side by side: a transfer across their lanes. */
   link?: Link;
+  /** A project's square on the life line: the palette index of the project it ends, its disc's colour. */
+  lifeColor?: number;
   /** Where its name is set: beneath it when nothing has placed it, and nowhere when it had no clear side. */
   place?: LabelPlace | null;
   /** Screen pixels it leans toward the finger while held on the life line; it springs back when unset. */
@@ -60,7 +62,7 @@ const SIZE_WORDS: Record<Size, string> = { small: 'small', medium: 'medium', lar
  */
 /** The paper a transfer leaves around the discs inside it, top and bottom, outline included. */
 const LINK_PAD = (VIGNELLI.capsulePad + VIGNELLI.capsuleOutline) * TRACK_WIDTH;
-export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link, place, lean }: StopProps) {
+export function Stop({ stop, track, color, finished = false, day = false, sketch = false, link, lifeColor, place, lean }: StopProps) {
   // A transfer's discs are one line wide whatever the task's size, as the map's are, so on lanes
   // 1.1 lines apart they stand just clear of each other.
   const tall = DISC_PX[link ? 'small' : stop.size] + 2 * LINK_PAD;
@@ -88,6 +90,7 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
         stop.terminus && 'terminus',
         stop.landmark && 'landmark',
         link && 'linked',
+        lifeColor !== undefined && 'on-life',
         lean !== undefined && 'leaning',
       ]
         .filter(Boolean)
@@ -102,6 +105,7 @@ export function Stop({ stop, track, color, finished = false, day = false, sketch
           left: stop.x,
           top: stop.y,
           ['--track-color' as string]: day ? 'var(--ink)' : colorVar(color),
+          ...(lifeColor !== undefined ? { ['--home-color' as string]: colorVar(lifeColor) } : {}),
           ...(lean !== undefined ? { ['--lean' as string]: `${lean}px` } : {}),
         } as CSSProperties
       }

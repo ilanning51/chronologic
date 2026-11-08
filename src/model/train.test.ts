@@ -3,7 +3,7 @@ import { running, twoLines, withDay, withLife } from '../test/fixtures';
 import type { Stop, Track, World } from './types';
 import { legSpan, pointAlong } from '../plane/routing';
 import { progress } from './motion';
-import { dayState, legSeconds, lifeState, nextIndex, rebase, stateOf, targetIndex, timeLeft, timeLeftAny, trackRoute, trainState } from './train';
+import { dayState, legSeconds, lifeState, nextIndex, rebase, stateOf, targetIndex, timeLeft, timeLeftAny, timeUntil, trackRoute, trainState } from './train';
 
 function stop(id: string, shape: Stop['shape'], x: number, y: number): Stop {
   return { id, title: id, shape, size: 'medium', x, y, done: false };
@@ -288,6 +288,44 @@ describe('the life train', () => {
     const w = withLife();
     const life = w.tracks.find((t) => t.life)!;
     expect(stateOf(life, w, 125_000)).toEqual(lifeState(life, w, 125_000));
+  });
+});
+
+describe('time until a train reaches a stop', () => {
+  test("a project line's answer is its own train's time left", () => {
+    const world = running();
+    const t1 = world.tracks[0];
+    const byId = new Map(world.stops.map((s) => [s.id, s]));
+    expect(timeUntil(world, t1, 'wristband', 500_000)).toBe(timeLeft(t1, 'wristband', byId, 500_000));
+  });
+
+  test('the life train rides real time into a marker', () => {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    // A quarter of the 500 s leg to Start is behind it, so three quarters is left.
+    expect(timeUntil(world, life, 'start', 125_000)).toBeCloseTo(375, 6);
+  });
+
+  test('past a ring the life train counts from when the project train gets there', () => {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    const ring = Math.max(500, timeLeftAny(world, 'wristband', 0));
+    // Far is 2000 s of life line past Wristband.
+    expect(timeUntil(world, life, 'far', 0)).toBeCloseTo(ring + 2000, 6);
+  });
+
+  test('a stop the train is at, or past, is no time away', () => {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    expect(timeUntil(world, life, 'start', 9_999_000)).toBe(0);
+    life.train = { leg: 1, departedAt: 0 };
+    expect(timeUntil(world, life, 'start', 0)).toBe(0);
+  });
+
+  test("the day line's answer is the soonest project train's", () => {
+    const world = withDay();
+    const day = world.tracks.find((t) => t.day)!;
+    expect(timeUntil(world, day, 'shared', 100_000)).toBe(timeLeftAny(world, 'shared', 100_000));
   });
 });
 

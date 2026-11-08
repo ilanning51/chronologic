@@ -1269,19 +1269,11 @@ describe('moveGoal on the life line', () => {
 });
 
 describe('addStop on the life line', () => {
-  test('a square past a parked life train gives the train a leg that sets off now', () => {
-    const w = setLifeTrain(withDoneStops(withLife(), 'start', 'wristband', 'far'), { leg: 3, departedAt: 7 });
-    const next = reduce(w, { type: 'addStop', trackId: 'life', id: 'm', shape: 'square', leg: 3, x: 9000, y: 0, now });
-    expect(stopOf(next, 'm')).toMatchObject({ x: 9000, y: -800, shape: 'square', done: false });
-    expect(lifeOf(next).stops).toEqual(['start', 'wristband', 'far', 'm']);
-    expect(lifeOf(next).train).toEqual({ leg: 3, departedAt: now });
-  });
-
-  test('an empty life line takes a square', () => {
-    const w: World = { tracks: [{ ...lifeOf(withLife()), stops: [], life: { y: -800, budgets: [] } }], stops: [], lastTouched: null };
-    const next = reduce(w, { type: 'addStop', trackId: 'life', id: 'm', shape: 'square', leg: 0, x: 100, y: 0, now });
-    expect(lifeOf(next).stops).toEqual(['m']);
-    expect(lifeOf(next).life!.budgets).toHaveLength(1);
+  test('nothing is added to the life line alone: a square is refused past a parked train and on an empty line', () => {
+    const parked = setLifeTrain(withDoneStops(withLife(), 'start', 'wristband', 'far'), { leg: 3, departedAt: 7 });
+    expect(reduce(parked, { type: 'addStop', trackId: 'life', id: 'm', shape: 'square', leg: 3, x: 9000, y: 0, now })).toBe(parked);
+    const empty: World = { tracks: [{ ...lifeOf(withLife()), stops: [], life: { y: -800, budgets: [] } }], stops: [], lastTouched: null };
+    expect(reduce(empty, { type: 'addStop', trackId: 'life', id: 'm', shape: 'square', leg: 0, x: 100, y: 0, now })).toBe(empty);
   });
 
   test('a circle or a triangle is refused there, and a square is refused on a project line', () => {
@@ -1338,20 +1330,20 @@ describe('complete through the life line', () => {
 });
 
 describe('delete with a life line', () => {
-  test('deleting a project whose goal is a ring keeps the square on the life line as a marker', () => {
+  test('deleting a project whose goal is a ring takes the square off the life line with it', () => {
     const w = withLife();
-    w.stops = w.stops.map((s) => (s.id === 'wristband' ? { ...s, image: 'data:image/png;base64,AA' } : s));
     const next = reduce(w, { type: 'delete', id: 'wristband', now });
     expect(next.tracks.map((t) => t.id)).toEqual(['life']);
-    expect(lifeOf(next).stops).toEqual(['start', 'wristband', 'far']);
-    expect(stopOf(next, 'wristband')).toMatchObject({ title: 'Wristband', size: 'large', done: false, image: 'data:image/png;base64,AA' });
-    expect(next.stops.some((s) => s.id === 'dentist')).toBe(false);
+    expect(lifeOf(next).stops).toEqual(['start', 'far']);
+    expect(lifeOf(next).life!.budgets).toHaveLength(2);
+    expect(next.stops.some((s) => s.id === 'wristband' || s.id === 'dentist')).toBe(false);
   });
 
-  test('a done ring stays done on the life line', () => {
+  test('a done ring goes with its project too', () => {
     const w = withDoneStops(withLife(), 'dentist', 'wristband');
     const next = reduce(w, { type: 'delete', id: 'wristband', now });
-    expect(stopOf(next, 'wristband').done).toBe(true);
+    expect(lifeOf(next).stops).toEqual(['start', 'far']);
+    expect(next.stops.some((s) => s.id === 'wristband')).toBe(false);
   });
 
   test('a ring the life train is heading for stays where the train stood', () => {
@@ -1363,7 +1355,7 @@ describe('delete with a life line', () => {
     expect(after.at.x).toBeCloseTo(before.at.x, 3);
   });
 
-  test('the square also leaves a day line that listed it, so the day does not keep a marker', () => {
+  test('the square also leaves a day line that listed it', () => {
     const w = withLife();
     w.stops.push({ id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 900, y: 900, done: false });
     w.tracks.push({
@@ -1377,7 +1369,7 @@ describe('delete with a life line', () => {
     });
     const next = reduce(w, { type: 'delete', id: 'wristband', now });
     expect(next.tracks.find((t) => t.id === 'day')!.stops).toEqual(['dayEnd']);
-    expect(lifeOf(next).stops).toContain('wristband');
+    expect(lifeOf(next).stops).not.toContain('wristband');
   });
 
   test('deleting the rightmost bare marker removes that square only, never the life line', () => {
