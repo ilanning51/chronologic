@@ -197,7 +197,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   /** The square held on the life line and how far, in screen pixels, it leans toward the finger. */
   const [lean, setLean] = useState<{ id: string; dy: number } | null>(null);
   /** Where a goal carried in snap reach of the life line would land on it if let go now. */
-  const [landing, setLanding] = useState<{ x: number; y: number; size: Size } | null>(null);
+  const [landing, setLanding] = useState<{ x: number; y: number; size: Size; color: number } | null>(null);
   /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
   const dragTile = useRef<{ shape: CarriedShape; hits: ReturnType<typeof snapToAll> } | null>(null);
   /**
@@ -659,7 +659,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     // The same test the release makes for a goal, so the preview never promises what it will not do.
     const hit = d?.goal && d.from && stop ? snapToLife(state, stop, now(), SNAP_PX / cam.scale, stop.id) : null;
     const p = hit && worldToScreen(cam, hit.at);
-    setLanding(p && stop ? { x: p.x, y: p.y, size: stop.size } : null);
+    const home = stop && homeOf(state, stop.id);
+    setLanding(p && stop && home ? { x: p.x, y: p.y, size: stop.size, color: home.color } : null);
   };
 
   /** Takes back the lean and the landing preview: the square springs back to its place. */
@@ -1473,7 +1474,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
           <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} lean={lean?.id === p.stop.id ? lean.dy : undefined} />
         ))}
         {ghost && <Ghost {...ghost} />}
-        {landing && <Ghost shape="square" size={landing.size} x={landing.x} y={landing.y} snapped />}
+        {landing && <Ghost shape="square" size={landing.size} x={landing.x} y={landing.y} snapped landing={landing.color} />}
         {dayGhost && <DayGhost points={dayGhost} />}
       </Plane>
       {weekOpen && <WeekWindow store={store} now={time} clock={now} />}

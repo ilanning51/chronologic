@@ -4,6 +4,7 @@ import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { addDays, dayOf } from '../model/days';
+import { colorVar } from '../model/palette';
 import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
 import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
@@ -2839,6 +2840,13 @@ describe('life line gestures', () => {
     expect(landing).not.toBeNull();
     expect(parseFloat(landing.style.top)).toBeCloseTo(lineY, 6);
     expect(parseFloat(landing.style.left)).toBeCloseTo(goal.x + 30, 6);
+    // Drawn as the goal will be on the line: its project's colour and its white square, never the ink.
+    const world = joinScene();
+    const home = world.tracks.find((t) => !t.life && t.stops[t.stops.length - 1] === world.stops.find((s) => s.title === 'Goal two')!.id)!;
+    expect(landing).toHaveClass('landing');
+    expect(landing.style.getPropertyValue('--home-color')).toBe(colorVar(home.color));
+    expect(cssRule('.ghost.landing .shape')).toMatch(/background:\s*var\(--home-color/);
+    expect(cssRule('.ghost.landing .shape.square::after')).toMatch(/background:\s*var\(--paper\)/);
     act(() => release());
     expect(document.querySelector('.ghost')).toBeNull();
   });
