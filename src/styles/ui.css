@@ -627,6 +627,12 @@ button:focus-visible {
   box-shadow: 0 0 0 2px var(--on-plate);
 }
 
+/* Join Life: the chip's ring with nothing inside it, a place on the life line not yet taken. */
+.line-chip.join::before {
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--on-plate);
+}
+
 .line-chip:focus-visible,
 .line-chip:active {
   background: var(--on-plate);

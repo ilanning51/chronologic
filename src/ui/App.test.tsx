@@ -2983,6 +2983,47 @@ describe('life line gestures', () => {
       expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
     });
   });
+
+  describe('the editor on a goal off the life line', () => {
+    test('shows a hollow Join Life chip that puts the goal on the life line where it stands, in one undo step', () => {
+      vi.useFakeTimers();
+      const store = createStore(joinScene());
+      render(<App store={store} now={() => LIFE_NOW} />);
+      const before = store.getState();
+      openEditorOn(/^Goal two/);
+      const chip = screen.getByRole('button', { name: 'Join Life' });
+      expect(chip).toHaveClass('line-chip', 'join');
+      act(() => chip.click());
+      expect(lifeOf(store).stops).toEqual(['start', 'g2', 'wristband', 'far']);
+      expect(stopNamed(store, 'g2')).toMatchObject({ x: 900, y: -800 });
+      expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['s2', 'g2']);
+      // On the line now, the same place offers the way off.
+      expect(screen.queryByRole('button', { name: 'Join Life' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Leave Life' })).not.toHaveClass('join');
+      act(() => store.undo());
+      expect(store.getState()).toEqual(before);
+    });
+
+    test('offers no Join Life chip on a goal left of the life train, nor on a step or a square already on it', () => {
+      vi.useFakeTimers();
+      const behind = joinScene();
+      behind.stops.find((s) => s.id === 'g2')!.x = -100;
+      render(<App store={createStore(behind)} now={() => LIFE_NOW} />);
+      openEditorOn(/^Goal two/);
+      expect(screen.queryByRole('button', { name: 'Join Life' })).not.toBeInTheDocument();
+      for (const name of [/^Step two/, /^Wristband/, /^Far/]) {
+        cleanup();
+        render(<App store={createStore(joinScene())} now={() => LIFE_NOW} />);
+        openEditorOn(name);
+        expect(screen.queryByRole('button', { name: 'Join Life' })).not.toBeInTheDocument();
+      }
+    });
+
+    test('a hollow chip is a ring in the plate colour with no fill, so on and off differ by more than colour', () => {
+      expect(cssRule('.line-chip.join::before')).toMatch(/background:\s*none/);
+      expect(cssRule('.line-chip.join::before')).toMatch(/box-shadow:\s*inset 0 0 0 2px var\(--on-plate\)/);
+    });
+  });
 });
 
 test('from the 3-month unit up no project train is drawn, only the life train', () => {

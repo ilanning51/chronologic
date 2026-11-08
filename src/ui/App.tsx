@@ -5,7 +5,7 @@ import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayWith, drawnOnPlane, isDayEnd, isProject, isShadow } from '../model/day';
 import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
-import { isRing, lifeOf, onLife } from '../model/life';
+import { isRing, lifeOf, lifeTrainX, onLife } from '../model/life';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
 import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
@@ -1244,6 +1244,13 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
                 : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
           }))
       : [];
+  // A pending project goal off the life line, right of its train, can join it from the editor too,
+  // where it stands: the same place a drag would put it, for those a drag does not suit.
+  const lifeLine = lifeOf(world);
+  const joinLife =
+    editedStop && editedHome && !editedStop.done && lifeLine && !lifeLine.stops.includes(editedStop.id) && editedStop.x > lifeTrainX(world, lifeLine, time)
+      ? () => store.dispatch({ type: 'join', trackId: lifeLine.id, stopId: editedStop.id, leg: 0, x: editedStop.x, y: lifeLine.life.y, now: now() })
+      : undefined;
   const editor =
     editedStop && onTracks.length > 0 ? (
       <StopEditor
@@ -1254,6 +1261,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         done={editedStop.done}
         holding={holding}
         lines={lines}
+        onJoinLife={joinLife}
         onEdit={(change) => {
           // Letters typed in one sitting are one step; a shape or size is a step of its own.
           if (change.title !== undefined && change.shape === undefined && change.size === undefined) {
