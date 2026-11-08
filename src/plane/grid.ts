@@ -76,3 +76,39 @@ export function formatSeconds(seconds: number): string {
   }
   return words.join(' ');
 }
+
+/** The words a typed duration may use for each unit, the chip's own suffixes among them. */
+const WORDS: Record<string, number> = {
+  s: 1, sec: 1, secs: 1, second: 1, seconds: 1,
+  m: MINUTE, min: MINUTE, mins: MINUTE, minute: MINUTE, minutes: MINUTE,
+  h: HOUR, hr: HOUR, hrs: HOUR, hour: HOUR, hours: HOUR,
+  d: DAY, day: DAY, days: DAY,
+  w: WEEK, wk: WEEK, wks: WEEK, week: WEEK, weeks: WEEK,
+  mo: MONTH, mos: MONTH, month: MONTH, months: MONTH,
+  y: YEAR, yr: YEAR, yrs: YEAR, year: YEAR, years: YEAR,
+};
+
+/**
+ * A duration typed the way a person writes it, back into seconds: number-and-unit pairs such as
+ * "2 h 15 min", "1d 4h" or "1.5 h", with any spacing. A bare number is minutes, the unit a single
+ * step is most often thought of in. Anything else, or a duration of nothing, gives null.
+ */
+export function parseSeconds(text: string): number | null {
+  const s = text.trim().toLowerCase();
+  if (s === '') return null;
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const minutes = Number(s) * MINUTE;
+    return minutes > 0 ? Math.round(minutes) : null;
+  }
+  const pair = /(\d+(?:\.\d+)?)\s*([a-z]+)\s*/g;
+  let total = 0;
+  let at = 0;
+  for (let m = pair.exec(s); m !== null; m = pair.exec(s)) {
+    const unit = WORDS[m[2]];
+    if (m.index !== at || unit === undefined) return null;
+    total += Number(m[1]) * unit;
+    at = pair.lastIndex;
+  }
+  if (at !== s.length || total <= 0) return null;
+  return Math.round(total);
+}
