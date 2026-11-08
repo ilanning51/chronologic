@@ -23,6 +23,8 @@ interface StopEditorProps {
   onUndo: () => void;
   onClose: () => void;
   onLeave: (trackId: string) => void;
+  /** Puts a project's goal on the life line where it stands; offered only where the life line takes it. */
+  onJoinLife?: () => void;
 }
 
 const SIZES: { size: Size; label: string }[] = [
@@ -53,7 +55,7 @@ function HoldToDelete({ holding, what }: { holding: boolean; what: 'line' | 'day
 /**
  * Opens on a long press, as an ink pill in the HUD. On a done dot it offers "Not done" and,
  * on the goal, a hold-to-delete that removes the line. A pending stop gets its title field,
- * its shape (not the goal's) and size, a chip per line it can leave, and Delete: at once for a
+ * its shape (not a square's: the goal, or a marker on the life line) and size, a chip per line it can leave, and Delete: at once for a
  * stop, held for the goal. The goal also takes a picture of what it is for, chosen from the
  * device, and lets it go again. The day's-end square has nothing to name or shape: only the hold,
  * which deletes the day, and "Not done" once it is done.
@@ -71,6 +73,7 @@ export function StopEditor({
   onUndo,
   onClose,
   onLeave,
+  onJoinLife,
 }: StopEditorProps) {
   const [title, setTitle] = useState(stop.title);
   const input = useRef<HTMLInputElement>(null);
@@ -128,6 +131,7 @@ export function StopEditor({
         enterKeyHint="done"
       />
       {!goal &&
+        stop.shape !== 'square' &&
         (['circle', 'triangle'] as const).map((shape) => (
           <button
             key={shape}
@@ -152,7 +156,7 @@ export function StopEditor({
           {label}
         </button>
       ))}
-      {lines.length > 0 && (
+      {(lines.length > 0 || onJoinLife) && (
         <div className="line-chips">
           {lines.map(({ trackId, color, name }) => (
             <button
@@ -165,6 +169,16 @@ export function StopEditor({
               onClick={() => onLeave(trackId)}
             />
           ))}
+          {onJoinLife && (
+            // Hollow where a line chip is filled: not on the life line yet. Once on, it is Leave Life.
+            <button
+              type="button"
+              className="line-chip join"
+              aria-label="Join Life"
+              style={{ '--track-color': 'var(--ink)' } as CSSProperties}
+              onClick={onJoinLife}
+            />
+          )}
         </div>
       )}
       {goal && (

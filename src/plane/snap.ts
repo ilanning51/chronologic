@@ -1,6 +1,10 @@
 import { distance, type Point } from './geometry';
 import { nearestOnRoute } from './routing';
-import { legSeconds, trackRoute, trainState } from '../model/train';
+import { isProject } from '../model/day';
+import { dayOf } from '../model/days';
+import { lifeOf, lifeTrainX, sortedByX } from '../model/life';
+import { legSeconds, trainState } from '../model/train';
+import { routeOf } from './metro';
 import type { Stop, World } from '../model/types';
 
 export type Snap = { trackId: string; leg: number; offset: number; at: Point };
@@ -21,10 +25,10 @@ export function snapToAll(world: World, p: Point, now: number, radius: number, i
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const hits: (Snap & { dist: number })[] = [];
   for (const track of world.tracks) {
-    if (track.day || (ignore !== undefined && track.stops.includes(ignore))) continue;
+    if (!isProject(track) || (ignore !== undefined && track.stops.includes(ignore))) continue;
     const state = trainState(track, byId, now);
     if (state.parked) continue;
-    const route = trackRoute(track, byId);
+    const route = routeOf(world, track, dayOf(now));
     const hit = nearestOnRoute(route, p);
     if (hit.dist > radius || hit.leg < state.leg) continue;
     if (hit.leg === state.leg && hit.offset <= state.seconds) continue;
@@ -34,6 +38,24 @@ export function snapToAll(world: World, p: Point, now: number, radius: number, i
   }
   hits.sort((a, b) => a.dist - b.dist);
   return hits.map(({ trackId, leg, offset, at }) => ({ trackId, leg, offset, at }));
+}
+
+/**
+ * Where a square lands on the life line: anywhere right of the life train, past the last square
+ * included, at the life line's own height. Offered to squares only, so the caller asks it for
+ * them alone; `snapToAll` never offers the life line. Like a project line, it takes no point
+ * within radius of a square, except `ignore`, the one being carried. The leg is the one the new
+ * square sorts into by x, and the offset how far along it, in seconds.
+ */
+export function snapToLife(world: World, p: Point, now: number, radius: number, ignore?: string): Snap | null {
+  const life = lifeOf(world);
+  if (!life || Math.abs(p.y - life.life.y) > radius || p.x <= lifeTrainX(world, life, now)) return null;
+  const byId = new Map(world.stops.map((s) => [s.id, s]));
+  const others = life.stops.filter((id) => id !== ignore);
+  if (others.some((id) => Math.abs(byId.get(id)!.x - p.x) <= radius)) return null;
+  const before = sortedByX(others, byId).filter((id) => byId.get(id)!.x < p.x);
+  const startX = before.length === 0 ? life.origin.x : byId.get(before[before.length - 1])!.x;
+  return { trackId: life.id, leg: before.length, offset: p.x - startX, at: { x: p.x, y: life.life.y } };
 }
 
 /** The nearest line a dragged stop would land on, or null when no line is near enough. */

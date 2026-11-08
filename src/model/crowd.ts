@@ -1,3 +1,4 @@
+import { isProject } from './day';
 import { legSeconds, trackRoute, trainState } from './train';
 import type { Stop, Track } from './types';
 
@@ -10,7 +11,7 @@ export const CROWD_CAP = 5;
  * the day line never crowds, so an interchange shows only its project's crowd.
  */
 export function crowdAt(track: Track, byId: Map<string, Stop>, now: number): number {
-  if (track.day) return 0;
+  if (!isProject(track)) return 0;
   const state = trainState(track, byId, now);
   if (!state.waiting || byId.get(track.stops[state.leg])?.done) return 0;
   const planned = legSeconds(trackRoute(track, byId), state.leg);

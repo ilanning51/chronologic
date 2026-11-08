@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { running, twoLines, withDay } from '../test/fixtures';
+import { running, twoLines, withDay, withLife } from '../test/fixtures';
 import type { Stop, Track, World } from './types';
 import { legSpan, pointAlong } from '../plane/routing';
-import { dayState, legSeconds, nextIndex, rebase, stateOf, targetIndex, timeLeft, timeLeftAny, trackRoute, trainState } from './train';
+import { progress } from './motion';
+import { dayState, legSeconds, lifeState, nextIndex, rebase, stateOf, targetIndex, timeLeft, timeLeftAny, trackRoute, trainState } from './train';
 
 function stop(id: string, shape: Stop['shape'], x: number, y: number): Stop {
   return { id, title: id, shape, size: 'medium', x, y, done: false };
@@ -232,4 +233,91 @@ test('stateOf is the shadow for the day train and the own clock for every other'
   expect(stateOf(day, w, 500_000)).toEqual(dayState(day, w, 500_000));
   expect(stateOf(day, w, 500_000).at).toEqual({ x: 1000, y: -200 });
   expect(stateOf(t1, w, 500_000)).toEqual(trainState(t1, byId, 500_000));
+});
+
+describe('the life train', () => {
+  /** withLife with Start done, the life train on its leg into Wristband (the ring) departed at 0. */
+  function towardRing(budget: number) {
+    const world = withLife();
+    world.stops = world.stops.map((s) => (s.id === 'start' ? { ...s, done: true } : s));
+    const life = world.tracks.find((t) => t.life)!;
+    life.train = { leg: 1, departedAt: 0 };
+    life.life = { ...life.life!, budgets: [0, budget, 0] };
+    return { world, life };
+  }
+
+  test('on a leg into a ring it is as far along as the project time has run down, the day train rule', () => {
+    const now = 500_000;
+    const left = timeLeftAny(withLife(), 'wristband', now);
+    const { world, life } = towardRing(2 * left);
+    const s = lifeState(life, world, now);
+    expect(s).toMatchObject({ leg: 1, parked: false, waiting: false });
+    expect(s.fraction).toBeCloseTo(0.5, 6);
+    // Halfway along the straight leg from Start (x 500) to Wristband (x 3000), on the life line's height.
+    expect(s.at.x).toBeCloseTo(1750, 6);
+    expect(s.at.y).toBeCloseTo(-800, 6);
+  });
+
+  test('a ring leg with budget 0 is waiting at the ring', () => {
+    const { world, life } = towardRing(0);
+    expect(lifeState(life, world, 0)).toMatchObject({ leg: 1, waiting: true, fraction: 1 });
+  });
+
+  test('on a leg into a bare marker it rides real time with the motion profile and waits at the end', () => {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    // Leg 0 is 500 s long, from the origin to Start; a quarter of its time is 125 s.
+    const quarter = lifeState(life, world, 125_000);
+    expect(quarter).toMatchObject({ leg: 0, waiting: false, fraction: progress(0.25) });
+    expect(quarter.at.x).toBeCloseTo(500 * progress(0.25), 6);
+    expect(quarter.at.y).toBeCloseTo(-800, 6);
+    const later = lifeState(life, world, 9_999_000);
+    expect(later).toMatchObject({ leg: 0, waiting: true, fraction: 1 });
+    expect(later.at).toEqual({ x: 500, y: -800 });
+  });
+
+  test('a life train with no stops is parked at its origin', () => {
+    const world = withLife();
+    const life = { ...world.tracks.find((t) => t.life)!, stops: [], life: { y: -800, budgets: [] } };
+    const s = lifeState(life, world, 0);
+    expect(s).toMatchObject({ parked: true });
+    expect(s.at).toEqual({ x: 0, y: -800 });
+  });
+
+  test('stateOf gives the life train its own state', () => {
+    const w = withLife();
+    const life = w.tracks.find((t) => t.life)!;
+    expect(stateOf(life, w, 125_000)).toEqual(lifeState(life, w, 125_000));
+  });
+});
+
+describe('the life line bubble target', () => {
+  /** Start done, the life train on its leg into Wristband (a ring), then Far. */
+  function lifeAtRing() {
+    const world = withLife();
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    const life = world.tracks.find((t) => t.life)!;
+    life.train = { leg: 1, departedAt: 0 };
+    return { life, byId: new Map(world.stops.map((s) => [s.id, s])) };
+  }
+
+  test('next is the first undone square and goal is the last square', () => {
+    const { life, byId: stops } = lifeAtRing();
+    expect(targetIndex({ ...life, target: 'next' }, stops)).toBe(1);
+    expect(targetIndex({ ...life, target: 'goal' }, stops)).toBe(2);
+  });
+
+  test('squares the level does not draw are passed over for next, and the last square is the fallback', () => {
+    const { life, byId: stops } = lifeAtRing();
+    const ring = (id: string) => id === 'wristband';
+    expect(targetIndex({ ...life, target: 'next' }, stops, ring)).toBe(2);
+    stops.get('far')!.done = true;
+    // Only the hidden ring is left undone: the target is the last square.
+    expect(targetIndex({ ...life, target: 'next' }, stops, ring)).toBe(2);
+  });
+
+  test('a parked life train has no target', () => {
+    const { life, byId: stops } = lifeAtRing();
+    expect(targetIndex({ ...life, train: { leg: 3, departedAt: 0 } }, stops)).toBeNull();
+  });
 });

@@ -9,8 +9,9 @@ import { MAX_SCALE } from '../plane/camera';
 import { DAY_PAPER, gridTint, paperAt } from '../plane/daylight';
 import { formatSeconds, gridFor, UNITS } from '../plane/grid';
 import { createStore } from '../store/store';
-import { TRACK_WIDTH } from '../plane/world';
-import { running, twoLines, withDay, withWeek } from '../test/fixtures';
+import { LANE_PX, TRACK_WIDTH } from '../plane/world';
+import { running, twoLines, withDay, withLife, withWeek } from '../test/fixtures';
+import type { World } from '../model/types';
 import { App } from './App';
 
 window.innerWidth = 1000;
@@ -55,12 +56,29 @@ test('a done goal stays as a terminus: a large ink dot that keeps its name in in
   // A passed step is an ordinary dot.
   expect(screen.getByRole('button', { name: /^Dentist/ })).not.toHaveClass('terminus');
   const dot = /\.stop\.terminus \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
-  expect(dot).toMatch(/width:\s*var\(--square-large\)/);
+  expect(dot).toMatch(/width:\s*var\(--disc-large\)/);
   expect(dot).toMatch(/background:\s*var\(--ink\)/);
   expect(/\.stop\.terminus \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
   // The terminus rules come after the finished and done ones, so they win at equal weight.
   expect(uiCss.indexOf('.stop.terminus .shape.dot')).toBeGreaterThan(uiCss.indexOf('.stop.finished .shape.dot'));
   expect(uiCss.indexOf('.stop.terminus .label')).toBeGreaterThan(uiCss.indexOf('.stop.done .label'));
+});
+
+test('a done square on the life line is a landmark: a small ink square that keeps its name in ink, under its own rules', () => {
+  const world = withLife();
+  world.stops.find((s) => s.id === 'start')!.done = true;
+  render(<App store={createStore(world)} now={() => 500_000} />);
+  const square = screen.getByRole('button', { name: /^Start.*done/ });
+  expect(square).toHaveClass('landmark');
+  expect(square).not.toHaveClass('terminus');
+  const dot = /\.stop\.landmark \.shape\.dot\s*\{([^}]*)\}/.exec(uiCss)?.[1] ?? '';
+  expect(dot).toMatch(/width:\s*var\(--disc-small\)/);
+  expect(dot).toMatch(/border-radius:\s*0/);
+  expect(dot).toMatch(/background:\s*var\(--ink\)/);
+  expect(/\.stop\.landmark \.label\s*\{([^}]*)\}/.exec(uiCss)?.[1]).toMatch(/color:\s*var\(--ink\)/);
+  // After the finished and done rules, so they win at equal weight.
+  expect(uiCss.indexOf('.stop.landmark .shape.dot')).toBeGreaterThan(uiCss.indexOf('.stop.finished .shape.dot'));
+  expect(uiCss.indexOf('.stop.landmark .label')).toBeGreaterThan(uiCss.indexOf('.stop.done .label'));
 });
 
 test("a goal's name is set in bold capitals on the plane and in its bubble", () => {
@@ -150,11 +168,12 @@ test("a sketch's bubble is muted, like its line", () => {
   world.tracks[0].stops = ['wristband'];
   world.stops = world.stops.filter((s) => s.id === 'wristband');
   // Far enough to be off screen even when the leg is fitted at the smallest zoom.
-  world.stops[0].x = 1e8;
+  world.stops[0].x = 1e11;
   render(<App store={createStore(world)} now={() => 500_000} />);
   const bubble = document.querySelector('[data-target="bubble"]') as HTMLElement;
   expect(bubble).toBeInTheDocument();
   expect(bubble.style.getPropertyValue('--track-color')).toBe('var(--muted)');
+  expect(bubble.style.getPropertyValue('--track-on')).toBe('var(--on-plate)');
 });
 
 test("choosing a picture in the goal's editor keeps the shrunk one on the goal", async () => {
@@ -823,6 +842,72 @@ test('after the hand pans, the next tap on the train follows it again instead of
   expect(Math.abs(trainX() - window.innerWidth / 2)).toBeLessThan(1);
 });
 
+describe('a drag slides the drawn map', () => {
+  const layer = () => document.querySelector('.world') as HTMLElement;
+  const grid = () => document.querySelector('.grid') as HTMLElement;
+  const press = (x: number, y: number) => fireEvent.pointerDown(paper(), { pointerId: 1, clientX: x, clientY: y });
+  const moveTo = (x: number, y: number) => fireEvent.pointerMove(paper(), { pointerId: 1, clientX: x, clientY: y });
+  const lift = (x: number, y: number) => fireEvent.pointerUp(paper(), { pointerId: 1, clientX: x, clientY: y });
+
+  test('a short drag shifts the world layer and lays nothing out; letting go lays the map out where the hand left it', () => {
+    render(<App store={createStore(running())} now={() => WAITING} />);
+    const before = left(/^Dentist/);
+    act(() => {
+      press(100, 100);
+      moveTo(160, 120);
+    });
+    expect(left(/^Dentist/)).toBe(before);
+    expect(layer().style.transform).toMatch(/^translate3d\(60px, 20px, 0(px)?\)$/);
+    act(() => lift(160, 120));
+    expect(left(/^Dentist/)).toBeCloseTo(before + 60, 3);
+    expect(layer().style.transform).toBe('');
+  });
+
+  test('the grid stays under the screen while its lines move with the map', () => {
+    render(<App store={createStore(running())} now={() => WAITING} />);
+    const at = grid().style.backgroundPosition;
+    act(() => {
+      press(100, 100);
+      moveTo(160, 120);
+    });
+    expect(grid().style.transform).toMatch(/^translate3d\(-60px, -20px, 0(px)?\)$/);
+    expect(grid().style.backgroundPosition).not.toBe(at);
+    act(() => lift(160, 120));
+    expect(grid().style.transform).toBe('');
+  });
+
+  test('a long drag lays the map out again before the slide passes what was drawn past the edge', () => {
+    render(<App store={createStore(running())} now={() => WAITING} />);
+    const before = left(/^Dentist/);
+    act(() => {
+      press(100, 100);
+      moveTo(200, 100);
+    });
+    expect(left(/^Dentist/)).toBe(before);
+    act(() => moveTo(320, 100));
+    expect(left(/^Dentist/)).toBeCloseTo(before + 220, 3);
+    expect(layer().style.transform).toBe('');
+    act(() => lift(320, 100));
+  });
+
+  test('the trains hold still while the map slides and jump to now when it is let go', () => {
+    vi.useFakeTimers();
+    let t = 980_000;
+    render(<App store={createStore(running())} now={() => t} />);
+    const before = trainX();
+    act(() => {
+      press(100, 100);
+      moveTo(120, 100);
+    });
+    t += 60_000;
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(trainX()).toBe(before);
+    act(() => lift(120, 100));
+    // Laid out again without the clock catching up, the train would sit exactly 20 px on.
+    expect(trainX() - (before + 20)).toBeGreaterThan(0.1);
+  });
+});
+
 test('after the wheel zooms, the next tap on the train follows it again instead of flying back', () => {
   reduceMotion();
   render(<App store={createStore(running())} now={() => 980_000} />);
@@ -966,12 +1051,13 @@ test('a stop on two lines is drawn as a ring', () => {
   expect(shape).toHaveClass('shape', 'ring', 'circle', 'medium');
   // A stop on one line stays solid.
   expect(screen.getByRole('button', { name: /^Dentist/ }).querySelector('.shape')).not.toHaveClass('ring');
-  // The paper centre is the same shape again, 4 px in, so the ink border is as thick as a line.
-  const centre = cssRule('.shape.ring::after');
-  expect(centre).toMatch(/inset:\s*4px/);
-  expect(centre).toMatch(/background:\s*var\(--paper\)/);
-  expect(cssRule('.shape.ring.circle::after')).toMatch(/border-radius:\s*50%/);
-  expect(cssRule('.shape.ring.triangle::after')).toMatch(/clip-path:\s*polygon\(50% 0, 100% 100%, 0 100%\)/);
+  // The map's transfer: a paper capsule in a fine ink outline, its disc inside.
+  const capsule = cssRule('.stop .shape.ring');
+  expect(capsule).toMatch(/background:\s*var\(--paper\)/);
+  expect(capsule).toMatch(/inset 0 0 0 var\(--capsule-outline\) var\(--ink\)/);
+  const disc = cssRule('.stop .shape.ring::before');
+  expect(disc).toMatch(/inset:\s*calc\(var\(--capsule-pad\) \+ var\(--capsule-outline\)\)/);
+  expect(disc).toMatch(/background:\s*var\(--ink\)/);
 });
 
 test('a done interchange is a plain dot', () => {
@@ -1045,10 +1131,19 @@ test('the soonest line fills its bubble', () => {
   expect(bubble('t2')).not.toHaveClass('soonest');
   expect(bubble('day')).not.toHaveClass('soonest');
   expect(bubble('day').style.getPropertyValue('--track-color')).toBe('var(--ink)');
+  // Words on a line's colour take that colour's own text colour: white on blue, ink on yellow.
+  expect(bubble('t1').style.getPropertyValue('--track-on')).toBe('var(--track-blue-on)');
+  expect(bubble('t2').style.getPropertyValue('--track-on')).toBe('var(--track-yellow-on)');
+  expect(bubble('day').style.getPropertyValue('--track-on')).toBe('var(--on-plate)');
+  // The day's mark shows white on the black plate, so its bubble says it is the day's.
+  expect(bubble('day')).toHaveClass('day');
+  expect(bubble('t1')).not.toHaveClass('day');
   const filled = cssRule('.bubble.soonest');
-  expect(filled).toMatch(/background:\s*var\(--track-color\)/);
-  expect(filled).toMatch(/color:\s*var\(--paper\)/);
-  expect(cssRule('.bubble.soonest .shape')).toMatch(/background:\s*var\(--paper\)/);
+  // Filled with the shade of the line that words read on.
+  expect(bubble('t1').style.getPropertyValue('--track-fill')).toBe('var(--track-blue-fill)');
+  expect(filled).toMatch(/background:\s*var\(--track-fill\)/);
+  expect(filled).toMatch(/color:\s*var\(--track-on\)/);
+  expect(cssRule('.bubble.soonest .shape')).toMatch(/background:\s*var\(--track-on\)/);
 });
 
 /** Where a stop is drawn on screen. */
@@ -1579,9 +1674,9 @@ test('tapping the day train follows the day train, not the project motion on its
   });
   // The shadow is half way down its first leg, at (1000, -200); the camera centres there.
   expect(dayState(world.tracks[2], world, NOW).at).toEqual({ x: 1000, y: -200 });
+  // It runs in its own lane beside the project line it shares the road with, a lane's width at most from the road.
   const [x, y] = /translate\(([-\d.e]+)px,\s*([-\d.e]+)px/.exec(dayTrain().style.transform)!.slice(1).map(Number);
-  expect(x).toBeCloseTo(window.innerWidth / 2, 3);
-  expect(y).toBeCloseTo(window.innerHeight / 2, 3);
+  expect(Math.hypot(x - window.innerWidth / 2, y - window.innerHeight / 2)).toBeLessThanOrEqual(LANE_PX);
 });
 
 test("the day's-end square's editor is only a hold, and the hold clears the day", () => {
@@ -2142,7 +2237,7 @@ test('drawing with the line brush shows the routed time while the stroke is in f
     fireEvent.pointerDown(paper(), { pointerId: 1, clientX: 150, clientY: 650 });
     fireEvent.pointerMove(paper(), { pointerId: 1, clientX: 450, clientY: 700 });
   });
-  // A 45 degree run over the short side, then straight: 50·√2 + 250 screen px.
+  // A 45 degree run over the short side, then straight: 50Â·âˆš2 + 250 screen px.
   const seconds = (50 * Math.SQRT2 + 250) / scale;
   expect(document.querySelector('.leg-time')).toHaveTextContent(formatSeconds(seconds));
   expect(document.querySelector('.day-ghost')).not.toBeNull();
@@ -2592,5 +2687,705 @@ describe('the map behind the week window', () => {
     act(() => weekButton().click());
     act(() => tapOn(screen.getByRole('button', { name: /^Dentist/ })));
     expect(stopNamed(store, 'dentist').done).toBe(true);
+  });
+});
+
+describe('the life line bubble', () => {
+  const LONG_AFTER = 1e13;
+
+  /**
+   * Start done, the life train on its leg into Far (x 5e9, off screen), and Wristband, t1's goal,
+   * a ring further right. The camera opens on t1, so Far is out of sight to the right.
+   */
+  function lifeOffScreen() {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.stops.find((s) => s.id === 'far')!.x = 5e9;
+    world.stops.find((s) => s.id === 'wristband')!.x = 1e10;
+    life.stops = ['start', 'far', 'wristband'];
+    life.train = { leg: 1, departedAt: 0 };
+    return world;
+  }
+  const lifeBubble = () => document.querySelector('[data-target="bubble"][data-track="life"]') as HTMLElement | null;
+
+  test('is in ink, names the next undone square, and is filled while the life train waits there', () => {
+    render(<App store={createStore(lifeOffScreen())} now={() => LONG_AFTER} />);
+    const bubble = lifeBubble()!;
+    expect(bubble).toHaveAccessibleName(/^Far, goal/);
+    expect(bubble.style.getPropertyValue('--track-color')).toBe('var(--ink)');
+    expect(bubble).toHaveClass('soonest');
+  });
+
+  test('is not filled while the life train is still rolling', () => {
+    render(<App store={createStore(lifeOffScreen())} now={() => 1000} />);
+    expect(lifeBubble()).not.toHaveClass('soonest');
+  });
+
+  test('a tap cycles its target between the next square and the last, never through a sub-goal', () => {
+    const store = createStore(lifeOffScreen());
+    render(<App store={store} now={() => LONG_AFTER} />);
+    const life = () => store.getState().tracks.find((t) => t.life)!;
+    expect(life().target).toBe('next');
+    act(() => tapOn(lifeBubble()!));
+    expect(life().target).toBe('goal');
+    expect(lifeBubble()).toHaveAccessibleName(/^Wristband, goal/);
+    act(() => tapOn(lifeBubble()!));
+    expect(life().target).toBe('next');
+  });
+
+  test('a picture bubble flies to its marker and lands no wider than the 1-year unit', () => {
+    reduceMotion();
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    world.tracks = world.tracks.filter((t) => t.id !== 't1');
+    life.stops = ['start', 'far'];
+    life.life = { y: -800, budgets: [0, 0] };
+    life.target = 'goal';
+    const far = world.stops.find((s) => s.id === 'far')!;
+    far.x = 3e9;
+    far.image = PICTURE;
+    render(<App store={createStore(world)} now={() => 100_000} />);
+    for (let i = 0; i < 40 && document.querySelector('.legend')!.textContent !== '5 years'; i++) {
+      act(() => {
+        fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 2500 });
+      });
+    }
+    expect(document.querySelector('.legend')!.textContent).toBe('5 years');
+    expect(lifeBubble()).toHaveClass('picture');
+    act(() => tapOn(lifeBubble()!));
+    expect(document.querySelector('.legend')!.textContent).toBe('1 year');
+    expect(screen.getByRole('button', { name: /^Far/ })).toBeInTheDocument();
+  });
+
+  test('from the 1-year unit up the bubble passes over the rings the level does not draw', () => {
+    const world = withLife();
+    const life = world.tracks.find((t) => t.life)!;
+    // Start done and the life train heading for Wristband, a ring: from the 1-year unit up it is
+    // not drawn, so the bubble points at Far, the next bare marker.
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.stops.find((s) => s.id === 'far')!.x = 3e9;
+    life.train = { leg: 1, departedAt: 0 };
+    render(<App store={createStore(world)} now={() => 100_000} />);
+    for (let i = 0; i < 400 && document.querySelector('.legend')!.textContent !== '1 year'; i++) {
+      act(() => {
+        fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 100 });
+      });
+    }
+    expect(document.querySelector('.legend')!.textContent).toBe('1 year');
+    expect(lifeBubble()).toHaveAccessibleName(/^Far, goal/);
+  });
+
+  test('tap-to-fit on a project line never zooms wider than the 30-day unit', () => {
+    reduceMotion();
+    const world = running();
+    world.stops[1].x = 1e9;
+    world.stops[1].image = PICTURE;
+    render(<App store={createStore(world)} now={() => 500_000} />);
+    act(() => tapOn(document.querySelector('[data-target="bubble"]')!));
+    expect(document.querySelector('.legend')!.textContent).toBe('30 days');
+  });
+});
+
+describe('life line gestures', () => {
+  const LIFE_NOW = 1000;
+  /** Screen pixels per world second at the opening: the leg to Dentist fits a third of the width. */
+  const SCALE = 1 / 3;
+
+  /** withLife with its squares brought in so they are all on screen at the opening. */
+  function lifeScene(): ReturnType<typeof withLife> {
+    const world = withLife();
+    const place = (id: string, x: number) => {
+      world.stops.find((s) => s.id === id)!.x = x;
+    };
+    place('start', 600);
+    place('wristband', 1100);
+    place('far', 1400);
+    return world;
+  }
+
+  /**
+   * lifeScene and a second line t2, below the first, whose goal Goal two is not on the life line:
+   * a step at (800, 300) and the goal at (900, 300). The camera still opens on t1, the project
+   * heading for the first ring.
+   */
+  function joinScene(): ReturnType<typeof withLife> {
+    const world = lifeScene();
+    world.tracks.push({ id: 't2', color: 1, origin: { x: 0, y: 300 }, stops: ['s2', 'g2'], train: { leg: 0, departedAt: 0 }, target: 'goal' });
+    world.stops.push(
+      { id: 's2', title: 'Step two', shape: 'circle', size: 'medium', x: 800, y: 300, done: false },
+      { id: 'g2', title: 'Goal two', shape: 'square', size: 'large', x: 900, y: 300, done: false },
+    );
+    return world;
+  }
+
+  const lifeOf = (store: ReturnType<typeof createStore>) => store.getState().tracks.find((t) => t.life)!;
+  const ghost = () => document.querySelector<HTMLElement>('.ghost');
+  /** The screen point on the life line at a world x, a few pixels off the line. */
+  const onLifeLine = (x: number) => ({ x: at(/^Start/).x + (x - 600) * SCALE, y: at(/^Start/).y + 6 });
+
+  /** Presses a tile and moves it to a screen point, leaving the finger down; the returned function lets go. */
+  function carry(name: string, to: { x: number; y: number }) {
+    const tile = screen.getByRole('button', { name });
+    fireEvent.pointerDown(tile, { pointerId: 1, clientX: 900, clientY: 740 });
+    fireEvent.pointerMove(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+    return () => fireEvent.pointerUp(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+  }
+
+  test('the Marker tile dropped on the life line right of the train adds a square there and opens its name field', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    let drop = () => {};
+    act(() => {
+      drop = carry('Marker', onLifeLine(1250));
+    });
+    // On the line the ghost is a square, filled.
+    expect(ghost()).toHaveClass('snapped');
+    expect(ghost()!.querySelector('.shape.square')).toBeInTheDocument();
+    act(() => drop());
+    expect(lifeOf(store).stops).toHaveLength(4);
+    // Between Wristband (1100) and Far (1400).
+    const added = stopNamed(store, lifeOf(store).stops[2]);
+    expect(added).toMatchObject({ shape: 'square', title: '', y: -800 });
+    expect(added.x).toBeCloseTo(1250, 0);
+    expect(screen.getByRole('textbox', { name: 'Stop title' })).toBeInTheDocument();
+  });
+
+  test('the Marker tile dropped past the last square still joins the life line', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    act(() => dragTile('Marker', onLifeLine(1500)));
+    expect(lifeOf(store).stops).toHaveLength(4);
+    expect(lifeOf(store).stops.slice(0, 3)).toEqual(['start', 'wristband', 'far']);
+    expect(stopNamed(store, lifeOf(store).stops[3]).x).toBeCloseTo(1500, 0);
+  });
+
+  test('the Marker tile on a project line or on paper adds nothing and its ghost is muted', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    const before = store.getState();
+    // On t1's first leg, ahead of its train.
+    const onProject = { x: at(/^Dentist/).x - 100, y: at(/^Dentist/).y + 6 };
+    for (const to of [onProject, { x: 300, y: 600 }]) {
+      let drop = () => {};
+      act(() => {
+        drop = carry('Marker', to);
+      });
+      expect(ghost()).not.toHaveClass('snapped');
+      expect(ghost()!.querySelector('.shape.square')).toBeInTheDocument();
+      act(() => drop());
+      expect(store.getState()).toBe(before);
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    }
+  });
+
+  test('a Step or a Sub-goal dropped on the life line adds nothing and its ghost is muted', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    const before = store.getState();
+    for (const tile of ['Step', 'Sub-goal']) {
+      let drop = () => {};
+      act(() => {
+        drop = carry(tile, onLifeLine(1250));
+      });
+      expect(ghost()).not.toHaveClass('snapped');
+      act(() => drop());
+      expect(store.getState()).toBe(before);
+    }
+  });
+
+  test("a goal released on the life line right of the train joins it as a ring, and the project's steps keep their places", () => {
+    const store = createStore(joinScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const before = store.getState();
+    const step = stopNamed(store, 's2');
+    const goal = at(/^Goal two/);
+    // Up to the life line, 30 px to the right: world x 990, between Start (600) and Wristband (1100).
+    act(() => dragStop(/^Goal two/, 30, at(/^Start/).y - goal.y));
+    expect(lifeOf(store).stops).toEqual(['start', 'g2', 'wristband', 'far']);
+    expect(stopNamed(store, 'g2')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'g2').x).toBeCloseTo(900 + 30 / SCALE, 6);
+    // Only the goal moved: the drag scaled the step while it was held, and the release put it back.
+    expect(stopNamed(store, 's2')).toEqual(step);
+    expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['s2', 'g2']);
+    // The whole drag and join is one step for undo.
+    act(() => store.undo());
+    expect(store.getState()).toEqual(before);
+  });
+
+  test('a goal released off the life line scales its line and joins nothing, as before', () => {
+    const store = createStore(joinScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    act(() => dragStop(/^Goal two/, 60, 40));
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
+    expect(stopNamed(store, 's2').x).not.toBe(800);
+  });
+
+  test("a ring dragged along the life line, within a snap of it, keeps its height, shows the life leg's time and moves nothing else", () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const dentist = stopNamed(store, 'dentist');
+    const el = screen.getByRole('button', { name: /^Wristband/ });
+    const from = { x: parseFloat(el.style.left) + 4, y: parseFloat(el.style.top) };
+    act(() => {
+      fireEvent.pointerDown(el, { pointerId: 1, clientX: from.x, clientY: from.y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 15 });
+    });
+    const wristband = stopNamed(store, 'wristband');
+    expect(wristband.y).toBe(-800);
+    expect(wristband.x).toBeCloseTo(1100 + 30 / SCALE, 6);
+    // The life leg into Wristband runs from Start at 600.
+    expect(document.querySelector('.leg-time')!.textContent).toBe(formatSeconds(wristband.x - 600));
+    act(() => fireEvent.pointerUp(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 15 }));
+    expect(stopNamed(store, 'dentist')).toEqual(dentist);
+    expect(stopNamed(store, 'start').x).toBe(600);
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
+    expect(document.querySelector('.leg-time')).toBeNull();
+  });
+
+  test('a ring dragged off the life line leaves it and stays its project goal where it was let go, in one undo step', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const before = store.getState();
+    act(() => dragStop(/^Wristband/, 0, 120));
+    expect(lifeOf(store).stops).toEqual(['start', 'far']);
+    expect(store.getState().tracks.find((t) => t.id === 't1')!.stops.at(-1)).toBe('wristband');
+    expect(stopNamed(store, 'wristband').y).toBeCloseTo(-800 + 120 / SCALE, 6);
+    act(() => store.undo());
+    expect(store.getState()).toEqual(before);
+  });
+
+  test('a ring pulled past a snap but short of three snaps from the life line stays on it', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    // 60 px: past the 24 px snap, short of the 72 px pull-off.
+    act(() => dragStop(/^Wristband/, 30, 60));
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
+    expect(stopNamed(store, 'wristband')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'wristband').x).toBeCloseTo(1100 + 30 / SCALE, 6);
+  });
+
+  /** Presses a stop and moves the finger by (dx, dy), leaving it down; the returned function lets go there. */
+  function hold(name: RegExp, dx: number, dy: number) {
+    const el = screen.getByRole('button', { name });
+    const x = parseFloat(el.style.left) + 4;
+    const y = parseFloat(el.style.top);
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+    return () => fireEvent.pointerUp(el, { pointerId: 1, clientX: x + dx, clientY: y + dy });
+  }
+  const leanOf = (id: string) => document.querySelector<HTMLElement>(`.stop[data-id="${id}"]`)!.style.getPropertyValue('--lean');
+
+  test('a ring held on the life line leans toward the finger by a quarter of the pull, and springs back when let go', () => {
+    render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+    let release = () => {};
+    act(() => {
+      release = hold(/^Wristband/, 0, 40);
+    });
+    expect(leanOf('wristband')).toBe('10px');
+    expect(document.querySelector('.stop[data-id="wristband"]')).toHaveClass('leaning');
+    act(() => release());
+    expect(leanOf('wristband')).toBe('');
+    expect(document.querySelector('.stop[data-id="wristband"]')).not.toHaveClass('leaning');
+  });
+
+  test('a marker pulled far from the life line leans no further than a ring could, and stays on', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    let release = () => {};
+    act(() => {
+      release = hold(/^Far/, 0, 200);
+    });
+    // A quarter of the 72 px pull-off, the most a ring leans before it comes off.
+    expect(leanOf('far')).toBe('18px');
+    act(() => release());
+    expect(lifeOf(store).stops).toContain('far');
+    expect(leanOf('far')).toBe('');
+  });
+
+  test('a ring pulled off the life line stops leaning and follows the finger', () => {
+    render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+    act(() => {
+      hold(/^Wristband/, 0, 120);
+    });
+    expect(leanOf('wristband')).toBe('');
+  });
+
+  test('a goal carried in snap reach of the life line shows where it would land, and only there', () => {
+    render(<App store={createStore(joinScene())} now={() => LIFE_NOW} />);
+    const lineY = at(/^Start/).y;
+    const goal = at(/^Goal two/);
+    let release = () => {};
+    // To 10 px below the line, 30 px right: world x 990, between Start and Wristband.
+    act(() => {
+      release = hold(/^Goal two/, 30, lineY - goal.y + 10);
+    });
+    const landing = document.querySelector<HTMLElement>('.ghost.snapped')!;
+    expect(landing).not.toBeNull();
+    expect(parseFloat(landing.style.top)).toBeCloseTo(lineY, 6);
+    expect(parseFloat(landing.style.left)).toBeCloseTo(goal.x + 30, 6);
+    act(() => release());
+    expect(document.querySelector('.ghost')).toBeNull();
+  });
+
+  test('a goal carried out of snap reach of the life line shows no landing', () => {
+    render(<App store={createStore(joinScene())} now={() => LIFE_NOW} />);
+    act(() => {
+      hold(/^Goal two/, 60, 40);
+    });
+    expect(document.querySelector('.ghost')).toBeNull();
+  });
+
+  test('a stop leans by translate, which springs back only once let go', () => {
+    expect(cssRule('.stop')).toMatch(/translate:\s*0 var\(--lean, 0px\)/);
+    expect(cssRule('.stop:not(.leaning)')).toMatch(/transition:\s*translate 150ms ease-out/);
+  });
+
+  test('a ring pulled off the life line and let go back on it joins it again at its new x', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const el = screen.getByRole('button', { name: /^Wristband/ });
+    const from = { x: parseFloat(el.style.left) + 4, y: parseFloat(el.style.top) };
+    act(() => {
+      fireEvent.pointerDown(el, { pointerId: 1, clientX: from.x, clientY: from.y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: from.x, clientY: from.y + 120 });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 6 });
+      fireEvent.pointerUp(el, { pointerId: 1, clientX: from.x + 30, clientY: from.y + 6 });
+    });
+    expect(lifeOf(store).stops).toEqual(['start', 'wristband', 'far']);
+    expect(stopNamed(store, 'wristband')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'wristband').x).toBeCloseTo(1100 + 30 / SCALE, 6);
+  });
+
+  test('a ring on the life line looks like any goal: a disc with its square, not a transfer capsule', () => {
+    render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+    const ring = document.querySelector('[data-id="wristband"]')!;
+    expect(ring.querySelector('.shape')).toHaveClass('square');
+    expect(ring.querySelector('.shape')).not.toHaveClass('ring');
+    expect(ring.querySelector('.link')).toBeNull();
+    expect(ring).not.toHaveClass('linked');
+  });
+
+  test('a bare marker dragged along the life line keeps its height and changes its x, and may pass its neighbour', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    act(() => dragStop(/^Far/, -120, 50));
+    expect(stopNamed(store, 'far')).toMatchObject({ y: -800 });
+    expect(stopNamed(store, 'far').x).toBeCloseTo(1400 - 120 / SCALE, 6);
+    expect(lifeOf(store).stops).toEqual(['start', 'far', 'wristband']);
+  });
+
+  test('a marker dragged left of the life train stops at the train and does not pass it', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const { x, y } = at(/^Far/);
+    const el = screen.getByRole('button', { name: /^Far/ });
+    act(() => {
+      fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: x - 150, clientY: y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: x - 600, clientY: y });
+      fireEvent.pointerUp(el, { pointerId: 1, clientX: x - 600, clientY: y });
+    });
+    // The second move would have put it at x = -400, behind the train at about x = 1.
+    expect(stopNamed(store, 'far').x).toBeCloseTo(1400 - 150 / SCALE, 6);
+  });
+
+  test('a marker released near a project line does not join it', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const to = { x: at(/^Dentist/).x - 100, y: at(/^Dentist/).y + 6 };
+    const from = at(/^Far/);
+    const el = screen.getByRole('button', { name: /^Far/ });
+    act(() => {
+      fireEvent.pointerDown(el, { pointerId: 1, clientX: from.x, clientY: from.y });
+      fireEvent.pointerMove(el, { pointerId: 1, clientX: to.x, clientY: to.y });
+      fireEvent.pointerUp(el, { pointerId: 1, clientX: to.x, clientY: to.y });
+    });
+    expect(store.getState().tracks.find((t) => t.id === 't1')!.stops).toEqual(['dentist', 'wristband']);
+  });
+
+  test('the sun dragged through a ring or a marker does not pick either up', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    openTray();
+    const before = store.getState();
+    const sun = screen.getByRole('button', { name: 'Today' });
+    const ring = at(/^Wristband/);
+    const marker = at(/^Far/);
+    act(() => {
+      fireEvent.pointerDown(sun, point(900, 740));
+      fireEvent.pointerMove(sun, point(ring.x, ring.y));
+      fireEvent.pointerMove(sun, point(marker.x, marker.y));
+      fireEvent.pointerUp(sun, point(marker.x, marker.y + 80));
+    });
+    expect(store.getState()).toBe(before);
+  });
+
+  test('a box over a marker and a project stop moves the marker along the life line and the stop both ways', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const dentist = at(/^Dentist/);
+    const marker = at(/^Far/);
+    act(() => drawBox(dentist.x - 30, marker.y - 30, marker.x + 30, dentist.y + 30));
+    expect(box()).not.toBeNull();
+    act(() => dragOn(box()!, dentist.x, dentist.y, 30, 60));
+    expect(stopNamed(store, 'far').x).toBeCloseTo(1400 + 30 / SCALE, 6);
+    expect(stopNamed(store, 'far').y).toBe(-800);
+    expect(stopNamed(store, 'dentist').x).toBeCloseTo(1000 + 30 / SCALE, 6);
+    expect(stopNamed(store, 'dentist').y).toBeCloseTo(60 / SCALE, 6);
+  });
+
+  test('a box over the life line start catches no start to carry', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const start = at(/^Start/);
+    // The life line's start is at world x 0, the left of Start by 600 s.
+    const origin = { x: start.x - 600 * SCALE, y: start.y };
+    act(() => drawBox(origin.x - 30, origin.y - 30, start.x + 30, origin.y + 30));
+    act(() => dragOn(box()!, start.x, start.y, 0, 60));
+    expect(lifeOf(store).origin).toEqual({ x: 0, y: -800 });
+    expect(stopNamed(store, 'start').y).toBe(-800);
+  });
+
+  test('a step split off a ring cannot be dropped on the life line', () => {
+    const store = createStore(lifeScene());
+    render(<App store={store} now={() => LIFE_NOW} />);
+    const before = store.getState();
+    act(() => splitFrom(/^Wristband/, onLifeLine(1250)));
+    expect(store.getState()).toBe(before);
+  });
+
+  describe('the editor on a ring', () => {
+    /** lifeScene with Far before Wristband, so Wristband is the rightmost square. */
+    function ringLast() {
+      const world = lifeScene();
+      world.stops.find((s) => s.id === 'far')!.x = 1000;
+      world.stops.find((s) => s.id === 'wristband')!.x = 1400;
+      world.tracks.find((t) => t.life)!.stops = ['start', 'far', 'wristband'];
+      return world;
+    }
+
+    test('shows a Life chip in ink, the rightmost ring included, and tapping it takes the goal off the life line', () => {
+      vi.useFakeTimers();
+      const store = createStore(ringLast());
+      render(<App store={store} now={() => LIFE_NOW} />);
+      openEditorOn(/^Wristband/);
+      const chip = screen.getByRole('button', { name: 'Leave Life' });
+      expect(chip.style.getPropertyValue('--track-color')).toBe('var(--ink)');
+      // Its own line is not a chip: a goal cannot leave it.
+      expect(screen.getAllByRole('button').filter((b) => b.classList.contains('line-chip'))).toHaveLength(1);
+      act(() => chip.click());
+      expect(lifeOf(store).stops).toEqual(['start', 'far']);
+      expect(store.getState().tracks.find((t) => t.id === 't1')!.stops).toEqual(['dentist', 'wristband']);
+      expect(stopNamed(store, 'wristband')).toMatchObject({ x: 1400, y: -800 });
+    });
+
+    test('a ring in the middle of the life line shows it too, and a bare marker shows none', () => {
+      vi.useFakeTimers();
+      render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+      openEditorOn(/^Wristband/);
+      expect(screen.getByRole('button', { name: 'Leave Life' })).toBeInTheDocument();
+      cleanup();
+      render(<App store={createStore(lifeScene())} now={() => LIFE_NOW} />);
+      openEditorOn(/^Far/);
+      expect(screen.queryByRole('button', { name: /^Leave/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    });
+  });
+
+  test('a screen reader tells a goal on the life line from a marker, and says both are on it', () => {
+    render(<App store={createStore(joinScene())} now={() => LIFE_NOW} />);
+    const nameOf = (id: string) => document.querySelector(`.stop[data-id="${id}"]`)!.getAttribute('aria-label');
+    expect(nameOf('wristband')).toMatch(/^Wristband, goal, large(, next)?, on the life line$/);
+    expect(nameOf('far')).toMatch(/^Far, marker, large(, next)?, on the life line$/);
+    // A goal off the life line says nothing of it.
+    expect(nameOf('g2')).toMatch(/^Goal two, goal, large(, next)?$/);
+  });
+
+  describe('the editor on a goal off the life line', () => {
+    test('shows a hollow Join Life chip that puts the goal on the life line where it stands, in one undo step', () => {
+      vi.useFakeTimers();
+      const store = createStore(joinScene());
+      render(<App store={store} now={() => LIFE_NOW} />);
+      const before = store.getState();
+      openEditorOn(/^Goal two/);
+      const chip = screen.getByRole('button', { name: 'Join Life' });
+      expect(chip).toHaveClass('line-chip', 'join');
+      act(() => chip.click());
+      expect(lifeOf(store).stops).toEqual(['start', 'g2', 'wristband', 'far']);
+      expect(stopNamed(store, 'g2')).toMatchObject({ x: 900, y: -800 });
+      expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['s2', 'g2']);
+      // On the line now, the same place offers the way off.
+      expect(screen.queryByRole('button', { name: 'Join Life' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Leave Life' })).not.toHaveClass('join');
+      act(() => store.undo());
+      expect(store.getState()).toEqual(before);
+    });
+
+    test('offers no Join Life chip on a goal left of the life train, nor on a step or a square already on it', () => {
+      vi.useFakeTimers();
+      const behind = joinScene();
+      behind.stops.find((s) => s.id === 'g2')!.x = -100;
+      render(<App store={createStore(behind)} now={() => LIFE_NOW} />);
+      openEditorOn(/^Goal two/);
+      expect(screen.queryByRole('button', { name: 'Join Life' })).not.toBeInTheDocument();
+      for (const name of [/^Step two/, /^Wristband/, /^Far/]) {
+        cleanup();
+        render(<App store={createStore(joinScene())} now={() => LIFE_NOW} />);
+        openEditorOn(name);
+        expect(screen.queryByRole('button', { name: 'Join Life' })).not.toBeInTheDocument();
+      }
+    });
+
+    test('a hollow chip is a ring in the plate colour with no fill, so on and off differ by more than colour', () => {
+      expect(cssRule('.line-chip.join::before')).toMatch(/background:\s*none/);
+      expect(cssRule('.line-chip.join::before')).toMatch(/box-shadow:\s*inset 0 0 0 2px var\(--on-plate\)/);
+    });
+  });
+});
+
+test('from the 3-month unit up no project train is drawn, only the life train', () => {
+  render(<App store={createStore(withLife())} now={() => WAITING} />);
+  for (let i = 0; i < 40 && document.querySelector('.legend')!.textContent !== '5 years'; i++) {
+    act(() => {
+      fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 2500 });
+    });
+  }
+  expect(document.querySelector('.legend')!.textContent).toBe('5 years');
+  expect(document.querySelectorAll('[data-train]')).toHaveLength(1);
+});
+
+/** Wheels out over the plane until the legend reads `label`. */
+function zoomOutTo(label: string) {
+  for (let i = 0; i < 400 && document.querySelector('.legend')!.textContent !== label; i++) {
+    act(() => {
+      fireEvent.wheel(paper(), { clientX: 500, clientY: 400, deltaY: 100 });
+    });
+  }
+  expect(document.querySelector('.legend')!.textContent).toBe(label);
+}
+
+describe('zoomed out, a ring speaks for its project', () => {
+  /** Start done and the life train heading for Wristband, t1's goal: the life line's next square is the ring. */
+  function lifeHeadingForRing() {
+    const world = withLife();
+    world.stops.find((s) => s.id === 'start')!.done = true;
+    world.tracks.find((t) => t.life)!.train = { leg: 1, departedAt: 0 };
+    return world;
+  }
+
+  test("a tap on a ring its project is not yet heading for does nothing and plays nothing", () => {
+    const oscillators = fakeAudio();
+    const store = createStore(lifeHeadingForRing());
+    render(<App store={store} now={() => 100_000} />);
+    zoomOutTo('3 months');
+    const before = store.getState();
+    act(() => tapOn(screen.getByRole('button', { name: /^Wristband/ })));
+    expect(store.getState()).toBe(before);
+    expect(oscillators).not.toHaveBeenCalled();
+  });
+
+  test("a tap on a ring its project's train is heading for completes it for the project, with the goal's sound", () => {
+    const oscillators = fakeAudio();
+    const world = lifeHeadingForRing();
+    world.stops.find((s) => s.id === 'dentist')!.done = true;
+    world.tracks.find((t) => t.id === 't1')!.train = { leg: 1, departedAt: 0 };
+    const store = createStore(world);
+    render(<App store={store} now={() => 100_000} />);
+    zoomOutTo('3 months');
+    act(() => tapOn(screen.getByRole('button', { name: /^Wristband/ })));
+    expect(stopNamed(store, 'wristband').done).toBe(true);
+    expect(oscillators).toHaveBeenCalled();
+  });
+});
+
+describe('zoomed out, a hidden project line takes nothing', () => {
+  const centreOf = (id: string) => {
+    const el = document.querySelector<HTMLElement>(`.stop[data-id="${id}"]`)!;
+    return { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+  };
+
+  /**
+   * t1 runs for over a year: Dentist 4e7 s out, its goal Wristband, a ring, 5e7 s out. Start, a
+   * marker 2e7 s out, sits 800 s above t1's first leg, under a pixel at the 3-month unit and
+   * further than the snap reaches (about 1e7 s there) from t1's start and stops.
+   */
+  function yearsLong() {
+    const world = withLife();
+    const place = (id: string, x: number) => {
+      world.stops.find((s) => s.id === id)!.x = x;
+    };
+    place('start', 2e7);
+    place('dentist', 4e7);
+    place('wristband', 5e7);
+    place('far', 9e8);
+    return world;
+  }
+
+  test('a Step carried over a years-long project line, undrawn at 3 months, does not snap to it and adds nothing', () => {
+    const store = createStore(yearsLong());
+    render(<App store={store} now={() => 1000} />);
+    zoomOutTo('3 months');
+    openTray();
+    const before = store.getState();
+    const to = centreOf('start');
+    const tile = screen.getByRole('button', { name: 'Step' });
+    act(() => {
+      fireEvent.pointerDown(tile, { pointerId: 1, clientX: 900, clientY: 740 });
+      fireEvent.pointerMove(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+    });
+    expect(document.querySelector('.ghost')).not.toHaveClass('snapped');
+    act(() => {
+      fireEvent.pointerUp(tile, { pointerId: 1, clientX: to.x, clientY: to.y });
+    });
+    expect(store.getState()).toBe(before);
+  });
+
+  test('a step split off a ring at 3 months lands on no project line, since none is drawn', () => {
+    const store = createStore(yearsLong());
+    render(<App store={store} now={() => 1000} />);
+    zoomOutTo('3 months');
+    const before = store.getState();
+    act(() => splitFrom(/^Wristband/, centreOf('start')));
+    expect(store.getState()).toBe(before);
+  });
+
+  test("a day's stop dragged at 3 months joins no years-long project line it is released on", () => {
+    const NOW = new Date(2026, 10, 1, 9).getTime();
+    // Today's day line runs through Dentist, which t1 lists too. t2 is a sketch, its one goal 4e8 s
+    // out, its first leg passing 2000 s under Dentist: under a pixel at this zoom, and not drawn.
+    const world: World = {
+      tracks: [
+        { id: 't1', color: 0, origin: { x: 0, y: 0 }, stops: ['dentist', 'wristband'], train: { leg: 0, departedAt: NOW }, target: 'goal' },
+        { id: 't2', color: 1, origin: { x: 0, y: 2000 }, stops: ['g2'], train: { leg: 0, departedAt: NOW }, target: 'goal' },
+        {
+          id: 'day',
+          color: 2,
+          origin: { x: 1000, y: -400 },
+          stops: ['dentist', 'dayEnd'],
+          train: { leg: 0, departedAt: NOW },
+          target: 'next',
+          day: { date: dayOf(NOW), budgets: [1000, 0], lengths: [3600, 1800] },
+        },
+      ],
+      stops: [
+        { id: 'dentist', title: 'Dentist', shape: 'circle', size: 'medium', x: 1000, y: 0, done: false },
+        { id: 'wristband', title: 'Wristband', shape: 'square', size: 'large', x: 3000, y: 0, done: false },
+        { id: 'g2', title: 'Goal two', shape: 'square', size: 'large', x: 4e8, y: 2000, done: false },
+        { id: 'dayEnd', title: '', shape: 'square', size: 'small', x: 1500, y: 900, done: false },
+      ],
+      lastTouched: null,
+    };
+    const store = createStore(world);
+    render(<App store={store} now={() => NOW} />);
+    zoomOutTo('3 months');
+    // Past the tap's slop, along the day line's height.
+    act(() => dragStop(/^Dentist/, 12, 0));
+    expect(stopNamed(store, 'dentist').x).toBeGreaterThan(1000);
+    expect(store.getState().tracks.find((t) => t.id === 't2')!.stops).toEqual(['g2']);
   });
 });

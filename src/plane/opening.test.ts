@@ -1,9 +1,11 @@
-import { expect, test } from 'vitest';
-import { dayState, legSeconds, trackRoute, trainState } from '../model/train';
+import { describe, expect, test } from 'vitest';
+import { dayState, legSeconds, lifeState, trackRoute, trainState } from '../model/train';
 import type { Stop, Track, World } from '../model/types';
 import { addDays, dayOf } from '../model/days';
-import { twoLines, withDay } from '../test/fixtures';
+import { twoLines, withDay, withLife } from '../test/fixtures';
 import { fitLeg, HOME, MIN_SCALE } from './camera';
+import { gridFor } from './grid';
+import { PROJECT_MIN_SCALE, PROJECTS_HIDDEN_FROM } from './level';
 import { openingCamera } from './opening';
 
 const viewport = { w: 900, h: 600 };
@@ -66,10 +68,11 @@ test('no unparked track leaves the camera at home', () => {
   expect(openingCamera(parked, 0, viewport)).toEqual(HOME);
 });
 
-test('a leg too long for the zoom range is clamped', () => {
-  const far = [stop('a', 1e7)];
+test('a project leg too long to fit opens at the widest zoom that still draws the project', () => {
+  const far = [stop('a', 1e10)];
   const world: World = { tracks: [track('t', ['a'], 0, 0)], stops: far, lastTouched: null };
-  expect(openingCamera(world, 1000, viewport).scale).toBe(MIN_SCALE);
+  expect(PROJECT_MIN_SCALE).toBeGreaterThan(MIN_SCALE);
+  expect(openingCamera(world, 1000, viewport).scale).toBe(PROJECT_MIN_SCALE);
 });
 
 test('the camera opens on the day train when there is a day', () => {
@@ -119,4 +122,71 @@ test('without a day the camera opens as before', () => {
   expect(cam.x).toBeCloseTo(viewport.w / 2 - at.x * cam.scale);
   expect(cam.y).toBeCloseTo(viewport.h / 2 - at.y * cam.scale);
   // The earlier tests in this file are the rest of "as before", unchanged.
+});
+
+/** withLife() and a project t3 that is sooner than any other: its train waits at Z a hundred seconds out. */
+function withSoonerProject(): World {
+  const world = withLife();
+  world.stops.push(stop('z', 0, 100));
+  world.tracks.push(track('t3', ['z'], 0, 0));
+  return world;
+}
+
+describe('the life line', () => {
+  test('with no day the camera opens on the project train heading for the first undone ring', () => {
+    // Start is a bare marker, so the first ring is Wristband, t1's goal. t3 is sooner, but it is not
+    // what the life line points at.
+    const world = withSoonerProject();
+    const byId = new Map(world.stops.map((s) => [s.id, s]));
+    const at = trainState(world.tracks[0], byId, 500_000).at;
+    const cam = openingCamera(world, 500_000, viewport);
+    expect(cam.scale).toBeCloseTo(fitLeg(1000, viewport.w));
+    expect(cam.x).toBeCloseTo(viewport.w / 2 - at.x * cam.scale);
+    expect(cam.y).toBeCloseTo(viewport.h / 2 - at.y * cam.scale);
+  });
+
+  test('a done ring is passed over for the next undone one', () => {
+    // Wristband done: the only ring left is none, so the life train's leg to a bare marker is framed.
+    const world = withSoonerProject();
+    world.stops.find((s) => s.id === 'wristband')!.done = true;
+    const life = world.tracks.find((t) => t.life)!;
+    life.train = { leg: 2, departedAt: 400_000 };
+    const state = lifeState(life, world, 500_000);
+    const cam = openingCamera(world, 500_000, viewport);
+    expect(cam.x).toBeCloseTo(viewport.w / 2 - state.at.x * cam.scale);
+    expect(cam.y).toBeCloseTo(viewport.h / 2 - state.at.y * cam.scale);
+  });
+
+  test('with no ring but a bare marker ahead the camera frames the life train on its leg to the marker', () => {
+    const world = withSoonerProject();
+    world.tracks = world.tracks.filter((t) => t.id !== 't1');
+    const life = world.tracks.find((t) => t.life)!;
+    const state = lifeState(life, world, 100_000);
+    const cam = openingCamera(world, 100_000, viewport);
+    // Leg 0 is the 500 s run from the origin to Start.
+    expect(cam.scale).toBeCloseTo(fitLeg(500, viewport.w));
+    expect(cam.x).toBeCloseTo(viewport.w / 2 - state.at.x * cam.scale);
+    expect(cam.y).toBeCloseTo(viewport.h / 2 - state.at.y * cam.scale);
+  });
+
+  test('an empty life line falls back to the soonest project, then home', () => {
+    const world = withSoonerProject();
+    const life = world.tracks.find((t) => t.life)!;
+    life.stops = [];
+    life.life = { y: -800, budgets: [] };
+    world.tracks = world.tracks.filter((t) => t.id !== 't1');
+    expect(openingCamera(world, 500_000, viewport).y).toBeCloseTo(viewport.h / 2 - 100 * fitLeg(100, viewport.w));
+    world.tracks = [life];
+    expect(openingCamera(world, 500_000, viewport)).toEqual(HOME);
+  });
+
+  test('a project whose ring is two years out opens no wider than the 30-day unit, with its line still drawn', () => {
+    const world = withLife();
+    const twoYears = 2 * 365 * 86_400;
+    world.stops.find((s) => s.id === 'wristband')!.x = twoYears;
+    world.tracks = world.tracks.map((t) => (t.id === 't1' ? { ...t, stops: ['wristband'] } : t));
+    const cam = openingCamera(world, 1000, viewport);
+    expect(cam.scale).toBeGreaterThanOrEqual(PROJECT_MIN_SCALE);
+    expect(gridFor(cam.scale).seconds).toBeLessThan(PROJECTS_HIDDEN_FROM);
+  });
 });

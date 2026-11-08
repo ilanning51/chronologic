@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { arrivalOf } from '../model/arrive';
 import { reduce } from '../model/reducer';
+import { withLife } from '../test/fixtures';
 import type { Shape, Size, World } from '../model/types';
 import {
   blocksOn,
@@ -199,5 +200,25 @@ describe('the hours a held block cannot reach', () => {
 
   test('an earliest of the next midnight shades the whole day, as no block may end there', () => {
     expect(unreachable(date, { earliest: at(8, 0), latest: null })).toEqual([{ top: 0, height: DAY_HEIGHT }]);
+  });
+});
+
+describe('the life line and the week', () => {
+  /** withLife with Dentist done, so Wristband, a ring on the life line, is t1's next stop. */
+  function ringNext(): World {
+    const w = withLife();
+    w.stops = w.stops.map((s) => (s.id === 'dentist' ? { ...s, done: true, doneAt: 1 } : s));
+    w.tracks = w.tracks.map((t) => (t.id === 't1' ? { ...t, train: { leg: 1, departedAt: 0 } } : t));
+    return w;
+  }
+
+  test("a ring that is its project's next stop is not listed to plan", () => {
+    expect(candidates(ringNext(), now).map((c) => c.stopId)).toEqual([]);
+    expect(candidates(withLife(), now).map((c) => c.stopId)).toEqual(['dentist']);
+  });
+
+  test('a ring cannot be placed as a block, so it is never slid off the life height', () => {
+    const w = ringNext();
+    expect(place(w, 'wristband', '2026-11-06', at(6, 20), 3600)).toBe(w);
   });
 });

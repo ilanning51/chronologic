@@ -3,7 +3,7 @@ import type { Size } from '../model/types';
 interface GhostProps {
   x: number;
   y: number;
-  shape: 'circle' | 'triangle';
+  shape: 'circle' | 'triangle' | 'square';
   /** Medium for a tile from the tray; a step split off a stop takes that stop's size. */
   size?: Size;
   /** On a line: the ghost fills solid; otherwise it is muted. */

@@ -1,13 +1,19 @@
+import { isProject } from '../model/day';
 import { dayOf } from '../model/days';
+import { isRing, lifeOf } from '../model/life';
 import { legSeconds, stateOf, trackRoute, type TrainState } from '../model/train';
 import type { Track, World } from '../model/types';
 import { type Camera, centerOn, fitLeg, HOME } from './camera';
+import { PROJECT_MIN_SCALE } from './level';
+import { routeOf, trainOn } from './metro';
 import { soonestTrack } from './soonest';
 
 /**
  * Where the camera starts. With today's day under way, on its day train: the day is the plan, so it
- * is what to look at first. Otherwise on the soonest line's train. Either way zoomed so its leg
- * fills a third of the width. With nothing running the camera stays home.
+ * is what to look at first. Otherwise on the train of the project heading for the first undone ring
+ * on the life line, the direction the life line points; with no ring, on the life train on its leg
+ * to the next bare marker; else on the soonest line's train. Always zoomed so its leg fills a third
+ * of the width. With nothing running the camera stays home.
  */
 export function openingCamera(world: World, now: number, viewport: { w: number; h: number }): Camera {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
@@ -18,6 +24,18 @@ export function openingCamera(world: World, now: number, viewport: { w: number; 
     if (!state.parked) return frame(day, state);
   }
 
+  const life = lifeOf(world);
+  if (life) {
+    const ringId = life.stops.find((id) => !byId.get(id)?.done && isRing(world, id));
+    const project = ringId && world.tracks.find((t) => isProject(t) && t.stops[t.stops.length - 1] === ringId);
+    if (project) {
+      const state = stateOf(project, world, now);
+      if (!state.parked) return frame(project, state);
+    }
+    const state = stateOf(life, world, now);
+    if (!state.parked && !ringId) return frame(life, state);
+  }
+
   const track = soonestTrack(world, now);
   return track ? frame(track, stateOf(track, world, now)) : HOME;
 
@@ -25,6 +43,8 @@ export function openingCamera(world: World, now: number, viewport: { w: number; 
     // A waiting train is about to set off on the next leg; at the last stop there is none.
     const leg = state.waiting && state.leg + 1 < track.stops.length ? state.leg + 1 : state.leg;
     const scale = fitLeg(legSeconds(trackRoute(track, byId), leg), viewport.w);
-    return centerOn(HOME, state.at, viewport, scale);
+    // A project is not drawn past the 30-day unit, so a years-long leg frames at that zoom instead.
+    const at = trainOn(routeOf(world, track, dayOf(now)), state).at;
+    return centerOn(HOME, at, viewport, isProject(track) ? Math.max(scale, PROJECT_MIN_SCALE) : scale);
   }
 }

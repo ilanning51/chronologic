@@ -1,4 +1,5 @@
 import type { Point } from '../plane/geometry';
+import { isShadow } from './day';
 import { legSeconds, rebase, trackRoute, trainState } from './train';
 import type { Stop, World } from './types';
 
@@ -18,7 +19,7 @@ export function keepTrain(before: World, after: World, trackId: string, now: num
   const was = before.tracks.find((t) => t.id === trackId);
   const track = after.tracks.find((t) => t.id === trackId);
   // The day train shadows the projects and keeps its own leg; a drag never rebases it.
-  if (!was || !track || track.day) return after;
+  if (!was || !track || isShadow(track)) return after;
   const state = trainState(was, stopsById(before), now);
   if (state.parked) return after;
   const seconds = keep ?? state.seconds;

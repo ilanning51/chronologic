@@ -1,6 +1,6 @@
 /**
- * The paper knows what time it is. Its flat colour drifts through the day: the warm grey of the
- * design by day, cooler and a shade darker at night, bluish at dawn and peach at dusk. A cue for
+ * The paper knows what time it is. Its flat colour drifts through the day: the map's white by day,
+ * a grey a shade darker at night, bluish at dawn and the 1972 map's cream at dusk. A cue for
  * a brain that cannot feel time pass, read without a clock. Flat tints only: one colour on the
  * whole paper at a time, never a gradient. Every colour that sits on the paper (ink, muted, the
  * eight track colours) was measured against the day paper and keeps its contrast on each of these.
@@ -8,19 +8,19 @@
 
 /** The paper at each keyframe hour; between two it is mixed in proportion. The last wraps to the first. */
 export const PAPER_BY_HOUR: readonly { hour: number; paper: string }[] = [
-  { hour: 0, paper: '#E4E3E7' }, // night
-  { hour: 5, paper: '#E4E3E7' },
-  { hour: 7, paper: '#E7ECEE' }, // dawn, cool
-  { hour: 10, paper: '#EEEBE5' }, // day, the design's paper
-  { hour: 16, paper: '#EEEBE5' },
-  { hour: 19, paper: '#F1E5D3' }, // dusk, warm
-  { hour: 22, paper: '#E4E3E7' }, // night
-  { hour: 24, paper: '#E4E3E7' },
+  { hour: 0, paper: '#EDEDF0' }, // night
+  { hour: 5, paper: '#EDEDF0' },
+  { hour: 7, paper: '#F3F6F8' }, // dawn, cool
+  { hour: 10, paper: '#FFFFFF' }, // day, the map's white
+  { hour: 16, paper: '#FFFFFF' },
+  { hour: 19, paper: '#FBF4E6' }, // dusk, the 1972 map's cream
+  { hour: 22, paper: '#EDEDF0' }, // night
+  { hour: 24, paper: '#EDEDF0' },
 ];
 
-/** The design's day paper and its grid: the grid is this much darker in every channel. */
-export const DAY_PAPER = '#EEEBE5';
-const GRID_STEP = [14, 15, 16] as const;
+/** The design's day paper and its grid: the grid is this much darker in every channel, a neutral grey. */
+export const DAY_PAPER = '#FFFFFF';
+const GRID_STEP = [18, 18, 18] as const;
 
 function parse(hex: string): [number, number, number] {
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];

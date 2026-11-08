@@ -10,8 +10,8 @@ export interface Camera {
   scale: number;
 }
 
-/** Pixels per second of plan: a month fits across a screen at the far end. */
-export const MIN_SCALE = 0.0002;
+/** Pixels per second of plan: about fifty years fit across a landscape phone at the far end. */
+export const MIN_SCALE = 5e-7;
 /** Zoomed all the way in, a second of plan is twenty pixels. */
 export const MAX_SCALE = 20;
 /** The scale the camera flies to when it follows the train. */

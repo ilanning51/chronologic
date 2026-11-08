@@ -12,6 +12,7 @@ interface TrayProps {
 const TILES: { tile: Tile; label: string }[] = [
   { tile: 'circle', label: 'Step' },
   { tile: 'triangle', label: 'Sub-goal' },
+  { tile: 'square', label: 'Marker' },
   { tile: 'line', label: 'New line' },
   { tile: 'sun', label: 'Today' },
 ];
@@ -21,6 +22,7 @@ function Picture({ tile }: { tile: Tile }) {
   switch (tile) {
     case 'circle':
     case 'triangle':
+    case 'square':
       return <span aria-hidden="true" className={`shape ${tile} medium`} />;
     case 'line':
       // A line as it looks on the plane: a round start, a short run, a square goal.
@@ -46,8 +48,8 @@ function Picture({ tile }: { tile: Tile }) {
 }
 
 /**
- * The plus button and, when open, the tray beside it: a step, a sub-goal, a new line and the
- * sun that draws today. Each tile is a brush: a tap turns it on or off, and a tile can still be
+ * The plus button and, when open, the tray beside it: a step, a sub-goal, a marker for the life
+ * line, a new line and the sun that draws today. Each tile is a brush: a tap turns it on or off, and a tile can still be
  * dragged out onto the plane. The plane's recognizer reports the tap, so a pointer's click is
  * ignored here; a click from the keyboard (detail 0) has no tap behind it and toggles. The plus
  * toggles through a plain click so the keyboard reaches it too.

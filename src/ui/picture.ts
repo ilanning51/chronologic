@@ -1,4 +1,4 @@
-import { PALETTE } from '../model/palette';
+import { INK, PALETTE } from '../model/palette';
 import { DAY_PAPER } from '../plane/daylight';
 
 /**
@@ -12,9 +12,8 @@ import { DAY_PAPER } from '../plane/daylight';
 /** Blocks across and down a goal's picture. */
 export const PICTURE_PX = 16;
 
-/** The ink and the muted ink, as tokens.css sets them. */
-const INK = '#2B2420';
-const MUTED = '#6B635C';
+/** The muted ink, as tokens.css sets it. */
+const MUTED = '#636466';
 
 /** The inks a picture may be painted in: paper, ink, muted, and the eight track colours. */
 export const INKS: readonly string[] = [DAY_PAPER, INK, MUTED, ...PALETTE.map((c) => c.color)];

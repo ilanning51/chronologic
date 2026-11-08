@@ -3,8 +3,9 @@ import { drawnOnPlane } from '../model/day';
 import { dayOf } from '../model/days';
 import { dayState, trainState } from '../model/train';
 import type { Stop, Track, World } from '../model/types';
-import { running, twoLines, withDay, withWeek } from '../test/fixtures';
+import { running, twoLines, withDay, withLife, withWeek } from '../test/fixtures';
 import { MAX_SCALE, worldToScreen } from './camera';
+import { CLIP_MARGIN_PX } from './clip';
 import { layoutTrack } from './layout';
 
 function stop(id: string, x: number, y: number, over: Partial<Stop> = {}): Stop {
@@ -39,8 +40,8 @@ test('a track lays out in screen space with constant shapes, a dot for done, and
     [{ x: 200, y: 100 }, { x: 200, y: 300 }],
   ]);
   expect(v.stops).toEqual([
-    { id: 'a', x: 200, y: 100, shape: 'circle', size: 'medium', done: false, title: 'a', label: true, next: true, goal: false, projectGoal: false, terminus: false, ring: false, crowd: 0 },
-    { id: 'g', x: 200, y: 300, shape: 'square', size: 'large', done: true, title: 'g', label: true, next: false, goal: true, projectGoal: true, terminus: true, ring: false, crowd: 0 },
+    { id: 'a', x: 200, y: 100, shape: 'circle', size: 'medium', done: false, title: 'a', label: true, next: true, goal: false, projectGoal: false, terminus: false, landmark: false, ring: false, lane: { x: 200, y: 100 }, crowd: 0 },
+    { id: 'g', x: 200, y: 300, shape: 'square', size: 'large', done: true, title: 'g', label: true, next: false, goal: true, projectGoal: true, terminus: true, landmark: false, ring: false, lane: { x: 200, y: 300 }, crowd: 0 },
   ]);
   // halfway through leg 0 (1000 s): world (500, 0) -> screen (150, 100).
   expect(v.train).toMatchObject({ x: 150, y: 100, waiting: false, parked: false });
@@ -240,5 +241,87 @@ describe('day lines on the plane', () => {
     const t2 = (world: World) => layoutTrack(world.tracks[1], world, wide, noon, viewport);
     expect(t2(w).stops.find((s) => s.id === 'goal2')?.ring).toBe(true);
     expect(t2(later(w)).stops.find((s) => s.id === 'goal2')?.ring).toBe(false);
+  });
+});
+
+describe('the widest zooms draw only the life line', () => {
+  // 3e-6 px per second puts the grid at 3 months, 1e-6 at 1 year, 1e-4 at 1 hour.
+  const at = (scale: number) => ({ x: 100, y: 400, scale });
+  const ids = (v: ReturnType<typeof layoutTrack>) => v.stops.map((x) => x.id);
+
+  test('at 3 months a project line lays out to nothing, even with a pinned stop, and the life line keeps its squares', () => {
+    const w = withLife();
+    const project = layoutTrack(w.tracks[0], w, at(3e-6), 0, viewport, new Set(['dentist']));
+    expect(project).toMatchObject({ stops: [], segments: [], behind: [], anyInView: false });
+    const life = layoutTrack(w.tracks[1], w, at(3e-6), 0, viewport);
+    expect(ids(life)).toEqual(['start', 'wristband', 'far']);
+    expect(life.segments.length + life.behind.length).toBeGreaterThan(0);
+  });
+
+  test('at 1 year the life line drops its rings and keeps bare markers and done squares', () => {
+    const w = withLife();
+    expect(ids(layoutTrack(w.tracks[1], w, at(1e-6), 0, viewport))).toEqual(['start', 'far']);
+    w.stops.find((x) => x.id === 'wristband')!.done = true;
+    w.stops.find((x) => x.id === 'start')!.done = true;
+    expect(ids(layoutTrack(w.tracks[1], w, at(1e-6), 0, viewport))).toEqual(['start', 'wristband', 'far']);
+  });
+
+  test('below 3 months every line lays out as before', () => {
+    const w = withLife();
+    expect(ids(layoutTrack(w.tracks[0], w, at(1e-4), 0, viewport))).toEqual(['dentist', 'wristband']);
+    expect(ids(layoutTrack(w.tracks[1], w, at(1e-4), 0, viewport))).toEqual(['start', 'wristband', 'far']);
+  });
+});
+
+describe('the life line as drawn', () => {
+  // Life height -800 at 0.1 puts the line at screen y 420; its origin is at screen x 100.
+  const camera = { x: 100, y: 500, scale: 0.1 };
+  const life = (w: World) => layoutTrack(w.tracks.find((t) => t.life)!, w, camera, 0, viewport);
+  const flat = (v: ReturnType<typeof layoutTrack>) => [...v.behind, ...v.segments];
+
+  test('its road runs edge to edge at its height, and what is behind the train ends at the train', () => {
+    const v = life(withLife());
+    expect(v.behind[0][0]).toEqual({ x: -CLIP_MARGIN_PX, y: 420 });
+    expect(v.segments[v.segments.length - 1][1]).toEqual({ x: viewport.w + CLIP_MARGIN_PX, y: 420 });
+    for (const [a, b] of flat(v)) expect([a.y, b.y]).toEqual([420, 420]);
+    expect(v.behind[v.behind.length - 1][1]).toEqual({ x: v.train.x, y: v.train.y });
+  });
+
+  test('with no stops it is still a road edge to edge, neither finished nor a sketch', () => {
+    const w = withLife();
+    const track = w.tracks.find((t) => t.life)!;
+    track.stops = [];
+    track.life = { y: -800, budgets: [] };
+    const v = life(w);
+    expect(v.finished).toBe(false);
+    expect(v.sketch).toBe(false);
+    expect(v.life).toBe(true);
+    expect(Math.min(...flat(v).map(([a]) => a.x))).toBe(-CLIP_MARGIN_PX);
+    expect(Math.max(...flat(v).map(([, b]) => b.x))).toBe(viewport.w + CLIP_MARGIN_PX);
+  });
+
+  test('a project line is not the life line', () => {
+    const w = withLife();
+    expect(layoutTrack(w.tracks[0], w, camera, 0, viewport).life).toBe(false);
+  });
+
+  test('a done square is a landmark whose name is kept however close its neighbour', () => {
+    const w = withLife();
+    w.stops.push({ id: 'near', title: 'Near', shape: 'square', size: 'medium', x: 520, y: -800, done: true });
+    w.stops.find((x) => x.id === 'start')!.done = true;
+    w.tracks.find((t) => t.life)!.stops = ['start', 'near', 'wristband', 'far'];
+    w.tracks.find((t) => t.life)!.life = { y: -800, budgets: [0, 0, 0, 0] };
+    const v = life(w);
+    const by = (id: string) => v.stops.find((s) => s.id === id)!;
+    expect([by('start').landmark, by('near').landmark, by('far').landmark, by('wristband').landmark]).toEqual([true, true, false, false]);
+    // Two done squares two pixels apart would thin to one name, were they not landmarks.
+    expect([by('start').label, by('near').label]).toEqual([true, true]);
+  });
+
+  test("a project's done goal is a terminus, never a landmark", () => {
+    const w = withLife();
+    w.stops.find((x) => x.id === 'wristband')!.done = true;
+    const goal = layoutTrack(w.tracks[0], w, camera, 0, viewport).stops.find((s) => s.id === 'wristband')!;
+    expect(goal).toMatchObject({ terminus: true, landmark: false });
   });
 });

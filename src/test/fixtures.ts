@@ -45,6 +45,30 @@ export function twoLines(): World {
 }
 
 /**
+ * running() and the life line above it at y = -800: a bare marker Start (x 500), then Wristband
+ * (t1's goal, moved up onto the life line, so a ring), then a bare marker Far (x 5000).
+ */
+export function withLife(): World {
+  const world = running();
+  const y = -800;
+  world.stops.find((s) => s.id === 'wristband')!.y = y;
+  world.tracks.push({
+    id: 'life',
+    color: 0,
+    origin: { x: 0, y },
+    stops: ['start', 'wristband', 'far'],
+    train: { leg: 0, departedAt: 0 },
+    target: 'next',
+    life: { y, budgets: [0, 0, 0] },
+  });
+  world.stops.push(
+    { id: 'start', title: 'Start', shape: 'square', size: 'medium', x: 500, y, done: false },
+    { id: 'far', title: 'Far', shape: 'square', size: 'large', x: 5000, y, done: false },
+  );
+  return world;
+}
+
+/**
  * twoLines() and today's day line: Dentist, then Shared, then the day's-end square. The first
  * budget is Dentist's time left at 0 s; the later ones are written as the day train gets there.
  */

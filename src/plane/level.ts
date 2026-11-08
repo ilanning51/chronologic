@@ -1,5 +1,5 @@
 import type { Shape, Size } from '../model/types';
-import { DAY, HOUR, MINUTE, WEEK } from './grid';
+import { DAY, GRID_MIN_PX, HOUR, MINUTE, MONTH, WEEK, YEAR } from './grid';
 
 /**
  * Which stops the map shows at a height. Like a map that draws cities from far away and
@@ -20,3 +20,18 @@ export const LEVELS: Record<Shape, Record<Size, number>> = {
 export function showsAt(shape: Shape, size: Size, gridSeconds: number): boolean {
   return gridSeconds <= LEVELS[shape][size];
 }
+
+/**
+ * By line rather than by shape: from this grid unit up, project lines and everything on them are
+ * left out and only the life line is drawn, the way a far-out map keeps only the coast.
+ */
+export const PROJECTS_HIDDEN_FROM = 90 * DAY;
+
+/** From this grid unit up, the life line also leaves out its rings; bare markers and done squares stay. */
+export const RINGS_HIDDEN_FROM = YEAR;
+
+/**
+ * The widest zoom at which a project line is still drawn: the 30-day unit just fits. Framing a
+ * project never goes wider, or a years-long leg would open on a view with nothing of it in sight.
+ */
+export const PROJECT_MIN_SCALE = GRID_MIN_PX / MONTH;

@@ -1,16 +1,19 @@
 import { crowdAt } from '../model/crowd';
-import { drawnOnPlane } from '../model/day';
+import { drawnOnPlane, isProject } from '../model/day';
 import { addDays, dayOf } from '../model/days';
 import { tracksOf } from '../model/reducer';
-import { nextIndex, stateOf, trackRoute } from '../model/train';
+import { nextIndex, stateOf } from '../model/train';
 import type { Shape, Size, Track, World } from '../model/types';
 import { type Camera, worldToScreen } from './camera';
 import { CLIP_MARGIN_PX, clipSegment } from './clip';
 import type { Point } from './geometry';
 import { gridFor } from './grid';
 import { labelsWithRoom } from './labels';
-import { showsAt } from './level';
-import { cutAt, legSpan } from './routing';
+import { PROJECTS_HIDDEN_FROM, RINGS_HIDDEN_FROM, showsAt } from './level';
+import { roundLine, shiftLine } from './draw';
+import { lanesOf, routeOf } from './metro';
+import { cutAt, pathLength, pointAlong } from './routing';
+import { BEND_CUT_PX, LANE_PX } from './world';
 
 export interface StopView {
   id: string;
@@ -29,8 +32,21 @@ export interface StopView {
   projectGoal: boolean;
   /** A project's goal, done: a terminus, drawn as a large ink dot that keeps its name. */
   terminus: boolean;
+  /** A done square on the life line: a small ink square that keeps its name. */
+  landmark: boolean;
   /** On two or more lines and not done: an interchange, drawn as a ring. */
   ring: boolean;
+  /**
+   * On the life line: a goal some project works toward, or a marker nothing feeds. They are drawn
+   * alike, so this is how a screen reader tells them apart.
+   */
+  life?: 'goal' | 'marker';
+  /**
+   * Where this line's lane crosses the stop, square across the road it shares there: the stop's
+   * own point moved by the line's lane arriving, or leaving where that lane is wider. The stop's
+   * own point when the line has the road alone.
+   */
+  lane: Point;
   /** Dots of crowd, only on the stop the train waits at. */
   crowd: number;
 }
@@ -51,6 +67,8 @@ export interface TrackView {
   day: boolean;
   /** Tomorrow's day line: drawn like a sketch, muted and thin, its train waiting at its start. */
   tomorrow: boolean;
+  /** The life line, drawn in ink and wider, edge to edge. */
+  life: boolean;
   /** A project line with only its goal, drawn muted and thin. A look, not a state. */
   sketch: boolean;
   /** The road still to come, from the train to the goal, in the line's colour. */
@@ -70,6 +88,8 @@ export interface TrackView {
  * outside it are left out, so a month of track at full zoom never reaches the renderer.
  * Stops below the grid's level are left out too, as a map leaves out streets from far away,
  * except the next stop, the goal and any id in `pinned`; the line still routes through them.
+ * Wide enough, whole lines go: a project line draws nothing from the 3-month unit up, and the
+ * life line drops its rings from the 1-year unit up, keeping bare markers and done squares.
  */
 export function layoutTrack(
   track: Track,
@@ -89,20 +109,37 @@ export function layoutTrack(
   };
   const inside = (p: Point) => p.x >= grown.x && p.x <= grown.x + grown.w && p.y >= grown.y && p.y <= grown.y + grown.h;
 
-  const route = trackRoute(track, byId);
-  const vertices = route.vertices.map((v) => worldToScreen(camera, v));
+  // The line as the map draws it, in screen pixels: its chosen bends, its lane wherever it shares
+  // a road, and every bend rounded. A line not on the plane has the road to itself.
+  const lanes = lanesOf(world, today).get(track.id);
+  const route = lanes?.route ?? routeOf(world, track, today);
+  const shift = lanes?.shift ?? route.vertices.slice(1).map(() => ({ x: 0, y: 0 }));
+  const width = lanes?.width ?? shift.map(() => 1);
+  const line = roundLine(
+    shiftLine(
+      route.vertices.map((v) => worldToScreen(camera, v)),
+      route.stationAt,
+      shift.map((o) => ({ x: o.x * LANE_PX, y: o.y * LANE_PX })),
+      width.map((n) => ((n - 1) / 2) * LANE_PX),
+    ),
+    BEND_CUT_PX,
+  );
   const state = stateOf(track, world, now);
 
-  // The line is cut at the train: behind it is travelled, ahead is still to come. A parked train
-  // has travelled it all.
-  const cut = state.parked
-    ? { behind: route.vertices, ahead: [] }
-    : (() => {
-        const { from, to } = legSpan(route, state.leg);
-        return cutAt(route.vertices, from, to, state.seconds);
-      })();
-  const toSegments = (points: Point[]): [Point, Point][] => {
-    const shown = points.map((p) => worldToScreen(camera, p));
+  // The train is the share of its leg's length the clock has run, along the leg as drawn. The
+  // line is cut there: behind it is travelled, ahead is still to come. A parked train has
+  // travelled it all, and stands at its last stop.
+  const last = line.stationAt[line.stationAt.length - 1];
+  const leg = state.parked ? null : { from: line.stationAt[state.leg], to: line.stationAt[state.leg + 1] };
+  const share = (() => {
+    if (!leg) return 1;
+    const planned = pathLength(route.vertices, route.stationAt[state.leg], route.stationAt[state.leg + 1]);
+    return planned === 0 ? 1 : state.seconds / planned;
+  })();
+  const cut = leg
+    ? cutAt(line.points, leg.from, leg.to, share * pathLength(line.points, leg.from, leg.to))
+    : { behind: line.points, ahead: [] };
+  const toSegments = (shown: Point[]): [Point, Point][] => {
     const out: [Point, Point][] = [];
     for (let i = 1; i < shown.length; i++) {
       const clipped = clipSegment(shown[i - 1], shown[i], grown);
@@ -110,22 +147,50 @@ export function layoutTrack(
     }
     return out;
   };
-  const behind = toSegments(cut.behind);
-  const segments = toSegments(cut.ahead);
+  const gridSeconds = gridFor(camera.scale).seconds;
+  const hidden = isProject(track) && gridSeconds >= PROJECTS_HIDDEN_FROM;
+  // The life line runs the whole width of the view at its height, whatever its stops: its first
+  // and last segments are carried out to the clip bounds, on either side of the train.
+  const reach = (points: Point[], side: 'left' | 'right'): Point[] => {
+    if (!track.life) return points;
+    const from = side === 'left' ? points[0] : points[points.length - 1];
+    const x = side === 'left' ? Math.min(grown.x, from.x) : Math.max(grown.x + grown.w, from.x);
+    const end = { x, y: from.y };
+    return side === 'left' ? [end, ...points] : [...points, end];
+  };
+  const trailing = cut.ahead.length > 0 ? cut.ahead : cut.behind.slice(-1);
+  const behind = hidden ? [] : toSegments(reach(cut.behind, 'left'));
+  const segments = hidden ? [] : toSegments(reach(trailing, 'right'));
   const crowd = state.waiting ? crowdAt(track, byId, now) : 0;
 
   const next = nextIndex(track, byId);
   const goalIndex = track.stops.length - 1;
-  const gridSeconds = gridFor(camera.scale).seconds;
+  // A stop on this line alone sits in the line's lane. A stop on several sits on its own point,
+  // which is the middle of any ribbon through it, since lanes are centred on the road.
+  const laneAt = (station: number): Point => {
+    const v = route.stationAt[station];
+    const sides = [shift[v - 1], shift[v]].filter((o): o is Point => o !== undefined);
+    const widest = sides.reduce((a, b) => (Math.hypot(b.x, b.y) > Math.hypot(a.x, a.y) + 1e-6 ? b : a), { x: 0, y: 0 });
+    const own = worldToScreen(camera, route.vertices[v]);
+    return { x: own.x + widest.x * LANE_PX, y: own.y + widest.y * LANE_PX };
+  };
+  const lifeOfStop = (id: string): Pick<StopView, 'life'> => {
+    const on = tracksOf(world, id);
+    if (!on.some(({ track: t }) => t.life)) return {};
+    return { life: on.some(({ track: t }) => isProject(t)) ? 'goal' : 'marker' };
+  };
+  const linesAt = (id: string) => tracksOf(world, id).filter(({ track: t }) => drawnOnPlane(t, today)).length;
   const placed = track.stops.flatMap((id, index) => {
+    if (hidden) return [];
     const stop = byId.get(id)!;
-    const at = worldToScreen(camera, stop);
+    if (track.life && gridSeconds >= RINGS_HIDDEN_FROM && !stop.done && tracksOf(world, id).some(({ track: t }) => isProject(t))) return [];
+    const at = linesAt(id) >= 2 ? worldToScreen(camera, stop) : line.points[line.stationAt[index + 1]];
     const shown = index === next || index === goalIndex || pinned.has(id) || showsAt(stop.shape, stop.size, gridSeconds);
     return inside(at) && shown ? [{ stop, at, index }] : [];
   });
   const always = new Set<string>();
   for (const p of placed) {
-    if (p.index === goalIndex || p.index === next) always.add(p.stop.id);
+    if (p.index === goalIndex || p.index === next || (track.life && p.stop.done)) always.add(p.stop.id);
   }
   const labeled = labelsWithRoom(placed.map((p) => ({ id: p.stop.id, x: p.at.x })), always);
   const stops: StopView[] = placed.map(({ stop, at, index }) => ({
@@ -140,27 +205,33 @@ export function layoutTrack(
     label: labeled.has(stop.id),
     next: index === next,
     goal: index === goalIndex,
-    projectGoal: index === goalIndex && !track.day,
-    terminus: index === goalIndex && !track.day && stop.done,
-    ring: !stop.done && tracksOf(world, stop.id).filter(({ track: t }) => drawnOnPlane(t, today)).length >= 2,
+    projectGoal: index === goalIndex && isProject(track),
+    terminus: index === goalIndex && isProject(track) && stop.done,
+    landmark: track.life !== undefined && stop.done,
+    ...lifeOfStop(stop.id),
+    // The life line is no line to change trains on: its square is its project's goal, drawn as one.
+    ring: !stop.done && tracksOf(world, stop.id).filter(({ track: t }) => !t.life && drawnOnPlane(t, today)).length >= 2,
+    lane: laneAt(index + 1),
     crowd: index === state.leg ? crowd : 0,
   }));
 
-  const trainAt = worldToScreen(camera, state.at);
-  const train: TrainView = { x: trainAt.x, y: trainAt.y, angle: state.angle, waiting: state.waiting, parked: state.parked };
+  const drawn = leg ? pointAlong(line.points, leg.from, leg.to, share) : { at: line.points[last], angle: state.angle };
+  const trainAt = drawn.at;
+  const train: TrainView = { x: trainAt.x, y: trainAt.y, angle: drawn.angle, waiting: state.waiting, parked: state.parked };
 
   return {
     id: track.id,
     color: track.color,
-    finished: state.parked,
+    finished: state.parked && !track.life,
     day: track.day !== undefined,
     tomorrow: track.day !== undefined && track.day.date === addDays(today, 1),
-    sketch: !track.day && track.stops.length === 1,
+    life: track.life !== undefined,
+    sketch: isProject(track) && track.stops.length === 1,
     segments,
     behind,
-    origin: vertices[0],
+    origin: line.points[0],
     stops,
     train,
-    anyInView: segments.length > 0 || behind.length > 0 || stops.length > 0 || inside(trainAt),
+    anyInView: segments.length > 0 || behind.length > 0 || stops.length > 0 || !hidden && inside(trainAt),
   };
 }

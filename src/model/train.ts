@@ -1,5 +1,7 @@
 import type { Point } from '../plane/geometry';
 import { legSpan, pathLength, pointAlong, routeThrough, type Route } from '../plane/routing';
+import { isProject } from './day';
+import { isRing, lifeRoute } from './life';
 import { invertProgress, progress } from './motion';
 import type { Stop, Track, Train, World } from './types';
 
@@ -87,7 +89,7 @@ export function timeLeftAny(world: World, stopId: string, now: number): number {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   let best: number | null = null;
   for (const track of world.tracks) {
-    if (track.day || !track.stops.includes(stopId)) continue;
+    if (!isProject(track) || !track.stops.includes(stopId)) continue;
     const left = timeLeft(track, stopId, byId, now);
     if (best === null || left < best) best = left;
   }
@@ -109,7 +111,7 @@ export function dayState(day: Track, world: World, now: number): TrainState {
   if (day.day?.held) return { leg, parked: false, waiting: true, seconds: 0, fraction: 0, departedAt, at: route.vertices[0], angle: 0 };
   const budget = day.day?.budgets[leg] ?? 0;
   const left = timeLeftAny(world, day.stops[leg], now);
-  const fraction = budget === 0 ? 1 : Math.min(1, Math.max(0, 1 - left / budget));
+  const fraction = shadowFraction(budget, left);
   const { from, to } = legSpan(route, leg);
   const length = pathLength(route.vertices, from, to);
   return {
@@ -123,12 +125,46 @@ export function dayState(day: Track, world: World, now: number): TrainState {
   };
 }
 
+/** The share of a leg's budget the project time has run down, from 0 to 1; a leg with no budget is run. */
+function shadowFraction(budget: number, left: number): number {
+  return budget === 0 ? 1 : Math.min(1, Math.max(0, 1 - left / budget));
+}
+
 /**
- * Where any track's train is: the day train is the shadow of the projects, every other train
- * keeps its own clock. Every reader that does not care which kind goes through here.
+ * Where the life train is. On a leg into a ring it is the day train's shadow of the project time.
+ * On a leg into a bare marker no project has a clock to shadow, so it rides real time along the leg
+ * with the project trains' motion profile and waits at the marker.
+ */
+export function lifeState(life: Track, world: World, now: number): TrainState {
+  const byId = new Map(world.stops.map((s) => [s.id, s]));
+  const route = lifeRoute(life, byId);
+  const { leg, departedAt } = life.train;
+  if (leg >= life.stops.length) return parkedState(life, route, leg, departedAt);
+  const { from, to } = legSpan(route, leg);
+  const length = pathLength(route.vertices, from, to);
+  const stopId = life.stops[leg];
+  let fraction: number;
+  let waiting: boolean;
+  if (isRing(world, stopId)) {
+    const budget = life.life?.budgets[leg] ?? 0;
+    fraction = shadowFraction(budget, timeLeftAny(world, stopId, now));
+    waiting = fraction === 1;
+  } else {
+    const tau = length === 0 ? 1 : (now - departedAt) / 1000 / length;
+    fraction = progress(tau);
+    waiting = tau >= 1;
+  }
+  return { leg, parked: false, waiting, seconds: fraction * length, fraction, departedAt, ...pointAlong(route.vertices, from, to, fraction) };
+}
+
+/**
+ * Where any track's train is: the day train and the life train are shadows of the projects, every
+ * other train keeps its own clock. Every reader that does not care which kind goes through here.
  */
 export function stateOf(track: Track, world: World, now: number): TrainState {
-  return track.day ? dayState(track, world, now) : trainState(track, new Map(world.stops.map((s) => [s.id, s])), now);
+  if (track.day) return dayState(track, world, now);
+  if (track.life) return lifeState(track, world, now);
+  return trainState(track, new Map(world.stops.map((s) => [s.id, s])), now);
 }
 
 /** A train on `leg` that has covered `seconds` of a leg `legLength` long, as of now. */
@@ -148,11 +184,23 @@ export function nextIndex(track: Track, byId: Map<string, Stop>): number | null 
   return null;
 }
 
-/** The index of the stop the track's edge bubble points at, or null once the train is parked. */
-export function targetIndex(track: Track, byId: Map<string, Stop>): number | null {
+/**
+ * The index of the stop the track's edge bubble points at, or null once the train is parked. The
+ * life line points at its next undone square or its last one, never at a sub-goal; `hidden` names
+ * squares the level does not draw, which "next" passes over, so the bubble never points at nothing.
+ */
+export function targetIndex(track: Track, byId: Map<string, Stop>, hidden?: (stopId: string) => boolean): number | null {
   const next = nextIndex(track, byId);
   if (next === null) return null;
   const goal = track.stops.length - 1;
+  if (track.life) {
+    if (track.target !== 'next') return goal;
+    for (let i = next; i < goal; i++) {
+      const id = track.stops[i];
+      if (!byId.get(id)?.done && !hidden?.(id)) return i;
+    }
+    return goal;
+  }
   if (track.target === 'next') return next;
   if (track.target === 'goal') return goal;
   for (let i = next; i < goal; i++) {

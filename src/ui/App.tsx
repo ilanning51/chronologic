@@ -2,9 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
-import { dayWith, drawnOnPlane, isDayEnd } from '../model/day';
+import { dayWith, drawnOnPlane, isDayEnd, isProject, isShadow } from '../model/day';
 import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
+import { isRing, lifeOf, lifeTrainX, onLife } from '../model/life';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
 import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
@@ -22,14 +23,18 @@ import {
 } from '../plane/camera';
 import type { Gesture, Tile } from '../plane/gestures';
 import { distance, type Point } from '../plane/geometry';
+import { gridFor, GRID_MIN_PX, YEAR } from '../plane/grid';
+import { PROJECT_MIN_SCALE, PROJECTS_HIDDEN_FROM, RINGS_HIDDEN_FROM } from '../plane/level';
 import { bubbleFor, clearOf } from '../plane/bubbles';
 import { applyDaylight } from '../plane/daylight';
 import { layoutTrack } from '../plane/layout';
+import { routeOf, trainOn } from '../plane/metro';
 import { openingCamera } from '../plane/opening';
 import { pathLength, routeThrough } from '../plane/routing';
 import { drawnBetween } from '../plane/slide';
+import { CLIP_MARGIN_PX } from '../plane/clip';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
-import { nearestStop, snapToAll } from '../plane/snap';
+import { nearestStop, snapToAll, snapToLife } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
 import { tickMsFor } from '../plane/tick';
 import { BOX_PAD_PX, SNAP_PX, TAP_PX } from '../plane/world';
@@ -37,7 +42,7 @@ import { type Store, useWorld } from '../store/store';
 import { Bubble } from './Bubble';
 import { DayGhost } from './DayGhost';
 import { Ghost } from './Ghost';
-import { Grid } from './Grid';
+import { Grid, wrap } from './Grid';
 import { History, HISTORY_CORNER_PX } from './History';
 import { Legend } from './Legend';
 import { LegTime } from './LegTime';
@@ -47,7 +52,7 @@ import { Plane } from './Plane';
 import { SelectionBox } from './SelectionBox';
 import { Stop } from './Stop';
 import { StopEditor } from './StopEditor';
-import { stopsOnce } from './stopsOnce';
+import { labelPlaces, stopsOnce } from './stopsOnce';
 import { Track } from './Track';
 import { Tray } from './Tray';
 import { WeekButton } from './WeekButton';
@@ -66,7 +71,7 @@ export interface AppProps {
  * at hand: a goal also on the day is still a goal, whichever line comes first.
  */
 function homeOf(world: World, stopId: string) {
-  return tracksOf(world, stopId).find(({ track, index }) => !track.day && index === track.stops.length - 1)?.track;
+  return tracksOf(world, stopId).find(({ track, index }) => isProject(track) && index === track.stops.length - 1)?.track;
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -126,15 +131,40 @@ function useFly(setCamera: (c: Camera) => void) {
   );
 }
 
+/**
+ * How far a drag slides the drawn map before it is laid out again. The map is drawn CLIP_MARGIN_PX
+ * past every edge of the screen, so a slide this long never shows an edge the map was not drawn to.
+ */
+const SLIDE_PX = CLIP_MARGIN_PX * 0.75;
+
 /** How often the open week window reads the clock when nothing else does. */
 const WEEK_TICK_MS = 30_000;
+/**
+ * How far, in screen pixels, a ring must be pulled from the life line before it comes off: three
+ * snaps, so a drag along the line that wanders never drops it, while a square still snaps on at one.
+ */
+const PULL_OFF_PX = 3 * SNAP_PX;
+/** How much of the pull a square held on the life line shows, leaning toward the finger. */
+const LEAN = 0.25;
+
+/** The shapes a tile or a brush puts down: a marker is a square, which only the life line takes. */
+type CarriedShape = 'circle' | 'triangle' | 'square';
 
 /** The v2 plane: every track and stop in screen space, redrawn as the clock ticks. */
 export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const world = useWorld(store);
   const [camera, setCamera] = useState(HOME);
+  /**
+   * The camera as the hand has it. While a drag slides the world it runs ahead of `camera`, the
+   * one the map was last laid out for, and the gap is drawn as one shift of the world layer.
+   */
   const cameraRef = useRef(camera);
-  cameraRef.current = camera;
+  /** Whether a drag is sliding the world: the map is not redrawn and the clock holds still. */
+  const sliding = useRef(false);
+  if (!sliding.current) cameraRef.current = camera;
+  /** The camera the world layer on screen was laid out for. */
+  const laidOutFor = useRef(camera);
+  const worldEl = useRef<HTMLDivElement>(null);
   const stash = useRef<Camera | null>(null);
   const fly = useFly(setCamera);
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -184,9 +214,13 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   /** The line being drawn with the brush: where on screen the press went down. */
   const lineDraw = useRef<{ from: Point } | null>(null);
   /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
-  const [ghost, setGhost] = useState<{ shape: 'circle' | 'triangle'; size?: Size; x: number; y: number; snapped: boolean } | null>(null);
+  const [ghost, setGhost] = useState<{ shape: CarriedShape; size?: Size; x: number; y: number; snapped: boolean } | null>(null);
+  /** The square held on the life line and how far, in screen pixels, it leans toward the finger. */
+  const [lean, setLean] = useState<{ id: string; dy: number } | null>(null);
+  /** Where a goal carried in snap reach of the life line would land on it if let go now. */
+  const [landing, setLanding] = useState<{ x: number; y: number; size: Size } | null>(null);
   /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
-  const dragTile = useRef<{ shape: 'circle' | 'triangle'; hits: ReturnType<typeof snapToAll> } | null>(null);
+  const dragTile = useRef<{ shape: CarriedShape; hits: ReturnType<typeof snapToAll> } | null>(null);
   /**
    * The step being split off a stop under the secondary button: its shape and size, the lines
    * it may land on, and the snaps in reach, nearest first.
@@ -299,12 +333,63 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
    */
   const pinned = useRef(new Set<string>());
 
-  /** The hand moving the camera ends any motion zoom: the next tap on a train follows it afresh. */
-  const onZoom = useCallback((p: Point, factor: number) => {
-    stash.current = null;
-    pinned.current = new Set();
-    setCamera((c) => zoomAt(c, p, factor));
+  /**
+   * Draws the gap between the hand's camera and the drawn one as a shift of the world layer, which
+   * the compositor moves without a redraw. The grid is shifted back under the screen and its lines
+   * moved instead, so it still covers the glass.
+   */
+  const showSlide = useCallback(() => {
+    const world = worldEl.current;
+    if (!world) return;
+    const dx = cameraRef.current.x - laidOutFor.current.x;
+    const dy = cameraRef.current.y - laidOutFor.current.y;
+    const moved = dx !== 0 || dy !== 0;
+    world.style.transform = moved ? `translate3d(${dx}px, ${dy}px, 0)` : '';
+    world.style.willChange = sliding.current ? 'transform' : '';
+    const grid = world.querySelector<HTMLElement>('.grid');
+    if (grid) {
+      const { px } = gridFor(laidOutFor.current.scale);
+      grid.style.transform = moved ? `translate3d(${-dx}px, ${-dy}px, 0)` : '';
+      grid.style.backgroundPosition = `${wrap(cameraRef.current.x, px)}px ${wrap(cameraRef.current.y, px)}px`;
+    }
   }, []);
+
+  /** A drag slides the world as one picture, and redraws it only once the slide nears the edge of what is drawn. */
+  const slideBy = (dx: number, dy: number) => {
+    sliding.current = true;
+    const c = panBy(cameraRef.current, dx, dy);
+    cameraRef.current = c;
+    if (Math.abs(c.x - laidOutFor.current.x) > SLIDE_PX || Math.abs(c.y - laidOutFor.current.y) > SLIDE_PX) setCamera(c);
+    showSlide();
+  };
+
+  /** The drag is over: the map is redrawn where the hand left it, and the clock jumps to now. */
+  const endSlide = useCallback(() => {
+    if (!sliding.current) return;
+    sliding.current = false;
+    // Lets go of the layer's hint now, in case nothing moved since the last redraw and none follows.
+    showSlide();
+    setCamera(cameraRef.current);
+    store.dispatch({ type: 'tick', now: now() });
+    setTime(now());
+  }, [store, now, showSlide]);
+
+  // After every redraw, the world layer is shifted by whatever the hand has moved since it was laid out.
+  useLayoutEffect(() => {
+    laidOutFor.current = camera;
+    showSlide();
+  });
+
+  /** The hand moving the camera ends any motion zoom: the next tap on a train follows it afresh. */
+  const onZoom = useCallback(
+    (p: Point, factor: number) => {
+      endSlide();
+      stash.current = null;
+      pinned.current = new Set();
+      setCamera((c) => zoomAt(c, p, factor));
+    },
+    [endSlide],
+  );
 
   /** The audio context is made on the first gesture that needs it, as browsers require. */
   const sound = (): AudioContext | null => {
@@ -314,15 +399,20 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     return ctx;
   };
 
-  /** Only the stop the train is heading for completes; the goal adds the chord and the buzz. */
-  const complete = (trackId: string, stopId: string) => {
+  /**
+   * Only the stop the train is heading for completes; the goal adds the chord and the buzz. A ring
+   * speaks for its project even where only the life line draws it, zoomed out, so it completes
+   * under that project's rule and never through the life line.
+   */
+  const complete = (tappedId: string, stopId: string) => {
     const state = store.getState();
-    const track = state.tracks.find((t) => t.id === trackId);
+    const tapped = state.tracks.find((t) => t.id === tappedId);
+    const track = tapped?.life && isRing(state, stopId) ? homeOf(state, stopId) : tapped;
     const stop = state.stops.find((s) => s.id === stopId);
     if (!track || !stop || stop.done) return;
     if (nextIndex(track, new Map(state.stops.map((s) => [s.id, s]))) !== track.stops.indexOf(stopId)) return;
     const goal = stopId === track.stops[track.stops.length - 1];
-    store.dispatch({ type: 'complete', trackId, now: now() });
+    store.dispatch({ type: 'complete', trackId: track.id, now: now() });
     const ctx = sound();
     if (ctx) {
       playTone(ctx, pitchFor(track.color));
@@ -412,16 +502,35 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       endDrag.current = { day: dayWith(state, stop.id)!.id, start: { x: stop.x, y: stop.y }, grip, added: false };
       return;
     }
-    // A goal drags as its line's goal whichever line its button speaks for, the day's included.
-    // A plain stop's leg chip reads a project leg, where it is next or else the first: the day's
-    // legs are not time, so a stop speaking for the day must not read one.
     const byId = new Map(state.stops.map((s) => [s.id, s]));
+    const grip = { x: stop.x - under.x, y: stop.y - under.y };
+    // A square on the life line, a ring or a bare marker with no home line, slides along it: its
+    // leg chip is the life line's, and every project through it keeps its train where it was.
+    // A ring pulled off it becomes its project's goal drag again (see `dragTo`).
+    const life = lifeOf(state);
+    if (life?.stops.includes(stop.id)) {
+      const projects = tracksOf(state, stop.id).filter(({ track: t }) => isProject(t));
+      const keep = Object.fromEntries(projects.map(({ track: t }) => [t.id, trainState(t, byId, now()).seconds]));
+      dragging.current = { id: stop.id, track: life.id, goal: false, grip, keep };
+      return;
+    }
+    dragging.current = projectDrag(state, stop.id, grip);
+  };
+
+  /**
+   * The drag of a stop on project lines. A goal drags as its line's goal whichever line its button
+   * speaks for, the day's included. A plain stop's leg chip reads a project leg, where it is next
+   * or else the first: the day's legs are not time, so a stop speaking for the day must not read one.
+   */
+  const projectDrag = (state: World, stopId: string, grip: Point): typeof dragging.current => {
+    const byId = new Map(state.stops.map((s) => [s.id, s]));
+    const stop = byId.get(stopId)!;
     const home = homeOf(state, stop.id);
     const goal = home !== undefined;
-    const projects = tracksOf(state, stop.id).filter(({ track: t }) => !t.day);
+    const projects = tracksOf(state, stop.id).filter(({ track: t }) => isProject(t));
     const project = projects.find(({ track: t, index }) => nextIndex(t, byId) === index) ?? projects[0];
     const track = home ?? project?.track;
-    if (!track) return;
+    if (!track) return null;
     const train = trainState(track, byId, now());
     const pending = track.stops.slice(train.leg, -1).filter((id) => !byId.get(id)!.done);
     const ahead = Object.fromEntries(pending.map((id) => [id, { x: byId.get(id)!.x, y: byId.get(id)!.y }]));
@@ -431,11 +540,11 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
       ? state.tracks.filter((t) => t.stops.some((id) => id === stop.id || pending.includes(id)))
       : tracksOf(state, stop.id).map((f) => f.track);
     const keep = Object.fromEntries(lines.map((t) => [t.id, trainState(t, byId, now()).seconds]));
-    dragging.current = {
+    return {
       id: stop.id,
       track: track.id,
       goal,
-      grip: { x: stop.x - under.x, y: stop.y - under.y },
+      grip,
       keep,
       from: goal ? { train: train.at, goal: { x: stop.x, y: stop.y }, ahead } : undefined,
     };
@@ -453,7 +562,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const under = screenToWorld(cameraRef.current, at);
     const train = trainState(track, new Map(state.stops.map((s) => [s.id, s])), now());
     // Only a train still on the first leg has a leg that changes; any other keeps its own clock.
-    const first = !track.day && !train.parked && train.leg === 0;
+    const first = isProject(track) && !train.parked && train.leg === 0;
     originDrag.current = {
       track: trackId,
       grip: { x: track.origin.x - under.x, y: track.origin.y - under.y },
@@ -476,7 +585,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     // moves and the other stays. A leg with both ends in the group, or neither, keeps its clock.
     const keep: Record<string, number> = {};
     for (const t of state.tracks) {
-      if (t.day) continue;
+      if (!isProject(t)) continue;
       const train = trainState(t, byId, now());
       if (train.parked) continue;
       const fromMoves = train.leg === 0 ? t.id in origins : t.stops[train.leg - 1] in stops;
@@ -511,7 +620,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     setMarqueeBox(null);
     if (!m) return;
     const cam = cameraRef.current;
-    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at)), dayOf(now())));
+    setSelection(pick(store.getState(), rectOf(screenToWorld(cam, m.from), screenToWorld(cam, at)), dayOf(now()), gridFor(cam.scale).seconds));
   };
 
   /** Moves the start of the line under the finger, grip and all, and reads back the first leg. */
@@ -536,6 +645,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
    * works from the drag's start, so where the finger wandered on the way never matters.
    */
   const dragTo = (at: Point) => {
+    pullOffLife(at);
     const d = dragging.current;
     if (!d) return;
     const under = screenToWorld(cameraRef.current, at);
@@ -544,6 +654,57 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
     showLegInto(d.track, d.id);
+    showPull(at);
+  };
+
+  /**
+   * What letting go or pulling further would do, shown before it happens. A square held on the
+   * life line leans toward the finger by a quarter of the pull, so the hold shows and a ring's
+   * release at `PULL_OFF_PX` is no surprise; a marker leans as far and springs back, held on. A goal
+   * carried in snap reach of the life line shows, solid on the line, where it would land.
+   */
+  const showPull = (at: Point) => {
+    const d = dragging.current;
+    const state = store.getState();
+    const life = lifeOf(state);
+    const stop = d && state.stops.find((s) => s.id === d.id);
+    const cam = cameraRef.current;
+    if (d && life && stop && d.track === life.id) {
+      const most = PULL_OFF_PX * LEAN;
+      const pull = (screenToWorld(cam, at).y + d.grip.y - life.life.y) * cam.scale * LEAN;
+      setLean({ id: d.id, dy: Math.max(-most, Math.min(most, pull)) });
+      setLanding(null);
+      return;
+    }
+    setLean(null);
+    // The same test the release makes for a goal, so the preview never promises what it will not do.
+    const hit = d?.goal && d.from && stop ? snapToLife(state, stop, now(), SNAP_PX / cam.scale, stop.id) : null;
+    const p = hit && worldToScreen(cam, hit.at);
+    setLanding(p && stop ? { x: p.x, y: p.y, size: stop.size } : null);
+  };
+
+  /** Takes back the lean and the landing preview: the square springs back to its place. */
+  const clearPull = () => {
+    setLean(null);
+    setLanding(null);
+  };
+
+  /**
+   * A ring sliding on the life line comes off it once the finger takes it `PULL_OFF_PX` from the
+   * line, well past where a snap reaches: the life line lets it go and the drag goes on as its project's goal drag,
+   * so a release back near the life line joins it again. A bare marker has nowhere else to be and
+   * stays on, and so does a ring while project lines are hidden, as it would vanish from the map.
+   * Leaving and the rest of the drag are one step for undo, as the whole gesture is.
+   */
+  const pullOffLife = (at: Point) => {
+    const d = dragging.current;
+    const state = store.getState();
+    const life = lifeOf(state);
+    if (!d || !life || d.track !== life.id || !homeOf(state, d.id) || projectsHidden()) return;
+    const cam = cameraRef.current;
+    if (Math.abs(screenToWorld(cam, at).y + d.grip.y - life.life.y) <= PULL_OFF_PX / cam.scale) return;
+    store.dispatch({ type: 'leave', trackId: life.id, stopId: d.id, now: now() });
+    dragging.current = projectDrag(store.getState(), d.id, d.grip);
   };
 
   /** Writes the planned time of the leg arriving at a stop beneath it, read back from the world. */
@@ -557,12 +718,28 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     setLegTime({ x: at.x, y: at.y, seconds: legSeconds(route, track.stops.indexOf(stopId)) });
   };
 
+  /** From the 3-month unit up no project line is drawn, and what is not drawn takes nothing. */
+  const projectsHidden = () => gridFor(cameraRef.current.scale).seconds >= PROJECTS_HIDDEN_FROM;
+
+  /**
+   * The lines a shape put down at a world point would join, nearest first. A square is a marker
+   * and only the life line takes it; every other shape joins project lines, while they are drawn,
+   * and never the life line.
+   */
+  const snapsFor = (shape: CarriedShape, p: Point): ReturnType<typeof snapToAll> => {
+    const state = store.getState();
+    const radius = SNAP_PX / cameraRef.current.scale;
+    if (shape !== 'square') return projectsHidden() ? [] : snapToAll(state, p, now(), radius);
+    const hit = snapToLife(state, p, now(), radius);
+    return hit ? [hit] : [];
+  };
+
   /** Carries a tile: the ghost follows the finger, or sits on the nearest line it would join. */
   const carryTile = (at: Point) => {
     const d = dragTile.current;
     if (!d) return;
     const cam = cameraRef.current;
-    d.hits = snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale);
+    d.hits = snapsFor(d.shape, screenToWorld(cam, at));
     const snap = d.hits[0];
     const shown = snap ? worldToScreen(cam, snap.at) : at;
     setGhost({ shape: d.shape, x: shown.x, y: shown.y, snapped: snap !== undefined });
@@ -575,7 +752,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
    * changes; where other lines are in reach too, the same stop joins each, staying at the
    * nearest's point; its name field opens. On paper it is nothing.
    */
-  const placeCarried = (shape: 'circle' | 'triangle', size: Size, hits: ReturnType<typeof snapToAll>) => {
+  const placeCarried = (shape: CarriedShape, size: Size, hits: ReturnType<typeof snapToAll>) => {
     setGhost(null);
     setLegTime(null);
     const [first, ...rest] = hits;
@@ -606,19 +783,24 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const stop = state.stops.find((s) => s.id === stopId);
     if (!stop || stop.done || isDayEnd(state, stopId)) return;
     const tracks = tracksOf(state, stopId)
-      .filter(({ track }) => !track.day)
+      .filter(({ track }) => isProject(track))
       .map(({ track }) => track.id);
     if (tracks.length === 0) return;
     splitDrag.current = { shape: stop.shape === 'square' ? 'triangle' : 'circle', size: stop.size, tracks, hits: [] };
     carrySplit(at);
   };
 
-  /** Carries the split step along its stop's lines: the ghost sits on the nearest in reach, or follows the pointer. */
+  /**
+   * Carries the split step along its stop's lines: the ghost sits on the nearest in reach, or
+   * follows the pointer. Its lines are all project lines, so while they are hidden none is in reach.
+   */
   const carrySplit = (at: Point) => {
     const d = splitDrag.current;
     if (!d) return;
     const cam = cameraRef.current;
-    d.hits = snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale).filter((h) => d.tracks.includes(h.trackId));
+    d.hits = projectsHidden()
+      ? []
+      : snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale).filter((h) => d.tracks.includes(h.trackId));
     const snap = d.hits[0];
     const shown = snap ? worldToScreen(cam, snap.at) : at;
     setGhost({ shape: d.shape, size: d.size, x: shown.x, y: shown.y, snapped: snap !== undefined });
@@ -632,10 +814,9 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     placeCarried(d?.shape ?? 'circle', d?.size ?? 'medium', d?.hits ?? []);
   };
 
-  /** A tap with a step brush: a medium stop on the line nearest the tap, if one is in reach. */
-  const placeStop = (shape: 'circle' | 'triangle', at: Point) => {
-    const cam = cameraRef.current;
-    placeCarried(shape, 'medium', snapToAll(store.getState(), screenToWorld(cam, at), now(), SNAP_PX / cam.scale));
+  /** A tap with a step or marker brush: a medium stop on the line nearest the tap, if one is in reach. */
+  const placeStop = (shape: CarriedShape, at: Point) => {
+    placeCarried(shape, 'medium', snapsFor(shape, screenToWorld(cameraRef.current, at)));
   };
 
   /** The line brush in flight: the routed ghost from the press to the pointer, and its time. */
@@ -669,29 +850,40 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     drawing.current = null;
     setDayGhost(null);
     setLegTime(null);
+    clearPull();
   };
 
   /**
    * Letting go of a stop near another line's path joins it there, at the snap point; the line it
    * came from keeps it. Only the release joins, so dragging through a line never does. A goal
-   * drag scales its line instead, and never joins.
+   * drag scales its line instead, and joins no project line; released on the life line it joins
+   * that, and the stops it scaled on the way go back, so only the goal has moved. A square on the
+   * life line only slides along it.
    */
   const joinOnRelease = (d: NonNullable<typeof dragging.current>) => {
     const state = store.getState();
-    // A square never joins: a goal drawn speaking for the day is still its line's goal.
-    if (d.goal || homeOf(state, d.id)) return;
+    if (onLife(state, d.id)) return;
     const stop = state.stops.find((s) => s.id === d.id);
     if (!stop) return;
     const cam = cameraRef.current;
+    if (d.goal && d.from) {
+      const hit = snapToLife(state, stop, now(), SNAP_PX / cam.scale, stop.id);
+      if (!hit) return;
+      store.dispatch({ type: 'moveGroup', stops: d.from.ahead, origins: {}, now: now(), keep: d.keep });
+      store.dispatch({ type: 'join', trackId: hit.trackId, stopId: stop.id, leg: hit.leg, x: hit.at.x, y: hit.at.y, now: now() });
+      return;
+    }
+    // A square never joins: a goal drawn speaking for the day is still its line's goal.
+    if (d.goal || homeOf(state, d.id) || projectsHidden()) return;
     const hit = snapToAll(state, stop, now(), SNAP_PX / cam.scale, stop.id)[0];
     if (hit) store.dispatch({ type: 'join', trackId: hit.trackId, stopId: stop.id, leg: hit.leg, x: hit.at.x, y: hit.at.y, now: now() });
   };
 
-  /** Stops a day can take: pending, listed by some project, and not among `skip`. */
+  /** Stops a day can take: pending, listed by some project, not on the life line, and not among `skip`. */
   const dayCandidates = (skip: string[]) => {
     const state = store.getState();
     return state.stops.filter(
-      (s) => !s.done && !skip.includes(s.id) && state.tracks.some((t) => !t.day && t.stops.includes(s.id)),
+      (s) => !s.done && !skip.includes(s.id) && !onLife(state, s.id) && state.tracks.some((t) => isProject(t) && t.stops.includes(s.id)),
     );
   };
 
@@ -847,10 +1039,14 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   const onGesture = (g: Gesture) => {
     endTitleStep();
+    // Anything but the drag itself first puts the map where the hand left it.
+    if (g.type !== 'pan') endSlide();
     switch (g.type) {
       case 'pan':
         stash.current = null;
-        setCamera((c) => panBy(c, g.dx, g.dy));
+        slideBy(g.dx, g.dy);
+        return;
+      case 'panEnd':
         return;
       case 'pinch':
         stash.current = null;
@@ -877,7 +1073,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
           // A brush keeps the tray open; the step brushes place a stop where the tap fell.
           if (!brushRef.current) setTrayOpen(false);
           const b = brushRef.current;
-          if (g.target.kind === 'brush' && (b === 'circle' || b === 'triangle')) {
+          if (g.target.kind === 'brush' && (b === 'circle' || b === 'triangle' || b === 'square')) {
             store.begin();
             placeStop(b, g.at);
             store.end();
@@ -995,6 +1191,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (dragging.current) joinOnRelease(dragging.current);
     dragging.current = null;
     setLegTime(null);
+    clearPull();
   };
 
   /**
@@ -1007,10 +1204,28 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
     const stops = new Map(state.stops.map((s) => [s.id, s]));
-    const i = targetIndex(track, stops);
+    const i = targetIndex(track, stops, hiddenOnLife(state));
     const target = i === null ? undefined : stops.get(track.stops[i]);
-    if (target?.image !== undefined) fitLine(track.id);
-    else store.dispatch({ type: 'cycleTarget', trackId });
+    if (target?.image === undefined) store.dispatch({ type: 'cycleTarget', trackId });
+    else if (track.life) flyToMarker(target);
+    else fitLine(track.id);
+  };
+
+  /**
+   * The squares the life line does not draw at the current zoom, which its bubble never points at:
+   * from the 1-year unit up, the rings.
+   */
+  const hiddenOnLife = (state: World, scale = cameraRef.current.scale) => {
+    const ringsHidden = gridFor(scale).seconds >= RINGS_HIDDEN_FROM;
+    return (id: string) => ringsHidden && isRing(state, id);
+  };
+
+  /** Flies to a life marker without ever landing wider than the 1-year unit, so the marker is drawn. */
+  const flyToMarker = (marker: Point) => {
+    const c = cameraRef.current;
+    stash.current = null;
+    pinned.current = new Set();
+    fly(c, centerOn(c, marker, viewport, Math.max(c.scale, GRID_MIN_PX / YEAR)));
   };
 
   /** Flies out, never in, until the line's start and every stop on it are in view with room around them. */
@@ -1024,7 +1239,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     // Leaving a followed train or a pinned level by this flight is the hand moving the camera.
     stash.current = null;
     pinned.current = new Set();
-    fly(c, fitPoints(c, points, viewport));
+    const fit = fitPoints(c, points, viewport);
+    // A project is not drawn past the 30-day unit, so the fit stops there rather than leaving it blank.
+    if (!isProject(track) || fit.scale >= PROJECT_MIN_SCALE) return fly(c, fit);
+    fly(c, centerOn(c, screenToWorld(fit, { x: viewport.w / 2, y: viewport.h / 2 }), viewport, PROJECT_MIN_SCALE));
   };
 
   /** A long press on a bubble flies to the stop it points at, keeping the current scale. */
@@ -1033,7 +1251,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
     const stops = new Map(state.stops.map((s) => [s.id, s]));
-    const i = targetIndex(track, stops);
+    const i = targetIndex(track, stops, hiddenOnLife(state));
     const target = i === null ? undefined : stops.get(track.stops[i]);
     if (!target) return;
     const c = cameraRef.current;
@@ -1054,7 +1272,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
     // The day train is a shadow: it is where dayState says, not where its legs' own clock would be.
-    const at = stateOf(track, state, now()).at;
+    const at = trainOn(routeOf(state, track, dayOf(now())), stateOf(track, state, now())).at;
     stash.current = c;
     fly(c, centerOn(c, at, viewport, MOTION_SCALE));
   };
@@ -1125,11 +1343,15 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     },
     [],
   );
+  // From the 3-month unit up a project is not drawn at all, its train included; only the life line remains.
+  const farOut = gridFor(camera.scale).seconds >= PROJECTS_HIDDEN_FROM;
 
   useEffect(() => {
     if (!rolling) return;
     // Each tick also asks the world whether the day has turned over.
     const id = window.setInterval(() => {
+      // A drag holds the trains still; letting go brings them to now.
+      if (sliding.current) return;
       store.dispatch({ type: 'tick', now: now() });
       setTime(now());
     }, tickMsFor(camera.scale));
@@ -1139,7 +1361,9 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   // The open week window keeps its now line and its blocks current even when every train is parked.
   useEffect(() => {
     if (!weekOpen) return;
-    const id = window.setInterval(() => setTime(now()), WEEK_TICK_MS);
+    const id = window.setInterval(() => {
+      if (!sliding.current) setTime(now());
+    }, WEEK_TICK_MS);
     return () => window.clearInterval(id);
   }, [weekOpen, now]);
 
@@ -1159,18 +1383,30 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const editedHome = editing ? homeOf(world, editing) : undefined;
   const editedDayEnd = editing ? isDayEnd(world, editing) : false;
   // A chip per line the stop can leave, once it is on two or more; a square's home is not one.
+  // The life line's last square is no goal, so a ring can leave it from any place on it.
   const onTracks = editing ? tracksOf(world, editing) : [];
   const lines =
     onTracks.length >= 2
       ? onTracks
-          .filter(({ track, index }) => index !== track.stops.length - 1)
+          .filter(({ track, index }) => track.life || index !== track.stops.length - 1)
           .map(({ track }) => ({
             trackId: track.id,
-            color: track.day ? null : track.color,
+            color: isShadow(track) ? null : track.color,
             // A chip is named by its line, so chips the same shape can be told apart by ear.
-            name: track.day ? dayName(track.day.date, time) : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
+            name: track.life
+              ? 'Life'
+              : track.day
+                ? dayName(track.day.date, time)
+                : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
           }))
       : [];
+  // A pending project goal off the life line, right of its train, can join it from the editor too,
+  // where it stands: the same place a drag would put it, for those a drag does not suit.
+  const lifeLine = lifeOf(world);
+  const joinLife =
+    editedStop && editedHome && !editedStop.done && lifeLine && !lifeLine.stops.includes(editedStop.id) && editedStop.x > lifeTrainX(world, lifeLine, time)
+      ? () => store.dispatch({ type: 'join', trackId: lifeLine.id, stopId: editedStop.id, leg: 0, x: editedStop.x, y: lifeLine.life.y, now: now() })
+      : undefined;
   const editor =
     editedStop && onTracks.length > 0 ? (
       <StopEditor
@@ -1181,6 +1417,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         done={editedStop.done}
         holding={holding}
         lines={lines}
+        onJoinLife={joinLife}
         onEdit={(change) => {
           // Letters typed in one sitting are one step; a shape or size is a step of its own.
           if (change.title !== undefined && change.shape === undefined && change.size === undefined) {
@@ -1240,9 +1477,14 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const bubbles = views.flatMap((v) => {
     if (!v.anyInView) return [];
     const track = world.tracks.find((t) => t.id === v.id);
-    const i = track ? targetIndex(track, byId) : null;
+    const i = track ? targetIndex(track, byId, hiddenOnLife(world, camera.scale)) : null;
     const target = track && i !== null ? drawnById.get(track.stops[i]) : undefined;
     if (!track || !target) return [];
+    // The life train waiting at the square its bubble points at fills the bubble, as the soonest line's is.
+    const filled = track.life ? (() => {
+          const state = stateOf(track, world, time);
+          return i === state.leg && state.waiting;
+        })() : v.id === soonest?.id;
     // The stop may be off the grown viewport and so missing from the view: use its world point.
     const spot = bubbleFor(worldToScreen(camera, target), viewport);
     const at = spot && clearOf(spot, HISTORY_CORNER_PX);
@@ -1254,7 +1496,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
             color={v.color}
             day={v.day && !v.tomorrow}
             sketch={v.sketch || v.tomorrow}
-            soonest={v.id === soonest?.id}
+            life={track.life !== undefined}
+            soonest={filled}
             shape={target.shape}
             title={target.title}
             image={target.image}
@@ -1265,11 +1508,12 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   });
   const hud = (
     <>
+      {/* The legend is a solid plate and takes no input: drawn first, it lies under any bubble in its corner. */}
+      <Legend camera={camera} />
       {bubbles}
       {legTime && <LegTime {...legTime} />}
       {editor}
       <History canUndo={store.canUndo()} canRedo={store.canRedo()} onUndo={() => history('undo')} onRedo={() => history('redo')} />
-      <Legend camera={camera} />
       <Tray
         open={trayOpen}
         brush={brush}
@@ -1284,20 +1528,25 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     </>
   );
 
+  // Each stop once, and its name set beside it on the side that covers least.
+  const placedStops = stopsOnce(views, lifeOf(world)?.id);
+  const places = labelPlaces(placedStops, views);
+
   // The week window and its button sit beside the plane, not in it, so neither a press nor a wheel
   // on them ever reaches the map.
   return (
     <>
-      <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
+      <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush} worldRef={worldEl}>
         <Grid camera={camera} />
         {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
-        {views.map((v) => (
+        {views.filter((v) => !farOut || v.day || v.life).map((v) => (
           <Track key={v.id} view={v} />
         ))}
-        {stopsOnce(views).map((p) => (
-          <Stop key={p.stop.id} {...p} />
+        {placedStops.map((p) => (
+          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} lean={lean?.id === p.stop.id ? lean.dy : undefined} />
         ))}
         {ghost && <Ghost {...ghost} />}
+        {landing && <Ghost shape="square" size={landing.size} x={landing.x} y={landing.y} snapped />}
         {dayGhost && <DayGhost points={dayGhost} />}
       </Plane>
       {weekOpen && <WeekWindow store={store} now={time} clock={now} />}
