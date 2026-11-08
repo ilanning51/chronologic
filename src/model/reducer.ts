@@ -18,7 +18,7 @@ import {
   withStopBeforeEnd,
 } from './day';
 import { dayOf } from './days';
-import { setArrival, setLeg } from './arrive';
+import { firstMovable, setArrival, setLeg } from './arrive';
 import { moveBlock, place, unplace, type PlaceAction } from './blocks';
 import {
   holdLifePlace,
@@ -42,20 +42,19 @@ import type { BubbleTarget, Shape, Size, Stop, Track, World } from './types';
 export const DEFAULT_GOAL_SECONDS = 2_592_000;
 
 /**
- * Where a goal drag started: the train's point, the goal's point and every stop the drag carries
- * (see `carried`). Each move of the drag offsets these originals, so the result never depends on
- * the path, and the set it carries is fixed when the drag begins.
- */
-/**
  * The stops a goal drag carries with it: the pending stops after the train's point, the goal
  * left out. A rolling train's next stop goes with them; the stop a waiting train sits at stays.
  */
 export function carried(track: Track, byId: Map<string, Stop>, now: number): string[] {
-  const train = trainState(track, byId, now);
-  if (train.parked) return [];
-  return track.stops.slice(train.waiting ? train.leg + 1 : train.leg, -1).filter((id) => !byId.get(id)?.done);
+  const first = firstMovable(track, byId, now);
+  return first < 0 ? [] : track.stops.slice(first, -1).filter((id) => !byId.get(id)?.done);
 }
 
+/**
+ * Where a goal drag started: the goal's point and every stop the drag carries (see `carried`).
+ * Each move of the drag offsets these originals, so the result never depends on the path, and
+ * the set it carries is fixed when the drag begins.
+ */
 export interface GoalDragStart {
   goal: Point;
   ahead: Record<string, Point>;
@@ -71,7 +70,7 @@ export type Action =
   | { type: 'newTrack'; id: string; goalId: string; title: string; origin: Point; goal?: Point; now: number } // goal: a month out, unless drawn
   | { type: 'addStop'; trackId: string; id: string; shape: Shape; size?: Size; leg: number; x: number; y: number; now: number; keep?: number }
   | { type: 'move'; id: string; x: number; y: number; now: number; keep?: Record<string, number> } // a pending stop that is not the goal
-  | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart; stretch?: false } // stretch false: the stops ahead stay put
+  | { type: 'moveGoal'; trackId: string; x: number; y: number; now: number; keep?: Record<string, number>; from?: GoalDragStart; stretch?: false } // stretch false: the carried stops stay put
   | { type: 'setLeg'; stopId: string; seconds: number; now: number } // the leg into a stop, typed; what follows moves with it
   | { type: 'setArrival'; stopId: string; seconds: number; now: number } // when a stop's train gets there, typed
   | { type: 'moveOrigin'; trackId: string; x: number; y: number; now: number; keep?: number } // the start of a line
@@ -255,7 +254,7 @@ function apply(world: World, action: Action): World {
           .reduce((w, { track }) => keepTrain(world, w, track.id, now, keep?.[track.id]), sorted);
         return keepLife(world, rerouted, now);
       }
-      // A goal moves by moveGoal, which scales its line with it.
+      // A goal moves by moveGoal, which carries its line's pending stops with it.
       if (found.some(({ track, index }) => index === track.stops.length - 1)) return world;
       // One point: every line through it re-routes, and every train keeps its place.
       const after: World = {

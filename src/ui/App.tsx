@@ -203,7 +203,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   /**
    * The pending stop under a finger, how far its centre sits from where the finger landed, and
    * the drag's start: the seconds then of every train the drag re-routes, by track id, and, for
-   * the goal, the points it scales from and the leg into it, which Shift keeps as long as it was.
+   * the goal, the points its carry is offset from and the leg into it, which Shift keeps as long as it was.
    */
   const dragging = useRef<{
     id: string;
@@ -940,8 +940,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   /**
    * Letting go of a stop near another line's path joins it there, at the snap point; the line it
    * came from keeps it. Only the release joins, so dragging through a line never does. A goal
-   * drag scales its line instead, and joins no project line; released on the life line it joins
-   * that, and the stops it scaled on the way go back, so only the goal has moved. A square on the
+   * drag carries its line's pending stops instead, and joins no project line; released on the life
+   * line it joins that, and the stops it carried on the way go back, so only the goal has moved. A square on the
    * life line only slides along it.
    */
   const joinOnRelease = (d: NonNullable<typeof dragging.current>) => {

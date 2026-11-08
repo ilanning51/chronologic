@@ -66,7 +66,7 @@ function legOf(world: World, stopId: string, now: number): Leg | null {
   return line && legOn(world, line.track, line.index, now);
 }
 
-/** The leg into the k-th stop of this line, whatever line reaches that stop first. */
+/** The leg into the k-th stop of the given line. */
 function legOn(world: World, track: Track, k: number, now: number): Leg {
   const byId = new Map(world.stops.map((s) => [s.id, s]));
   const stop = byId.get(track.stops[k])!;
@@ -245,7 +245,7 @@ export function slideTo(world: World, stopId: string, end: number, now: number):
  * The index of the first stop a change of time may move on this line: the one a rolling train is
  * heading for, or the one after the stop a waiting train sits at. -1 for a parked train.
  */
-function firstMovable(track: Track, byId: Map<string, Stop>, now: number): number {
+export function firstMovable(track: Track, byId: Map<string, Stop>, now: number): number {
   const state = trainState(track, byId, now);
   if (state.parked) return -1;
   return state.waiting ? state.leg + 1 : state.leg;
