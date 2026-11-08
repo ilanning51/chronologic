@@ -126,6 +126,25 @@ function headFrom(world: World, life: LifeTrack, leg: number, budgets: number[],
   return departLife(world, life, leg, budgets, now);
 }
 
+/**
+ * The life train never goes back on its leg into a ring. When a change gives that ring more project
+ * time left (its line pulled longer, a stop undone), the leg's budget is set again from where the
+ * train stood, so it keeps its place and runs slower, reaching the ring when the project train does.
+ * A change that cuts the time may still carry it forward.
+ */
+export function steadyLife(before: World, after: World, now: number): World {
+  const was = lifeOf(before);
+  const life = lifeOf(after);
+  if (!was || !life) return after;
+  const { leg } = life.train;
+  if (leg >= life.stops.length || was.train.leg >= was.stops.length) return after;
+  const heading = life.stops[leg];
+  if (was.stops[was.train.leg] !== heading || !isRing(after, heading)) return after;
+  const trainX = lifeTrainX(before, was, now);
+  if (lifeTrainX(after, life, now) >= trainX - 1e-6) return after;
+  return headFrom(after, life, leg, [...life.life.budgets], trainX, now);
+}
+
 function replaceLife(world: World, life: Track): World {
   return { ...world, tracks: world.tracks.map((t) => (t.id === life.id ? life : t)) };
 }
