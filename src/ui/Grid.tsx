@@ -6,7 +6,7 @@ interface GridProps {
 }
 
 /** Wraps a position into [0, size), so the line through the world's origin stays on the grid. */
-const wrap = (v: number, size: number) => ((v % size) + size) % size;
+export const wrap = (v: number, size: number) => ((v % size) + size) % size;
 
 /**
  * The time grid, under everything in the world layer. One square is one unit of the ladder,

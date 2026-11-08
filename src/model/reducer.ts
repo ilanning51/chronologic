@@ -29,6 +29,7 @@ import {
   lifeWithout,
   onLife,
   settleLife,
+  steadyLife,
   sortedByX,
 } from './life';
 import { keepTrain } from './relocate';
@@ -164,7 +165,10 @@ const SETTLES = new Set<Action['type']>(['newDay', 'addToDay', 'complete', 'undo
 
 export function reduce(world: World, action: Action): World {
   const next = apply(world, action);
-  return next !== world && SETTLES.has(action.type) && 'now' in action ? settleLife(settleDay(next, action.now), action.now) : next;
+  if (next === world || !('now' in action)) return next;
+  const settled = SETTLES.has(action.type) ? settleLife(settleDay(next, action.now), action.now) : next;
+  // Whatever changed, the life train keeps its place on its leg rather than slide back.
+  return steadyLife(world, settled, action.now);
 }
 
 function apply(world: World, action: Action): World {

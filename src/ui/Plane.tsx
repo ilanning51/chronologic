@@ -1,4 +1,4 @@
-import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef } from 'react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, type Ref, useEffect, useMemo, useRef } from 'react';
 import type { Point } from '../plane/geometry';
 import { type Gesture, Recognizer, type Sample, type Target, type Tile } from '../plane/gestures';
 
@@ -9,6 +9,8 @@ interface PlaneProps {
   children: ReactNode;
   /** The brush that is on: a press on empty paper is the brush's, not a pan. */
   brush?: Tile | null;
+  /** The world layer, which a drag slides as one picture between redraws. */
+  worldRef?: Ref<HTMLDivElement>;
 }
 
 /** How often the recognizer is told that time passed while a pointer is down. */
@@ -59,7 +61,7 @@ const sample = (e: ReactPointerEvent): Sample => ({ id: e.pointerId, x: e.client
  * paper, or on the kept box, is the marquee: the recognizer is told so and never sees the key.
  * With a brush on, a press on empty paper is the brush's; Shift still wins.
  */
-export function Plane({ onGesture, onZoom, hud, children, brush = null }: PlaneProps) {
+export function Plane({ onGesture, onZoom, hud, children, brush = null, worldRef }: PlaneProps) {
   const latest = useRef(onGesture);
   latest.current = onGesture;
   const recognizer = useMemo(() => new Recognizer((g) => latest.current(g)), []);
@@ -143,7 +145,7 @@ export function Plane({ onGesture, onZoom, hud, children, brush = null }: PlaneP
         stopTickingWhenIdle();
       }}
     >
-      <div className="world">
+      <div className="world" ref={worldRef}>
         {children}
       </div>
       {hud}

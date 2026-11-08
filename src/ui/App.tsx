@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import '../styles/ui.css';
 import { buzz } from '../feedback/haptics';
 import { pitchFor, playChord, playTone } from '../feedback/sound';
 import { dayWith, drawnOnPlane, isDayEnd, isProject, isShadow } from '../model/day';
 import { dayOf, nextMidnight, parseDate } from '../model/days';
 import { newId } from '../model/ids';
-import { isRing, lifeOf, onLife } from '../model/life';
+import { isRing, lifeOf, lifeTrainX, onLife } from '../model/life';
 import { tracksOf, undoable, type GoalDragStart } from '../model/reducer';
 import type { Size, World } from '../model/types';
 import { legSeconds, nextIndex, stateOf, targetIndex, trackRoute, trainState } from '../model/train';
@@ -31,6 +31,7 @@ import { layoutTrack } from '../plane/layout';
 import { routeOf, trainOn } from '../plane/metro';
 import { openingCamera } from '../plane/opening';
 import { pathLength, routeThrough } from '../plane/routing';
+import { CLIP_MARGIN_PX } from '../plane/clip';
 import { bounds, pick, prune, rectOf, type Rect, type Selection } from '../plane/select';
 import { nearestStop, snapToAll, snapToLife } from '../plane/snap';
 import { soonestTrack } from '../plane/soonest';
@@ -40,7 +41,7 @@ import { type Store, useWorld } from '../store/store';
 import { Bubble } from './Bubble';
 import { DayGhost } from './DayGhost';
 import { Ghost } from './Ghost';
-import { Grid } from './Grid';
+import { Grid, wrap } from './Grid';
 import { History, HISTORY_CORNER_PX } from './History';
 import { Legend } from './Legend';
 import { LegTime } from './LegTime';
@@ -120,6 +121,12 @@ function useFly(setCamera: (c: Camera) => void) {
   );
 }
 
+/**
+ * How far a drag slides the drawn map before it is laid out again. The map is drawn CLIP_MARGIN_PX
+ * past every edge of the screen, so a slide this long never shows an edge the map was not drawn to.
+ */
+const SLIDE_PX = CLIP_MARGIN_PX * 0.75;
+
 /** How often the open week window reads the clock when nothing else does. */
 const WEEK_TICK_MS = 30_000;
 /**
@@ -127,6 +134,8 @@ const WEEK_TICK_MS = 30_000;
  * snaps, so a drag along the line that wanders never drops it, while a square still snaps on at one.
  */
 const PULL_OFF_PX = 3 * SNAP_PX;
+/** How much of the pull a square held on the life line shows, leaning toward the finger. */
+const LEAN = 0.25;
 
 /** The shapes a tile or a brush puts down: a marker is a square, which only the life line takes. */
 type CarriedShape = 'circle' | 'triangle' | 'square';
@@ -135,8 +144,17 @@ type CarriedShape = 'circle' | 'triangle' | 'square';
 export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const world = useWorld(store);
   const [camera, setCamera] = useState(HOME);
+  /**
+   * The camera as the hand has it. While a drag slides the world it runs ahead of `camera`, the
+   * one the map was last laid out for, and the gap is drawn as one shift of the world layer.
+   */
   const cameraRef = useRef(camera);
-  cameraRef.current = camera;
+  /** Whether a drag is sliding the world: the map is not redrawn and the clock holds still. */
+  const sliding = useRef(false);
+  if (!sliding.current) cameraRef.current = camera;
+  /** The camera the world layer on screen was laid out for. */
+  const drawn = useRef(camera);
+  const worldEl = useRef<HTMLDivElement>(null);
   const stash = useRef<Camera | null>(null);
   const fly = useFly(setCamera);
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -176,6 +194,10 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   const lineDraw = useRef<{ from: Point } | null>(null);
   /** The shape being carried from the tray, where it is drawn, and whether it sits on a line. */
   const [ghost, setGhost] = useState<{ shape: CarriedShape; size?: Size; x: number; y: number; snapped: boolean } | null>(null);
+  /** The square held on the life line and how far, in screen pixels, it leans toward the finger. */
+  const [lean, setLean] = useState<{ id: string; dy: number } | null>(null);
+  /** Where a goal carried in snap reach of the life line would land on it if let go now. */
+  const [landing, setLanding] = useState<{ x: number; y: number; size: Size } | null>(null);
   /** The shape and snaps of the tile drag in flight, nearest first; a ref so the drop reads the latest move. */
   const dragTile = useRef<{ shape: CarriedShape; hits: ReturnType<typeof snapToAll> } | null>(null);
   /**
@@ -290,12 +312,63 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
    */
   const pinned = useRef(new Set<string>());
 
-  /** The hand moving the camera ends any motion zoom: the next tap on a train follows it afresh. */
-  const onZoom = useCallback((p: Point, factor: number) => {
-    stash.current = null;
-    pinned.current = new Set();
-    setCamera((c) => zoomAt(c, p, factor));
+  /**
+   * Draws the gap between the hand's camera and the drawn one as a shift of the world layer, which
+   * the compositor moves without a redraw. The grid is shifted back under the screen and its lines
+   * moved instead, so it still covers the glass.
+   */
+  const showSlide = useCallback(() => {
+    const world = worldEl.current;
+    if (!world) return;
+    const dx = cameraRef.current.x - drawn.current.x;
+    const dy = cameraRef.current.y - drawn.current.y;
+    const moved = dx !== 0 || dy !== 0;
+    world.style.transform = moved ? `translate3d(${dx}px, ${dy}px, 0)` : '';
+    world.style.willChange = sliding.current ? 'transform' : '';
+    const grid = world.querySelector<HTMLElement>('.grid');
+    if (grid) {
+      const { px } = gridFor(drawn.current.scale);
+      grid.style.transform = moved ? `translate3d(${-dx}px, ${-dy}px, 0)` : '';
+      grid.style.backgroundPosition = `${wrap(cameraRef.current.x, px)}px ${wrap(cameraRef.current.y, px)}px`;
+    }
   }, []);
+
+  /** A drag slides the world as one picture, and redraws it only once the slide nears the edge of what is drawn. */
+  const slideBy = (dx: number, dy: number) => {
+    sliding.current = true;
+    const c = panBy(cameraRef.current, dx, dy);
+    cameraRef.current = c;
+    if (Math.abs(c.x - drawn.current.x) > SLIDE_PX || Math.abs(c.y - drawn.current.y) > SLIDE_PX) setCamera(c);
+    showSlide();
+  };
+
+  /** The drag is over: the map is redrawn where the hand left it, and the clock jumps to now. */
+  const endSlide = useCallback(() => {
+    if (!sliding.current) return;
+    sliding.current = false;
+    // Lets go of the layer's hint now, in case nothing moved since the last redraw and none follows.
+    showSlide();
+    setCamera(cameraRef.current);
+    store.dispatch({ type: 'tick', now: now() });
+    setTime(now());
+  }, [store, now, showSlide]);
+
+  // After every redraw, the world layer is shifted by whatever the hand has moved since it was laid out.
+  useLayoutEffect(() => {
+    drawn.current = camera;
+    showSlide();
+  });
+
+  /** The hand moving the camera ends any motion zoom: the next tap on a train follows it afresh. */
+  const onZoom = useCallback(
+    (p: Point, factor: number) => {
+      endSlide();
+      stash.current = null;
+      pinned.current = new Set();
+      setCamera((c) => zoomAt(c, p, factor));
+    },
+    [endSlide],
+  );
 
   /** The audio context is made on the first gesture that needs it, as browsers require. */
   const sound = (): AudioContext | null => {
@@ -560,6 +633,39 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (d.goal) store.dispatch({ type: 'moveGoal', trackId: d.track, x, y, now: now(), keep: d.keep, from: d.from });
     else store.dispatch({ type: 'move', id: d.id, x, y, now: now(), keep: d.keep });
     showLegInto(d.track, d.id);
+    showPull(at);
+  };
+
+  /**
+   * What letting go or pulling further would do, shown before it happens. A square held on the
+   * life line leans toward the finger by a quarter of the pull, so the hold shows and a ring's
+   * release at `PULL_OFF_PX` is no surprise; a marker leans as far and springs back, held on. A goal
+   * carried in snap reach of the life line shows, solid on the line, where it would land.
+   */
+  const showPull = (at: Point) => {
+    const d = dragging.current;
+    const state = store.getState();
+    const life = lifeOf(state);
+    const stop = d && state.stops.find((s) => s.id === d.id);
+    const cam = cameraRef.current;
+    if (d && life && stop && d.track === life.id) {
+      const most = PULL_OFF_PX * LEAN;
+      const pull = (screenToWorld(cam, at).y + d.grip.y - life.life.y) * cam.scale * LEAN;
+      setLean({ id: d.id, dy: Math.max(-most, Math.min(most, pull)) });
+      setLanding(null);
+      return;
+    }
+    setLean(null);
+    // The same test the release makes for a goal, so the preview never promises what it will not do.
+    const hit = d?.goal && d.from && stop ? snapToLife(state, stop, now(), SNAP_PX / cam.scale, stop.id) : null;
+    const p = hit && worldToScreen(cam, hit.at);
+    setLanding(p && stop ? { x: p.x, y: p.y, size: stop.size } : null);
+  };
+
+  /** Takes back the lean and the landing preview: the square springs back to its place. */
+  const clearPull = () => {
+    setLean(null);
+    setLanding(null);
   };
 
   /**
@@ -723,6 +829,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     drawing.current = null;
     setDayGhost(null);
     setLegTime(null);
+    clearPull();
   };
 
   /**
@@ -911,10 +1018,14 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
 
   const onGesture = (g: Gesture) => {
     endTitleStep();
+    // Anything but the drag itself first puts the map where the hand left it.
+    if (g.type !== 'pan') endSlide();
     switch (g.type) {
       case 'pan':
         stash.current = null;
-        setCamera((c) => panBy(c, g.dx, g.dy));
+        slideBy(g.dx, g.dy);
+        return;
+      case 'panEnd':
         return;
       case 'pinch':
         stash.current = null;
@@ -1047,6 +1158,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (dragging.current) joinOnRelease(dragging.current);
     dragging.current = null;
     setLegTime(null);
+    clearPull();
   };
 
   /**
@@ -1157,6 +1269,8 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
     if (!rolling) return;
     // Each tick also asks the world whether the day has turned over.
     const id = window.setInterval(() => {
+      // A drag holds the trains still; letting go brings them to now.
+      if (sliding.current) return;
       store.dispatch({ type: 'tick', now: now() });
       setTime(now());
     }, tickMsFor(camera.scale));
@@ -1166,7 +1280,9 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   // The open week window keeps its now line and its blocks current even when every train is parked.
   useEffect(() => {
     if (!weekOpen) return;
-    const id = window.setInterval(() => setTime(now()), WEEK_TICK_MS);
+    const id = window.setInterval(() => {
+      if (!sliding.current) setTime(now());
+    }, WEEK_TICK_MS);
     return () => window.clearInterval(id);
   }, [weekOpen, now]);
 
@@ -1203,6 +1319,13 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
                 : byId.get(track.stops[track.stops.length - 1])?.title || 'Unnamed',
           }))
       : [];
+  // A pending project goal off the life line, right of its train, can join it from the editor too,
+  // where it stands: the same place a drag would put it, for those a drag does not suit.
+  const lifeLine = lifeOf(world);
+  const joinLife =
+    editedStop && editedHome && !editedStop.done && lifeLine && !lifeLine.stops.includes(editedStop.id) && editedStop.x > lifeTrainX(world, lifeLine, time)
+      ? () => store.dispatch({ type: 'join', trackId: lifeLine.id, stopId: editedStop.id, leg: 0, x: editedStop.x, y: lifeLine.life.y, now: now() })
+      : undefined;
   const editor =
     editedStop && onTracks.length > 0 ? (
       <StopEditor
@@ -1213,6 +1336,7 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
         done={editedStop.done}
         holding={holding}
         lines={lines}
+        onJoinLife={joinLife}
         onEdit={(change) => {
           // Letters typed in one sitting are one step; a shape or size is a step of its own.
           if (change.title !== undefined && change.shape === undefined && change.size === undefined) {
@@ -1324,7 +1448,6 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   );
 
   // Each stop once, and its name set beside it on the side that covers least.
-  const lifeLine = lifeOf(world);
   // A project's goal on the life line is drawn in that project's colour, read off the world, not
   // off whichever lines happen to be drawn.
   const placedStops = stopsOnce(views, lifeLine?.id).map((p) => {
@@ -1340,16 +1463,17 @@ export function App({ store, now = Date.now, picture = pixelate }: AppProps) {
   // on them ever reaches the map.
   return (
     <>
-      <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush}>
+      <Plane onGesture={onGesture} onZoom={onZoom} hud={hud} brush={brush} worldRef={worldEl}>
         <Grid camera={camera} />
         {marqueeBox ? <SelectionBox rect={marqueeBox} live /> : keptBox && <SelectionBox rect={keptBox} live={false} />}
         {views.filter((v) => !farOut || v.day || v.life).map((v) => (
           <Track key={v.id} view={v} lifeY={lifeY} />
         ))}
         {placedStops.map((p) => (
-          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} />
+          <Stop key={p.stop.id} {...p} place={places.get(p.stop.id) ?? null} lean={lean?.id === p.stop.id ? lean.dy : undefined} />
         ))}
         {ghost && <Ghost {...ghost} />}
+        {landing && <Ghost shape="square" size={landing.size} x={landing.x} y={landing.y} snapped />}
         {dayGhost && <DayGhost points={dayGhost} />}
       </Plane>
       {weekOpen && <WeekWindow store={store} now={time} clock={now} />}

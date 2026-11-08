@@ -152,16 +152,45 @@ function setOn(item: LabelItem, side: LabelSide, lines: string[]): { place: Labe
   };
 }
 
-/** How long a stretch of a line, with its width, runs under a box. */
-function under(box: Box, [a, b]: [Point, Point]): number {
+/** A stretch of line and the box around it, worked out once for every name that is tried. */
+interface Piece {
+  a: Point;
+  b: Point;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+const pieceOf = ([a, b]: [Point, Point]): Piece => ({
+  a,
+  b,
+  x0: Math.min(a.x, b.x),
+  y0: Math.min(a.y, b.y),
+  x1: Math.max(a.x, b.x),
+  y1: Math.max(a.y, b.y),
+});
+
+/**
+ * Adds to `cost` how long each stretch of line, with its width, runs under a box. A stretch
+ * whose own box is clear of it runs none, so it is passed over before it is cut: the names are
+ * set every time the camera moves, and most of the map is nowhere near any one name.
+ */
+function plusUnder(cost: number, box: Box, pieces: Piece[]): number {
   const grown = {
     x: box.x0 - LINE_HALF_PX,
     y: box.y0 - LINE_HALF_PX,
     w: box.x1 - box.x0 + 2 * LINE_HALF_PX,
     h: box.y1 - box.y0 + 2 * LINE_HALF_PX,
   };
-  const clipped = clipSegment(a, b, grown);
-  return clipped ? Math.hypot(clipped[1].x - clipped[0].x, clipped[1].y - clipped[0].y) : 0;
+  const right = grown.x + grown.w;
+  const bottom = grown.y + grown.h;
+  for (const p of pieces) {
+    if (p.x1 < grown.x || p.x0 > right || p.y1 < grown.y || p.y0 > bottom) continue;
+    const clipped = clipSegment(p.a, p.b, grown);
+    if (clipped) cost += Math.hypot(clipped[1].x - clipped[0].x, clipped[1].y - clipped[0].y);
+  }
+  return cost;
 }
 
 const overlap = (a: Box, b: Box) =>
@@ -189,6 +218,7 @@ export function placeLabels(items: LabelItem[], segments: [Point, Point][], mark
   const order = [...items].sort(
     (a, b) => Number(b.always) - Number(a.always) || Number(b.bold) - Number(a.bold) || a.y - b.y || a.x - b.x,
   );
+  const pieces = segments.map(pieceOf);
   const set: Box[] = [];
   const out = new Map<string, LabelPlace>();
   for (const item of order) {
@@ -197,9 +227,8 @@ export function placeLabels(items: LabelItem[], segments: [Point, Point][], mark
     let least = Infinity;
     for (const side of SIDES) {
       const tried = setOn(item, side, lines);
-      let cost = LEAN[side];
+      let cost = plusUnder(LEAN[side], tried.box, pieces);
       let onMark = false;
-      for (const s of segments) cost += under(tried.box, s);
       for (const m of marks) {
         if (m.id !== item.id && touches(tried.box, m)) [cost, onMark] = [cost + ON_MARK, true];
       }
